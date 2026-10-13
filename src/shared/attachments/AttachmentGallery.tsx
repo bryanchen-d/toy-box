@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { ChevronLeft, ChevronRight, ImageIcon, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageIcon, Play, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Carousel, useCarousel } from "motion-plus/react";
@@ -11,8 +11,9 @@ import type { Attachment, AttachmentReference } from "./model";
 
 const attachmentPillClassName =
   "inline-flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-md border bg-background px-1 text-xs text-muted-foreground";
+const VIDEO_FILE = /\.(mov|mp4|webm)$/i;
 
-/** Presents an attachment collection and opens any image in the shared viewer. */
+/** Presents an attachment collection and opens any image or video in the shared viewer. */
 export function AttachmentGallery({
   attachments,
   variant = "thumbnails",
@@ -25,11 +26,17 @@ export function AttachmentGallery({
   variant?: "thumbnails" | "filmstrip" | "pills" | "summary";
   onRemove?: (index: number) => void;
 }) {
-  const previews = attachments.map((attachment, index) => ({
-    label: "url" in attachment ? attachment.name : `Image ${index + 1}`,
-    src: "url" in attachment ? attachment.url : toDataUrl(attachment),
-  }));
-  const images = previews.filter((preview) => preview.src !== undefined);
+  const previews = attachments.map((attachment, index) => {
+    const video = "url" in attachment && VIDEO_FILE.test(attachment.name);
+    return {
+      label: "url" in attachment ? attachment.name : `Image ${index + 1}`,
+      // The media fragment makes Safari paint a first frame instead of a blank video.
+      src:
+        "url" in attachment ? `${attachment.url}${video ? "#t=0.1" : ""}` : toDataUrl(attachment),
+      video,
+    };
+  });
+  const media = previews.filter((preview) => preview.src !== undefined);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [pillKey] = useState(() => {
     const keys = new WeakMap<object, number>();
@@ -53,7 +60,7 @@ export function AttachmentGallery({
         key={index}
         type="button"
         disabled={!preview.src}
-        onClick={() => setSelectedIndex(Math.max(0, images.indexOf(preview)))}
+        onClick={() => setSelectedIndex(Math.max(0, media.indexOf(preview)))}
         aria-label={`Preview ${variant === "summary" ? "images" : preview.label}`}
         className={className}
       >
@@ -62,11 +69,22 @@ export function AttachmentGallery({
     );
   };
   const thumbnail = (index: number, className: string) => {
-    const { label, src } = previews[index]!;
-    return src ? (
-      <img src={src} alt={label} className={cn("object-cover", className)} />
-    ) : (
-      <ImageIcon className={cn("text-muted-foreground", className)} />
+    const { label, src, video } = previews[index]!;
+    if (!src) return <ImageIcon className={cn("text-muted-foreground", className)} />;
+    if (!video) return <img src={src} alt={label} className={cn("object-cover", className)} />;
+    return (
+      <>
+        <video
+          src={src}
+          preload="metadata"
+          muted
+          playsInline
+          className={cn("object-cover", className)}
+        />
+        <span className="absolute inset-0 m-auto flex size-8 items-center justify-center rounded-full bg-black/50">
+          <Play className="size-4 fill-white text-white" />
+        </span>
+      </>
     );
   };
 
@@ -118,7 +136,7 @@ export function AttachmentGallery({
           trigger(
             index,
             cn(
-              "flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted transition-colors",
+              "relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted transition-colors",
               variant === "filmstrip" ? "h-22 min-w-12" : "size-12",
               preview.src && "hover:border-accent",
             ),
@@ -133,7 +151,7 @@ export function AttachmentGallery({
           ),
         )
       )}
-      {images.length > 0 && (
+      {media.length > 0 && (
         <DialogContent
           ref={dialogRef}
           initialFocus={dialogRef}
@@ -146,29 +164,47 @@ export function AttachmentGallery({
           <Carousel
             aria-label="Message attachments"
             className="size-full"
-            items={images.map(({ label, src }, index) => (
-              <DialogClose
-                // eslint-disable-next-line react/no-array-index-key -- each occurrence in the immutable message has its own carousel position
-                key={index}
-                type="button"
-                aria-label={`Close preview of ${label}`}
-                className="flex size-full min-h-0 items-center justify-center"
-              >
-                <img
-                  src={src}
-                  alt={label}
-                  draggable={false}
-                  className="max-h-full max-w-full rounded-lg object-contain select-none"
-                />
-              </DialogClose>
-            ))}
+            items={media.map(({ label, src, video }, index) =>
+              video ? (
+                // Native video controls cannot live inside the click-to-close button.
+                <div
+                  // eslint-disable-next-line react/no-array-index-key -- each occurrence in the immutable message has its own carousel position
+                  key={index}
+                  className="flex size-full min-h-0 items-center justify-center"
+                >
+                  <video
+                    src={src}
+                    aria-label={label}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="max-h-full max-w-full rounded-lg"
+                  />
+                </div>
+              ) : (
+                <DialogClose
+                  // eslint-disable-next-line react/no-array-index-key -- each occurrence in the immutable message has its own carousel position
+                  key={index}
+                  type="button"
+                  aria-label={`Close preview of ${label}`}
+                  className="flex size-full min-h-0 items-center justify-center"
+                >
+                  <img
+                    src={src}
+                    alt={label}
+                    draggable={false}
+                    className="max-h-full max-w-full rounded-lg object-contain select-none"
+                  />
+                </DialogClose>
+              ),
+            )}
             itemSize="fill"
             align="stretch"
             gap={0}
             loop={false}
             page={selectedIndex}
           >
-            <AttachmentCarouselControls images={images} hotkeyTarget={dialogRef} />
+            <AttachmentCarouselControls media={media} hotkeyTarget={dialogRef} />
           </Carousel>
         </DialogContent>
       )}
@@ -177,28 +213,28 @@ export function AttachmentGallery({
 }
 
 function AttachmentCarouselControls({
-  images,
+  media,
   hotkeyTarget,
 }: {
-  images: { label: string }[];
+  media: { label: string }[];
   hotkeyTarget: React.RefObject<HTMLDivElement | null>;
 }) {
   const { currentPage, totalPages, nextPage, prevPage, isNextActive, isPrevActive } = useCarousel();
-  const selectedImage = images[currentPage] ?? images[0]!;
+  const selected = media[currentPage] ?? media[0]!;
 
   useHotkey("ArrowLeft", prevPage, { target: hotkeyTarget });
   useHotkey("ArrowRight", nextPage, { target: hotkeyTarget });
 
   return (
     <>
-      <DialogTitle className="sr-only">{selectedImage.label}</DialogTitle>
+      <DialogTitle className="sr-only">{selected.label}</DialogTitle>
       {totalPages > 1 && (
         <>
           <Button
             type="button"
             variant="accent"
             size="icon"
-            aria-label="Previous image"
+            aria-label="Previous attachment"
             disabled={!isPrevActive}
             className="absolute top-1/2 left-2 -translate-y-1/2 rounded-full shadow-md sm:-left-12"
             onClick={prevPage}
@@ -209,7 +245,7 @@ function AttachmentCarouselControls({
             type="button"
             variant="accent"
             size="icon"
-            aria-label="Next image"
+            aria-label="Next attachment"
             disabled={!isNextActive}
             className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full shadow-md sm:-right-12"
             onClick={nextPage}

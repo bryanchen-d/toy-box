@@ -49,10 +49,18 @@ write workspace settings or alter open panes.
 
 [`model/state/reducer.ts`](model/state/reducer.ts) applies the same `WorkspaceEvent` transitions on
 the server and in each browser. The sparse `sessionStates` map retains only meaningful shared
-activity: active work, unread completion, or an unsent composer prompt. Active work carries
-`since`, stamped from the `at` of the event that began the run; waiting keeps it and a new run
-restarts it. Draft sessions live in the Sessions catalog; ordinary read-idle sessions have no
-workspace activity entry.
+activity: active work or unread completion. Active work carries `since`, stamped from the `at` of
+the event that began the run; waiting keeps it and a new run restarts it. Draft sessions live in
+the Sessions catalog; ordinary read-idle sessions have no workspace activity entry.
+
+[`model/state/drafts.ts`](model/state/drafts.ts) defines saved drafts: each composer's unsent
+text, keyed by its owner (`session:<id>`, `channel:<id>`, or `inbox`). A `draft.changed` action
+carries a client's edit; the server stamps it, keeps it in a process-local map for a day after its
+last edit, and broadcasts it. Deleting a session or channel drops its draft. A session's draft
+marks its sidebar row and keeps it in the catalog. [`hooks/useSavedDraft.ts`](hooks/useSavedDraft.ts)
+is the composer-facing hook: it applies edits locally, debounces them out, adopts other clients'
+edits but not its own echoes, syncs a cleared draft at once, and flushes on unmount. It returns
+the `value` and `onValueChange` a composer draft takes; images stay local to each client.
 
 [`queries.ts`](queries.ts) is the canonical TanStack Query interface to that projection. It owns
 snapshot identity, optimistic workspace commands, and a per-`QueryClient` event journal that keeps
@@ -86,12 +94,15 @@ server projection.
 
 ## Pane model
 
-`WorkspacePane` is the shared presentation value for six kinds of content:
+`WorkspacePane` is the shared presentation value for seven kinds of content:
 
 - Inbox is the stable fallback when no root pane is selected.
 - A session pane is sourced by its own session ID.
 - An editor pane presents a session artifact or machine file.
 - A canvas pane presents an SDK-provided URL associated with its source session.
+- A screen pane presents a native host capability by Screens-owned ID.
+  Each visible canvas owns its connection and renderer. Closing a pane
+  does not stop the source application.
 - An app pane presents one durable app instance and is not inherently session-backed.
 - A channel pane presents one durable shared bus. Its artifacts retain their Files-owned identity
   when revealed as ordinary root editor panes rather than published as linked panes.
@@ -102,7 +113,7 @@ source file.
 
 Each pane has a stable ID that represents mounted identity. [`model/panes.ts`](model/panes.ts) owns
 identity, source relationships, reachability, ordering, and focus policy as pure functions. Root
-sessions, files, apps, and channels are deduplicated and capped at four panes. Active session,
+sessions, files, apps, channels, and screens are deduplicated and capped at four panes. Active session,
 Inbox, and app panes can publish linked panes through a browser-local graph owned by their workspace
 surface. That graph contains composition only; it never copies transcripts, Channel messages, file
 content, Inbox rows, or app state.
@@ -142,8 +153,9 @@ and local surface state, and portals the active pane's controls into its toolbar
 owns the single-pane feature adapter and the chrome slots supplied by those hosts. Neither owns the
 feature state rendered inside a pane.
 
-[`components/outputs/`](components/outputs/) groups `ComposerTray.tsx`, `ArtifactPill.tsx`, and
-`ChecklistPopup.tsx` for Session and Channel output presentation. They combine Files identity and
+[`components/outputs/`](components/outputs/) groups `ComposerTray.tsx`, `ArtifactPill.tsx`,
+`ChecklistPopup.tsx`, and `PagePreview.tsx` for Session and Channel output presentation;
+`PagePreview` is the sandboxed thumbnail that HTML artifacts and a Channel's preview share. They combine Files identity and
 previews with the current surface's pane focus and file-worker activity. Callers supply their
 artifacts, checklist, and additional controls.
 

@@ -4,9 +4,11 @@ import {
   ChevronDown,
   Clock3,
   FileText,
+  Folder,
   FolderOpen,
   Hash,
   MessageCirclePlus,
+  Monitor,
   PanelLeft,
   PanelLeftClose,
   Plus,
@@ -241,11 +243,44 @@ export function HyperButton({ onToggle, isOpen }: { onToggle: () => void; isOpen
   );
 }
 
-export function BrowseFilesButton({ onBrowseFiles }: { onBrowseFiles: () => void }) {
+/** Opens a file or a screen from the sidebar, as one action. */
+export function BrowseMenu({
+  onBrowseFiles,
+  onBrowseScreens,
+  side,
+}: {
+  onBrowseFiles: () => void;
+  onBrowseScreens: () => void;
+  /** Toward the workspace: up from the footer, or right of the rail. */
+  side: "top" | "right";
+}) {
   return (
-    <SidebarAction label="Browse files" onClick={onBrowseFiles}>
-      <FolderOpen />
-    </SidebarAction>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={SIDEBAR_ACTION_SIZE}
+            aria-label="Browse"
+            suppressHydrationWarning
+          />
+        }
+      >
+        <FolderOpen />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side={side} align={side === "top" ? "end" : "start"}>
+        <DropdownMenuItem onClick={onBrowseFiles}>
+          <Folder />
+          Files
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onBrowseScreens}>
+          <Monitor />
+          Screens
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

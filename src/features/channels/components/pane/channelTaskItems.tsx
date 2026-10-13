@@ -1,9 +1,10 @@
-import { FileText, UserRoundX } from "lucide-react";
+import { FileText } from "lucide-react";
 import { AgentAvatar } from "@channels/components/agents/AgentAvatar";
 import {
-  DELETED_AGENT_NAME,
+  channelAgentIdentity,
   channelTasksDiff,
   type ChannelAgent,
+  type ChannelAgentIdentity,
   type ChannelArtifact,
   type ChannelTask,
 } from "@channels/model";
@@ -52,7 +53,7 @@ export function channelTaskItems({
                 closeOnOpen={closeOnArtifactOpen}
               />
             )}
-            {task.ownerId && <TaskOwner owner={owners.find(({ id }) => id === task.ownerId)} />}
+            {task.ownerId && <TaskOwner owner={channelAgentIdentity(owners, task.ownerId)} />}
           </span>
         ) : undefined,
       children:
@@ -114,22 +115,13 @@ function TaskArtifact({
   return closeOnOpen ? <PopoverClose render={button} /> : button;
 }
 
-function TaskOwner({ owner }: { owner?: ChannelAgent }) {
-  const name = owner?.name ?? DELETED_AGENT_NAME;
+function TaskOwner({ owner }: { owner: ChannelAgentIdentity }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<span role="img" aria-label={name} className="inline-flex" />}>
-        {owner ? (
-          <AgentAvatar
-            name={owner.name}
-            avatar={owner.avatar}
-            className="size-4 in-data-[slot=checklist-popup]:size-3.5"
-          />
-        ) : (
-          <UserRoundX className="size-4 in-data-[slot=checklist-popup]:size-3.5" />
-        )}
+      <TooltipTrigger render={<span role="img" aria-label={owner.name} className="inline-flex" />}>
+        <AgentAvatar agent={owner} className="size-4 in-data-[slot=checklist-popup]:size-3.5" />
       </TooltipTrigger>
-      <TooltipContent sideOffset={4}>{name}</TooltipContent>
+      <TooltipContent sideOffset={4}>{owner.name}</TooltipContent>
     </Tooltip>
   );
 }

@@ -17,30 +17,19 @@ import type {
   ReasoningEffort,
 } from "./protocol";
 import { CodexTransport, type RpcNotification, type RpcRequest } from "./protocol/transport";
-import {
-  createCodexProjector,
-  codexQuestionId,
-  isCodexSubagentSpawn,
-  itemTimestamp,
-  scopeCodexSubagentEvent,
-} from "./projector";
+import { createCodexProjector, itemTimestamp } from "./projector";
 import { encodeInput } from "./messages";
 import { readThreadHistory } from "./history";
 
+/** One question in a native batch; Codex receives every answer in one response. */
 type PendingQuestion = {
-  rpcId: string | number;
-  params: ToolRequestUserInputParams;
-  answers: ToolRequestUserInputResponse["answers"];
-};
-
-type SubagentProjection = {
-  call: {
-    toolCallId: string;
-    remainingThreadIds: Set<string>;
-    failed: boolean;
-    error?: string;
+  id: string;
+  toolCallId: string;
+  batch: {
+    rpcId: string | number;
+    size: number;
+    answers: ToolRequestUserInputResponse["answers"];
   };
-  project: ReturnType<typeof createCodexProjector>;
 };
 
 export class CodexConnection implements SessionConnection {
@@ -52,9 +41,7 @@ export class CodexConnection implements SessionConnection {
   #model: ModelConfiguration;
   #turn?: Pick<Turn, "id"> & { controller: AbortController };
   #questions = new Map<string, PendingQuestion>();
-  #subagents = new Map<string, SubagentProjection>();
-  #terminalTurn?: string;
-  #terminalCallId?: string;
+  #terminal?: { turnId: string; callId: string };
   #disconnected = false;
 
   constructor(
@@ -67,7 +54,7 @@ export class CodexConnection implements SessionConnection {
     this.sessionId = session.id;
     this.provider = { id: "codex", sessionId: session.provider?.sessionId ?? session.id };
     this.#model = model;
-    this.#project = createCodexProjector(session.id);
+    this.#project = createCodexProjector(session.id, this.provider.sessionId);
     this.#dispose = [
       rpc.onNotification((notification) => this.#notification(notification)),
       rpc.onRequest((request) => this.#request(request)),
@@ -97,7 +84,6 @@ export class CodexConnection implements SessionConnection {
         input,
       });
     } else {
-      this.#terminalTurn = undefined;
       await this.rpc.request("turn/start", {
         threadId: this.provider.sessionId,
         clientUserMessageId: message.clientId,
@@ -115,25 +101,16 @@ export class CodexConnection implements SessionConnection {
   }
 
   async answerQuestion({ requestId, answer }: SessionQuestionAnswer): Promise<boolean> {
-    const pending = this.#questions.get(requestId);
-    if (!pending) return false;
-    const question = pending.params.questions.find(
-      (candidate) => codexQuestionId(pending.rpcId, candidate.id) === requestId,
-    );
-    if (!question || Object.hasOwn(pending.answers, question.id)) return false;
-    pending.answers[question.id] = { answers: [answer] };
-    this.#emit({
-      type: "question_resolved",
-      toolCallId: `${pending.params.itemId}:${question.id}`,
-      answer,
-    });
-    if (Object.keys(pending.answers).length === pending.params.questions.length) {
-      this.rpc.respond(pending.rpcId, {
-        answers: pending.answers,
+    const question = this.#questions.get(requestId);
+    if (!question) return false;
+    this.#questions.delete(requestId);
+    const { batch } = question;
+    batch.answers[question.id] = { answers: [answer] };
+    this.#emit({ type: "question_resolved", toolCallId: question.toolCallId, answer });
+    if (Object.keys(batch.answers).length === batch.size)
+      this.rpc.respond(batch.rpcId, {
+        answers: batch.answers,
       } satisfies ToolRequestUserInputResponse);
-      for (const question of pending.params.questions)
-        this.#questions.delete(codexQuestionId(pending.rpcId, question.id));
-    }
     return true;
   }
 
@@ -152,7 +129,6 @@ export class CodexConnection implements SessionConnection {
     this.#cancelRequests();
     for (const dispose of this.#dispose) dispose();
     this.#listeners.clear();
-    this.#subagents.clear();
     await this.rpc.request("thread/unsubscribe", { threadId: this.provider.sessionId });
   }
 
@@ -170,27 +146,19 @@ export class CodexConnection implements SessionConnection {
   async rewind(timestamp: string): Promise<void> {
     if (this.#turn) throw new Error("Stop the session before rewinding it.");
     const thread = await readThreadHistory(this.rpc, this.provider.sessionId);
-    const index = thread.turns.findIndex((turn) =>
+    const turn = thread.turns.find((turn) =>
       turn.items.some(
         (item, i) => item.type === "userMessage" && itemTimestamp(turn, i) === timestamp,
       ),
     );
-    if (index < 0) throw new Error("That message is no longer available to rewind.");
-    const turn = thread.turns[index]!;
+    if (!turn) throw new Error("That message is no longer available to rewind.");
     const firstInput = turn.items.findIndex((item) => item.type === "userMessage");
     if (itemTimestamp(turn, firstInput) !== timestamp)
       throw new Error(
         "Codex can rewind to the start of a turn. Choose the first message in this turn.",
       );
-    if (thread.historyMode === "paginated")
-      await this.rpc.request("thread/revert", { threadId: thread.id, beforeTurnId: turn.id });
-    else
-      await this.rpc.request("thread/rollback", {
-        threadId: thread.id,
-        numTurns: thread.turns.length - index,
-      });
-    this.#project = createCodexProjector(this.sessionId);
-    this.#subagents.clear();
+    await this.rpc.request("thread/revert", { threadId: thread.id, beforeTurnId: turn.id });
+    this.#project = createCodexProjector(this.sessionId, this.provider.sessionId);
   }
 
   #emit(event: SessionEvent): void {
@@ -203,43 +171,40 @@ export class CodexConnection implements SessionConnection {
     void this.abort().catch(console.error);
   }
 
+  /** Root turns drive bookkeeping; the projector also routes this session's subagent threads. */
   #notification(notification: RpcNotification): void {
     const { method, params } = notification;
     if (!params || typeof params !== "object" || !("threadId" in params)) return;
-    const threadId = params.threadId;
-    if (typeof threadId !== "string") return;
-    if (threadId !== this.provider.sessionId) {
-      this.#subagentNotification(threadId, notification);
-      return;
-    }
-    switch (method) {
-      case "turn/started": {
-        const { turn } = params as TurnStartedNotification;
-        this.#turn = { id: turn.id, controller: new AbortController() };
-        this.#emit({ type: "model_changed", model: this.#model });
-        break;
-      }
-      case "turn/completed": {
-        const { turn } = params as TurnCompletedNotification;
-        if (this.#turn?.id !== turn.id) return;
-        this.#cancelRequests();
-        this.#turn = undefined;
-        break;
-      }
-      case "serverRequest/resolved": {
-        const { requestId } = params as ServerRequestResolvedNotification;
-        this.#clearQuestions(requestId);
-        break;
+    if (params.threadId === this.provider.sessionId) {
+      switch (method) {
+        case "turn/started": {
+          const { turn } = params as TurnStartedNotification;
+          this.#turn = { id: turn.id, controller: new AbortController() };
+          this.#emit({ type: "model_changed", model: this.#model });
+          break;
+        }
+        case "turn/completed": {
+          const { turn } = params as TurnCompletedNotification;
+          if (this.#turn?.id !== turn.id) return;
+          this.#cancelRequests();
+          this.#turn = undefined;
+          break;
+        }
+        case "serverRequest/resolved": {
+          const { requestId } = params as ServerRequestResolvedNotification;
+          this.#cancelQuestions(requestId);
+          break;
+        }
       }
     }
-    this.#registerSubagent(notification);
     for (const event of this.#project(notification)) this.#emit(event);
     if (method === "item/completed") {
       const { item, turnId } = params as ItemCompletedNotification;
+      const terminal = this.#terminal;
       if (
         item.type === "dynamicToolCall" &&
-        item.id === this.#terminalCallId &&
-        this.#terminalTurn === turnId &&
+        item.id === terminal?.callId &&
+        turnId === terminal.turnId &&
         this.#turn?.id === turnId
       ) {
         void this.rpc
@@ -249,62 +214,6 @@ export class CodexConnection implements SessionConnection {
           });
       }
     }
-  }
-
-  #registerSubagent(notification: RpcNotification): void {
-    if (notification.method !== "item/completed") return;
-    const { item } = notification.params as ItemCompletedNotification;
-    if (!isCodexSubagentSpawn(item) || item.status !== "completed") return;
-
-    const threadIds = item.receiverThreadIds;
-    if (!threadIds.length) return;
-    const call = {
-      toolCallId: item.id,
-      remainingThreadIds: new Set(threadIds),
-      failed: false,
-    };
-    for (const threadId of threadIds) {
-      this.#subagents.set(threadId, {
-        call,
-        project: createCodexProjector(this.sessionId),
-      });
-    }
-  }
-
-  #subagentNotification(threadId: string, notification: RpcNotification): void {
-    const subagent = this.#subagents.get(threadId);
-    if (!subagent) return;
-
-    for (const event of subagent.project(notification)) {
-      if (event.type === "end") {
-        this.#completeSubagent(threadId, subagent, event);
-        continue;
-      }
-      const scoped = scopeCodexSubagentEvent(event, subagent.call.toolCallId);
-      if (scoped) this.#emit(scoped);
-    }
-  }
-
-  #completeSubagent(
-    threadId: string,
-    subagent: SubagentProjection,
-    event: Extract<SessionEvent, { type: "end" }>,
-  ): void {
-    this.#subagents.delete(threadId);
-    const { call } = subagent;
-    call.remainingThreadIds.delete(threadId);
-    if (event.reason === "error") {
-      call.failed = true;
-      call.error ??= event.error;
-    }
-    if (call.remainingThreadIds.size) return;
-
-    this.#emit({
-      type: "tool_end",
-      toolCallId: call.toolCallId,
-      success: !call.failed,
-      ...(call.error ? { result: call.error } : {}),
-    });
   }
 
   #request(request: RpcRequest): boolean {
@@ -322,20 +231,32 @@ export class CodexConnection implements SessionConnection {
       return true;
     }
     if (request.method === "item/tool/requestUserInput") {
-      const params = request.params as ToolRequestUserInputParams;
-      if (!params.questions.length) {
+      const { itemId, questions, isBlocking } = request.params as ToolRequestUserInputParams;
+      if (!questions.length) {
         this.rpc.respond(request.id, { answers: {} });
         return true;
       }
-      const pending: PendingQuestion = {
-        rpcId: request.id,
-        params,
-        answers: {},
-      };
-      for (const question of params.questions) {
-        this.#questions.set(codexQuestionId(request.id, question.id), pending);
+      const batch = { rpcId: request.id, size: questions.length, answers: {} };
+      for (const native of questions) {
+        const requestId = `codex:${request.id}:${native.id}`;
+        const toolCallId = `${itemId}:${native.id}`;
+        const question = {
+          question: native.question,
+          choices: native.options?.map((option) => option.label),
+          allowFreeform: native.isOther || !native.options?.length,
+          blocking: isBlocking,
+          secret: native.isSecret,
+        };
+        this.#questions.set(requestId, { id: native.id, toolCallId, batch });
+        this.#emit({
+          type: "tool_start",
+          toolCallId,
+          toolName: "ask_user",
+          arguments: {},
+          question,
+        });
+        this.#emit({ type: "question_requested", toolCallId, requestId, question });
       }
-      for (const event of this.#project(request)) this.#emit(event);
       return true;
     }
     // The configured trusted-server policy should suppress native approvals.
@@ -350,7 +271,7 @@ export class CodexConnection implements SessionConnection {
     const turn = this.#turn;
     let result: ToolResult;
     try {
-      if (!turn || this.#terminalTurn === turn.id)
+      if (!turn || this.#terminal?.turnId === turn.id)
         throw new Error("This turn has already completed its terminal action.");
       const signal = turn.controller.signal;
       signal.throwIfAborted();
@@ -367,10 +288,7 @@ export class CodexConnection implements SessionConnection {
         }),
       );
       signal.throwIfAborted();
-      if (tool.isTerminal && !result.isError) {
-        this.#terminalTurn = turn.id;
-        this.#terminalCallId = callId;
-      }
+      if (tool.isTerminal && !result.isError) this.#terminal = { turnId: turn.id, callId };
     } catch (error) {
       result = {
         isError: true,
@@ -387,24 +305,17 @@ export class CodexConnection implements SessionConnection {
     } satisfies DynamicToolCallResponse);
   }
 
-  #clearQuestions(rpcId: string | number): void {
-    for (const [id, pending] of this.#questions) {
-      if (pending.rpcId !== rpcId) continue;
-      const question = pending.params.questions.find(
-        (question) => codexQuestionId(rpcId, question.id) === id,
-      )!;
-      if (!Object.hasOwn(pending.answers, question.id)) {
-        this.#emit({
-          type: "question_cancelled",
-          toolCallId: `${pending.params.itemId}:${question.id}`,
-        });
-      }
-      this.#questions.delete(id);
+  /** Unanswered questions end with their native request, or with every request when omitted. */
+  #cancelQuestions(rpcId?: string | number): void {
+    for (const [requestId, question] of this.#questions) {
+      if (rpcId !== undefined && question.batch.rpcId !== rpcId) continue;
+      this.#questions.delete(requestId);
+      this.#emit({ type: "question_cancelled", toolCallId: question.toolCallId });
     }
   }
 
   #cancelRequests(): void {
     this.#turn?.controller.abort();
-    for (const pending of new Set(this.#questions.values())) this.#clearQuestions(pending.rpcId);
+    this.#cancelQuestions();
   }
 }

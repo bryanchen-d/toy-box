@@ -1,29 +1,18 @@
-import { AgentMention } from "@channels/components/agents/AgentMention";
+import { AgentMentionMarkdown } from "@channels/components/agents/AgentMentionMarkdown";
 import { type ChannelConversationMessage } from "@channels/model";
-import { channelMessageReactions } from "@channels/model/reactions";
 import { UserMessage } from "@/shared/messages/UserMessage";
 import { ClockTime } from "@/shared/ui/clock-time";
-import { useChannelPane } from "../ChannelPaneContext";
 import { ChannelReactions } from "./ChannelReactions";
 
 /** The user's message, shown as in a session, with the reactions agents gave it. */
 export function ChannelUserMessage({ message }: { message: ChannelConversationMessage }) {
-  const { agents, presence } = useChannelPane();
-  const reactions = channelMessageReactions(message, agents, presence);
-
   return (
     <UserMessage
       message={message}
       time={<ClockTime className="text-xs text-muted-foreground" date={message.timestamp} />}
-      extraActions={
-        reactions.length ? (
-          <div className="mr-1">
-            <ChannelReactions reactions={reactions} />
-          </div>
-        ) : undefined
-      }
+      extraActions={<ChannelReactions message={message} className="mr-1" />}
     >
-      <AgentMention content={message.content} onAccent />
+      <AgentMentionMarkdown content={message.content} onAccent />
     </UserMessage>
   );
 }

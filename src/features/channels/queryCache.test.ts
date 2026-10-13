@@ -186,8 +186,8 @@ test("create and edit responses invalidate instead of overwriting newer catalog 
   expect(client.getQueryData<ChannelList>(key)).toEqual(deleted);
   expect(client.getQueryState(key)?.isInvalidated).toBe(true);
 
-  const current = {
-    channels: [{ ...channel, previewUrl: "https://current.example" }],
+  const current: ChannelList = {
+    channels: [{ ...channel, preview: { kind: "url", url: "https://current.example" } }],
     members: [],
   };
   client.setQueryData(key, current);

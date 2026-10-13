@@ -1,3 +1,13 @@
+## 📅 v0.3.0 (10/13/26)
+
+- Added support for screen sharing
+- You can now @mention sessions from a session
+- Child sessions now appear in the sidebar
+- The channel checklist now displays associated diffs and artifacts for items
+- Channel attachments now support videos (in addition to images)
+- Channels can now be filtered to just your messages
+- Channels and the inbox now persist/sync draft messages
+
 ## 📅 v0.2.0 (09/22/26)
 
 - Introduced support for Codex and Claude-based sessions

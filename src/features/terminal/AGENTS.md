@@ -1,14 +1,16 @@
 # Terminal
 
-The terminal runtime lets a shell survive refreshes and short disconnects, so users can run commands from desktop or phone without losing the PTY or corrupting its visible scrollback. Nitro owns its `/terminal` WebSocket route alongside the rest of Toy Box; the PTY manager owns terminal-specific process, reconnect, and replay policy behind that transport. Terminal traffic remains separate from canonical session events because it is bidirectional binary I/O with its own state machine. Until Nitro's Vite runner can upgrade WebSockets while running under Bun, development serves these same hooks through `dev.ts` and Vite proxies `/terminal` to it.
+The terminal runtime lets a shell survive refreshes and short disconnects without losing the PTY or corrupting its visible scrollback. The shared [socket gateway](../../../cli/AGENTS.md#socket-gateway) dispatches `/socket?service=terminal` to Terminal's hooks; the PTY manager owns process, reconnect, and replay policy.
 
-`model/protocol.ts` defines the validated client control plane shared by both sides. `client/` owns the browser WebSocket, xterm instance, buffering, and resize lifetime; `server/` owns the PTY, replay policy, WebSocket handler, and development server; and `components/` mounts that capability into React. Workspace owns only whether the terminal is visible and where its shell is placed. Nitro's route adapter, shutdown hook, and the Vite development proxy remain in their application composition roots.
+`model/protocol.ts` defines the validated client control plane shared by both sides. `client/` owns the browser WebSocket, xterm instance, buffering, and resize lifetime; `server/` owns the PTY, replay policy, and WebSocket handler; and `components/` mounts that capability into React. Workspace owns only whether the terminal is visible and where its shell is placed. Nitro's route adapter, shutdown hook, and the Vite development proxy remain in their application composition roots.
 
 The xterm-backed component and client runtime stay behind dynamic imports so opening Toy Box does not load the terminal bundle until the terminal is used.
 
 ## Protocol
 
 One WebSocket multiplexes a JSON control plane with a binary data plane. Lifecycle commands stay explicit while stdin and stdout avoid a protocol envelope on the hot path.
+The shared `/socket` gateway requires a matching HTTP(S) Origin header before
+dispatching to Terminal. Non-browser terminal clients must supply that header.
 
 Every browser tab creates a stable `clientId` in session storage. That ID owns zero or one PTY. Connecting with the same ID resumes the existing PTY; the newest socket replaces any older connection without temporarily orphaning the process.
 

@@ -1,6 +1,7 @@
 import { createStore } from "@tanstack/react-store";
 import type { WorkspaceFile, WorkspaceFileMode } from "@files/model";
 import type { SessionCanvas } from "@sessions/model";
+import type { Preview } from "@/shared/preview";
 import {
   createSessionPaneId,
   createLinkedPanes,
@@ -20,6 +21,7 @@ export function createPanePublicationsStore() {
       canvases: readonly SessionCanvas[],
       artifacts: readonly string[],
       openedFiles: readonly WorkspaceFile[],
+      preview?: Preview,
     ) {
       setState((current) => {
         const publisherPaneId = createSessionPaneId(sourceSessionId);
@@ -30,6 +32,7 @@ export function createPanePublicationsStore() {
           artifacts,
           openedFiles,
           current[publisherPaneId],
+          preview,
         );
 
         return replacePublishedPanes(current, publisherPaneId, nextPanes);

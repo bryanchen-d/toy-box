@@ -321,15 +321,15 @@ describe("workspace query cache", () => {
 
     const firstRead = source.readSnapshot(() => snapshots.shift()!);
     source.recordEvent({
-      type: "session.prompt.drafted",
-      sessionId: "session-a",
-      prompt: { text: "Unsaved prompt", origin: "client-a", updatedAt: 1 },
+      type: "draft.changed",
+      key: "session:session-a",
+      draft: { text: "Unsaved draft", origin: "client-a", updatedAt: 1 },
     });
     source.discardBufferedEvents();
     const replacementRead = source.readSnapshot(() => snapshots.shift()!);
 
     second.resolve(createEmptyWorkspaceState());
-    expect((await replacementRead).sessionStates["session-a"]).toBeUndefined();
+    expect((await replacementRead).drafts["session:session-a"]).toBeUndefined();
 
     first.resolve(createEmptyWorkspaceState());
     await firstRead;

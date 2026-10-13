@@ -34,7 +34,7 @@ export function useAttachments() {
     return true;
   }
 
-  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+  function handlePaste(event: React.ClipboardEvent<HTMLElement>) {
     if (attachFiles(event.clipboardData.files)) event.preventDefault();
   }
 

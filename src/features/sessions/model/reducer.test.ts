@@ -364,6 +364,26 @@ describe("session reducer", () => {
         details: undefined,
       });
     });
+
+    test("tool results keep the images a tool produced", () => {
+      const image = { mimeType: "image/png", base64: "aW1hZ2U=" };
+      const state = reduceEvents([
+        {
+          type: "tool_start",
+          toolCallId: "image-1",
+          toolName: "image_generation",
+          arguments: { prompt: "A red circle" },
+        },
+        { type: "tool_end", toolCallId: "image-1", success: true, attachments: [image] },
+      ]);
+
+      expect(assistantAt(state, 0).toolCalls?.[0].result).toEqual({
+        content: "",
+        success: true,
+        details: undefined,
+        attachments: [image],
+      });
+    });
   });
 
   describe("questions", () => {

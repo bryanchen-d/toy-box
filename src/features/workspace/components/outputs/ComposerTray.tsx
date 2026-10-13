@@ -17,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@/shared/ui/preview-card";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
-import { HTML_SANDBOX_PERMISSIONS } from "@/shared/embeddedHtml";
 import { cn } from "@/shared/utils";
 import {
   ArtifactPill,
@@ -26,6 +25,7 @@ import {
   useArtifactState,
 } from "./ArtifactPill";
 import { ChecklistPopup } from "./ChecklistPopup";
+import { PagePreview } from "./PagePreview";
 
 // The newest artifact joins the row once the composer has room; two more follow when wide.
 const INLINE_ARTIFACT_CLASS_NAMES = ["@max-md:hidden", "@max-2xl:hidden", "@max-2xl:hidden"];
@@ -146,18 +146,7 @@ function ArtifactPeek({
             className="aspect-video w-full rounded-md border bg-muted/40 object-contain"
           />
         ) : (
-          <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-background">
-            <iframe
-              src={previewUrl}
-              title={`Preview ${file.path}`}
-              sandbox={HTML_SANDBOX_PERMISSIONS}
-              loading="lazy"
-              tabIndex={-1}
-              width={960}
-              height={540}
-              className="absolute top-0 left-0 origin-top-left scale-[0.25] border-0"
-            />
-          </div>
+          <PagePreview src={previewUrl} title={`Preview ${file.path}`} />
         )}
         <p className="mt-2 text-xs text-muted-foreground">
           {timeLabel} <RelativeTime date={new Date(time)} />

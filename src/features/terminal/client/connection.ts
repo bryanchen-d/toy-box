@@ -4,6 +4,7 @@
  */
 
 import type { TerminalClientMessage, TerminalServerMessage } from "../model/protocol";
+import { socketUrl } from "@/shared/socket";
 
 const WS_CLOSE_CODE_REPLACED = 4000;
 const TEXT_ENCODER = new TextEncoder();
@@ -49,8 +50,7 @@ export class TerminalConnection {
       detachHandlers(this.#ws);
     }
 
-    const wsUrl = new URL("/terminal", window.location.origin);
-    wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = socketUrl("terminal");
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";

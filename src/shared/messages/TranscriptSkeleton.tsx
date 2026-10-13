@@ -1,0 +1,38 @@
+import { Skeleton } from "@/shared/ui/skeleton";
+
+/** A transcript's alternating user and agent messages, while it loads. */
+export function TranscriptSkeleton() {
+  return (
+    <div className="h-full space-y-4 bg-panel p-4">
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-48 rounded-lg" />
+      </div>
+      <div className="flex justify-start">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-36 rounded-lg" />
+      </div>
+      <div className="flex justify-start">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-72" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-52 rounded-lg" />
+      </div>
+      <div className="flex justify-start">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-60" />
+          <Skeleton className="h-4 w-52" />
+          <Skeleton className="h-4 w-44" />
+        </div>
+      </div>
+    </div>
+  );
+}

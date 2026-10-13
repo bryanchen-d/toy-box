@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createEditorPane,
+  createScreenPane,
   createAppPane,
   createChannelPane,
   createCanvasPaneId,
@@ -50,6 +51,23 @@ function canvas(overrides: Partial<SessionCanvas> = {}): SessionCanvas {
 }
 
 describe("workspace pane derivation", () => {
+  test("a screen preview preserves source identity and deduplicates with its root pane", () => {
+    const linked = createLinkedPanes("A", [], [], [], [], [], {
+      kind: "screen",
+      screenId: "window",
+    });
+    expect(linked).toEqual([createScreenPane("window", "A")]);
+    expect(linked[0]?.id).toBe("screen:window");
+    expect(paneSourceSessionId(linked[0]!)).toBe("A");
+    const publications = { [createSessionPaneId("A")]: linked };
+    expect(
+      deriveVisibleWorkspacePanes({
+        rootPanes: deriveWorkspaceRootPanes(["A"], [], [], [], ["window", "window"]),
+        panePublications: publications,
+      }),
+    ).toHaveLength(2);
+  });
+
   test("uses Inbox as the fallback root pane", () => {
     expect(deriveWorkspaceRootPanes([])).toEqual([INBOX_PANE]);
     expect(deriveWorkspaceRootPanes(["A"])).toEqual([selectedSessionPane("A")]);

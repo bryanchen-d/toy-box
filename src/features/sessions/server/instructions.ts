@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { sessionArtifactsDirectory } from "./artifacts";
 import type { ModelConfiguration } from "@providers/model";
+import { encodeReference } from "@/shared/references";
 
 export function buildSessionSystemPrompt(
   sessionId: string,
@@ -21,9 +22,13 @@ export function buildSessionSystemPrompt(
 
   if (directory) {
     parts.push(
-      `The user's current working directory is: ${directory}. Unless otherwise specified, all mentioned file paths, including \`@path\` references, should be interpreted relative to this directory, and file operations should target this location.`,
+      `The user's current working directory is: ${directory}. Unless otherwise specified, all mentioned file paths should be interpreted relative to this directory, and file operations should target this location.`,
     );
   }
+  parts.push(
+    `A file reference such as ${encodeReference({ kind: "file", target: "PATH", label: "Name" })} names a file by its URL-escaped path, relative to the working directory unless absolute. ` +
+      "Name is only a display label; do not search by it.",
+  );
 
   const artifactsDirectory = sessionArtifactsDirectory(sessionId);
   const sessionStateDirectory = dirname(artifactsDirectory);
@@ -48,4 +53,8 @@ export function buildSessionSystemPrompt(
 }
 
 export const SESSION_HISTORY_DISCOVERY_INSTRUCTIONS =
-  "Use list_sessions and read_session to discover and read Toy Box sessions across providers.";
+  "Use list_sessions and read_session to discover and read Toy Box sessions across providers. " +
+  `A user reference such as ${encodeReference({ kind: "session", target: "PUBLIC_ID", label: "Title" })} names a session by its URL-escaped public Toy Box ID. ` +
+  "When its context is needed, call read_session with that ID directly; do not list sessions or resolve the title, which is only a label. " +
+  "If reading fails, report that instead of substituting another session. " +
+  "A reference alone does not request messaging, resuming, or deleting the referenced session.";

@@ -18,6 +18,7 @@ import {
 } from "./SidebarActions";
 import { SessionList } from "@sessions/components/sidebar/SessionList";
 import { FileBrowserDialog } from "@files/components/browser/FileBrowserDialog";
+import { ScreenBrowserDialog } from "@screens/client/ScreenBrowserDialog";
 import { ChannelsPanel } from "@channels/components/sidebar/ChannelsPanel";
 import { ChannelDialog } from "@channels/components/ChannelDialog";
 import type { SidebarPanels } from "@workspace/model/config/layoutPrefs";
@@ -73,6 +74,7 @@ export type SidebarProps = {
   isTerminalOpen: boolean;
 
   onOpenFile: (path: string) => void;
+  onOpenScreen: (screenId: string) => Promise<void>;
 
   className?: string;
 };
@@ -116,11 +118,13 @@ export function Sidebar({
   onToggleTerminal,
   isTerminalOpen,
   onOpenFile,
+  onOpenScreen,
   className,
 }: SidebarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The file browser opens at a row's directory, or wherever it defaults from the footer.
   const [browsing, setBrowsing] = useState<{ directory?: string }>();
+  const [browsingScreens, setBrowsingScreens] = useState(false);
   const [createAutomationOpen, setCreateAutomationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
 
@@ -221,6 +225,7 @@ export function Sidebar({
             )
           }
           onBrowseFiles={() => setBrowsing({})}
+          onBrowseScreens={() => setBrowsingScreens(true)}
           onToggleHyper={onToggleHyper}
           isHyperOpen={isHyperOpen}
           onOpenInbox={onOpenInbox}
@@ -236,6 +241,7 @@ export function Sidebar({
           className={layerClass(collapsed)}
           {...creationActions}
           onBrowseFiles={() => setBrowsing({})}
+          onBrowseScreens={() => setBrowsingScreens(true)}
           onToggleHyper={onToggleHyper}
           isHyperOpen={isHyperOpen}
           onToggleTerminal={onToggleTerminal}
@@ -265,6 +271,11 @@ export function Sidebar({
         initialPath={browsing?.directory}
         title="Open a file"
         onOpenFile={onOpenFile}
+      />
+      <ScreenBrowserDialog
+        open={browsingScreens}
+        onOpenChange={setBrowsingScreens}
+        onOpenScreen={onOpenScreen}
       />
 
       {createAutomationOpen && <AutomationDialog onOpenChange={setCreateAutomationOpen} />}

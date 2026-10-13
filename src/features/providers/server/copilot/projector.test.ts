@@ -324,6 +324,52 @@ describe("projector", () => {
       });
     });
 
+    test.each([
+      { sessionId: "toy-box-created-1" },
+      { sessionId: "toy-box-created-1", opened: true },
+    ])("spawn_worker stays visible without opening a pane for result %j", (result) => {
+      expectVisibleToolLifecycle(createStreamingContext(), {
+        toolName: "spawn_worker",
+        toolCallId: "tool-spawn-worker",
+        argumentsRecord: { task: "Review the auth flow" },
+        progressMessage: "Creating worker",
+        resultContent: JSON.stringify(result),
+      });
+    });
+
+    test("native output images become attachments while model-only images do not", () => {
+      const context = createStreamingContext();
+      const image = { type: "image", data: "aW1hZ2U=", mimeType: "image/png" };
+      const complete = (toolCallId: string, result: object) =>
+        sdkEvent({
+          type: "tool.execution_complete",
+          data: { toolCallId, success: true, result: { content: "Done", ...result } },
+        });
+      projectSdkEvent(
+        toolExecutionStart("image_generation", "tool-image", { prompt: "A red circle" }),
+        context,
+      );
+      projectSdkEvent(toolExecutionStart("observe_screen", "tool-screen"), context);
+
+      expect(
+        projectSdkEvent(
+          complete("tool-image", { contents: [{ type: "text", text: "Done" }, image] }),
+          context,
+        ),
+      ).toEqual([
+        {
+          type: "tool_end",
+          toolCallId: "tool-image",
+          success: true,
+          result: "Done",
+          attachments: [{ base64: "aW1hZ2U=", mimeType: "image/png" }],
+        },
+      ]);
+      expect(
+        projectSdkEvent(complete("tool-screen", { binaryResultsForLlm: [image] }), context),
+      ).toEqual([{ type: "tool_end", toolCallId: "tool-screen", success: true, result: "Done" }]);
+    });
+
     test("failed tool calls surface the error message as the result", () => {
       const context = createStreamingContext();
       projectSdkEvent(toolExecutionStart("bash", "tool-fail", { command: "exit 1" }), context);
@@ -1134,33 +1180,6 @@ describe("projector", () => {
           details: "diff",
         },
       ]);
-    });
-
-    test("spawn_worker projects a linked session only after successful completion", () => {
-      const context = createStreamingContext();
-
-      expect(
-        projectSdkEvent(
-          toolExecutionStart("spawn_worker", "tool-spawn-worker", {
-            task: "Review the auth flow",
-          }),
-          context,
-        ),
-      ).toEqual([]);
-
-      expect(
-        projectSdkEvent(toolExecutionProgress("tool-spawn-worker", "Creating"), context),
-      ).toEqual([]);
-
-      expect(
-        projectSdkEvent(
-          toolExecutionComplete("tool-spawn-worker", {
-            success: true,
-            resultContent: JSON.stringify({ sessionId: "toy-box-created-1", opened: true }),
-          }),
-          context,
-        ),
-      ).toEqual([{ type: "linked_session_added", sessionId: "toy-box-created-1" }]);
     });
 
     test("create_session does not project a linked pane for a new top-level session", () => {

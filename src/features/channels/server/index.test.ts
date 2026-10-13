@@ -270,7 +270,7 @@ test("an addressed post settles after its Agent wake is ready and a duplicate ne
   expect((await channels.getChannel(channel.id))?.latestSequence).toBe(2);
 });
 
-test("an Agent can attach an image file to a durable Channel message", async () => {
+test("an Agent can attach image and video files to a durable Channel message", async () => {
   const channels = await openChannels();
   const directory = await mkdtemp(join(tmpdir(), "toy-box-channel-message-"));
   onTestFinished(async () => {
@@ -282,18 +282,20 @@ test("an Agent can attach an image file to a durable Channel message", async () 
     ...CHANNEL_DEFAULTS,
   });
   const screenshot = join(directory, "screenshot.png");
+  const recording = join(directory, "flow.webm");
   await Bun.write(screenshot, Buffer.from(PNG_BASE64, "base64"));
+  await Bun.write(recording, "webm");
 
   const message = await sendChannelMessageFromAgent(channel.id, {
     content: "The layout is ready for review.",
-    attachmentPaths: [screenshot],
+    attachmentPaths: [screenshot, recording],
   });
 
   expect(message).toMatchObject({
     sequence: 1,
     sender: { type: "agent", agentId: channel.id },
     content: "The layout is ready for review.",
-    attachments: [screenshot],
+    attachments: [screenshot, recording],
   });
   expect((await channels.listMessagesAfter(channel.id)).at(-1)).toEqual(message);
 });
@@ -485,7 +487,7 @@ test("a Session can seed and passively read Channel context", async () => {
   await updateChannelFromLead(channel.id, {
     purpose: "Turn the evidence into a useful recommendation.",
     tasks: [{ id: "synthesize", title: "Synthesize the evidence", status: "in_progress" }],
-    previewUrl: "http://127.0.0.1:3000",
+    preview: { kind: "url", url: "http://127.0.0.1:3000" },
   });
   const outcome = { artifactId: artifact.artifactId, diff: { added: 32, removed: 8 } };
   expect(
@@ -503,7 +505,7 @@ test("a Session can seed and passively read Channel context", async () => {
       tasks: [
         { id: "synthesize", title: "Synthesize the evidence", status: "in_progress", ...outcome },
       ],
-      previewUrl: "http://127.0.0.1:3000",
+      preview: { kind: "url", url: "http://127.0.0.1:3000" },
     },
     members: [],
     messages: expect.arrayContaining([
@@ -594,14 +596,16 @@ test("committed edits and reads replay to the durable view and only a new purpos
     latestSequence: beforeTasks.latestSequence,
     updatedAt: beforeTasks.updatedAt,
   });
-  await updateChannelFromLead(channel.id, { previewUrl: "http://localhost:3000" });
+  await updateChannelFromLead(channel.id, {
+    preview: { kind: "url", url: "http://localhost:3000" },
+  });
   const model = { provider: "copilot", name: "gpt-6" };
   await editChannel({ channelId: channel.id, model });
   await markChannelRead(channel.id, 100);
   await markChannelRead(channel.id, 1);
   await updateChannelFromLead(channel.id, {
     tasks: [...tasks],
-    previewUrl: "http://localhost:3000",
+    preview: { kind: "url", url: "http://localhost:3000" },
   });
   await editChannel({ channelId: channel.id, model });
   expect(channelEvents.slice(3).map(({ type, revision }) => [type, revision])).toEqual([

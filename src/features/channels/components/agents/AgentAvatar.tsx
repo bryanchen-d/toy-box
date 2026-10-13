@@ -1,21 +1,22 @@
-import type { AgentAvatar as AgentAvatarValue } from "@channels/model";
+import { UserRoundX } from "lucide-react";
+import type { ChannelAgentIdentity } from "@channels/model";
 import { cn } from "@/shared/utils";
 
-/** Render an agent-authored vector mark inside the shared avatar frame. */
+/** Render an agent-authored vector mark inside the shared avatar frame, or mark a removed agent. */
 export function AgentAvatar({
-  name,
-  avatar,
+  agent: { name, avatar, deleted },
   className,
 }: {
-  name: string;
-  avatar?: AgentAvatarValue;
+  agent: Pick<ChannelAgentIdentity, "name" | "avatar" | "deleted">;
   className?: string;
 }) {
   return (
     <span
       className={cn(
         "relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full",
-        !avatar && "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+        deleted
+          ? "bg-muted text-muted-foreground"
+          : !avatar && "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
         className,
       )}
       style={
@@ -25,7 +26,9 @@ export function AgentAvatar({
       }
       aria-hidden
     >
-      {avatar ? (
+      {deleted ? (
+        <UserRoundX className="size-[60%]" />
+      ) : avatar ? (
         <svg
           viewBox="0 0 24 24"
           fill="none"

@@ -17,7 +17,6 @@ const methods = {
   "thread/delete": ["v2/ThreadDeleteParams", "v2/ThreadDeleteResponse"],
   "thread/unsubscribe": ["v2/ThreadUnsubscribeParams", "v2/ThreadUnsubscribeResponse"],
   "thread/revert": ["v2/ThreadRevertParams", "v2/ThreadRevertResponse"],
-  "thread/rollback": ["v2/ThreadRollbackParams", "v2/ThreadRollbackResponse"],
   "turn/start": ["v2/TurnStartParams", "v2/TurnStartResponse"],
   "turn/steer": ["v2/TurnSteerParams", "v2/TurnSteerResponse"],
   "turn/interrupt": ["v2/TurnInterruptParams", "v2/TurnInterruptResponse"],
@@ -82,7 +81,7 @@ try {
     .join("\n");
   await Bun.write(
     join(import.meta.dir, "index.ts"),
-    `// Generated from ${version.trim()} (experimental app-server schema).\n// OpenAI Codex, Apache-2.0: https://github.com/openai/codex\n// Regenerate using ./generate.ts. Do not edit wire types by hand.\n\n${types.join("\n\n")}\n\nexport type CodexMethods = {\n${methodMap}\n};\n`,
+    `// Generated from ${version.trim()} (experimental app-server schema).\n// OpenAI Codex, Apache-2.0: https://github.com/openai/codex\n// Regenerate using ./generate.ts. Do not edit wire types by hand.\n/* oxlint-disable typescript/no-redundant-type-constituents -- Upstream unions list known variants beside open fallbacks. */\n\n${types.join("\n\n")}\n\nexport type CodexMethods = {\n${methodMap}\n};\n`,
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

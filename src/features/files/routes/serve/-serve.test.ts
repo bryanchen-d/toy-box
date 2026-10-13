@@ -35,3 +35,28 @@ test("revalidates unchanged files and serves changed bytes", async () => {
   expect(changed.headers.get("ETag")).not.toBe(etag);
   expect(await changed.text()).toBe("changed");
 });
+
+test("serves lengths and byte ranges so browsers can stream and seek video", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));
+  const path = join(directory, "flow.webm");
+  const params = { scope: "machine", _splat: path.replace(/^\/+/, "") };
+  const url = "http://toy-box.test/api/serve/machine/flow.webm";
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  await Bun.write(path, "0123456789");
+  const request = (range: string) =>
+    createServeResponse(params, new Request(url, { headers: { Range: range } }));
+
+  const full = await createServeResponse(params, new Request(url));
+  expect(full.headers.get("Content-Length")).toBe("10");
+
+  const partial = await request("bytes=2-5");
+  expect(partial.status).toBe(206);
+  expect(partial.headers.get("Content-Type")).toBe("video/webm");
+  expect(partial.headers.get("Content-Range")).toBe("bytes 2-5/10");
+  expect(await partial.text()).toBe("2345");
+  expect(await (await request("bytes=7-")).text()).toBe("789");
+
+  const outOfRange = await request("bytes=10-");
+  expect(outOfRange.status).toBe(200);
+  expect(await outOfRange.text()).toBe("0123456789");
+});

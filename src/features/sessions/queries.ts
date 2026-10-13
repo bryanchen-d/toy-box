@@ -59,20 +59,36 @@ export function selectNonWorkerSessions(state: SessionsState): SessionsState["se
   return state.sessions.filter(({ id }) => state.ownership[id]?.type !== "worker");
 }
 
+/** The sidebar's root population, before its local search and display limit. */
+export function selectTopLevelSessions(
+  state: Pick<SessionsState, "sessions" | "ownership">,
+  hyperSessionIds: readonly string[],
+): SessionsState["sessions"] {
+  return state.sessions.filter(({ id }) => !state.ownership[id] && !hyperSessionIds.includes(id));
+}
+
+/** Index child sessions by their durable parent, including retained and nested workers. */
+export function selectSessionChildren(
+  state: SessionsState,
+): Record<string, SessionsState["sessions"]> {
+  const childrenByParent: Record<string, SessionsState["sessions"]> = {};
+  for (const session of state.sessions) {
+    const owner = state.ownership[session.id];
+    if (owner?.type !== "worker" || !owner.parentSessionId) continue;
+    (childrenByParent[owner.parentSessionId] ??= []).push(session);
+  }
+  return childrenByParent;
+}
+
 export function selectAutomationSessionIds(state: SessionsState): string[] {
   return Object.keys(state.ownership).filter((id) => state.ownership[id]?.type === "automation");
 }
 
-/** Cache skills by directory and session type; no directory means host-level discovery. */
+/** Skills by directory, session type, and provider; no directory means host-level discovery. */
 export const skillQueries = {
-  all: () => ["skills"] as const,
-
-  byCwd: (cwd?: string, sessionType: SessionType = "standard", provider?: string) =>
-    [...skillQueries.all(), cwd ?? null, sessionType, provider ?? null] as const,
-
-  list: (cwd?: string, sessionType?: SessionType, provider?: string) =>
+  list: (cwd?: string, sessionType: SessionType = "standard", provider?: string) =>
     queryOptions({
-      queryKey: skillQueries.byCwd(cwd, sessionType, provider),
+      queryKey: ["skills", cwd ?? null, sessionType, provider ?? null] as const,
       queryFn: () => listSkills({ data: { cwd, sessionType, provider } }),
       staleTime: Infinity,
     }),

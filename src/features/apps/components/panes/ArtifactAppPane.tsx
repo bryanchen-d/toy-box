@@ -4,14 +4,15 @@ import type { EditorProps } from "@files/components/editor/kinds";
 import type { SessionFile } from "@files/model";
 import { appQueries } from "@apps/queries";
 import { createEditorPaneId } from "@workspace/model/panes";
-import { AppErrorBoundary, AppHost, AppMessage, appErrorMessage } from "../host/AppHost";
+import { PaneMessage } from "@/shared/ui/pane-message";
+import { AppErrorBoundary, AppHost, appErrorMessage } from "../host/AppHost";
 
 /** Renders a stateless session `.toy` file through the shared app host. */
 export function ArtifactAppPane({ title, file }: EditorProps) {
   const { source } = file;
   if (source.kind !== "session") {
     return (
-      <AppMessage
+      <PaneMessage
         title="Artifact app unavailable"
         detail="Only files owned by a session can run as artifact apps."
       />
@@ -20,7 +21,7 @@ export function ArtifactAppPane({ title, file }: EditorProps) {
 
   return (
     <ClientOnly
-      fallback={<AppMessage title={`Loading ${title}`} detail="Compiling app…" loading />}
+      fallback={<PaneMessage title={`Loading ${title}`} detail="Compiling app…" loading />}
     >
       <MountedApp source={source} title={title} revision={file.revision} />
     </ClientOnly>
@@ -39,11 +40,11 @@ function MountedApp({
   const bundleQuery = useQuery(appQueries.artifactBundle(source, revision));
 
   if (bundleQuery.isPending) {
-    return <AppMessage title={`Loading ${title}`} detail="Compiling app…" loading />;
+    return <PaneMessage title={`Loading ${title}`} detail="Compiling app…" loading />;
   }
   if (bundleQuery.isError) {
     return (
-      <AppMessage title={`Unable to load ${title}`} detail={appErrorMessage(bundleQuery.error)} />
+      <PaneMessage title={`Unable to load ${title}`} detail={appErrorMessage(bundleQuery.error)} />
     );
   }
 

@@ -7,6 +7,7 @@ import {
   type AttachmentReference,
 } from "@/shared/attachments/model";
 import { cronSchema } from "@/shared/cron";
+import { previewSchema, type Preview } from "@/shared/preview";
 import type { ChannelAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
 import { channelTasksSchema, type ChannelTask } from "./tasks";
@@ -26,25 +27,6 @@ const durableIdSchema = z.string().trim().min(1).max(255);
 const channelNameSchema = z.string().trim().min(1).max(100);
 const channelPurposeSchema = z.string().trim().min(1).max(12_000);
 const channelDirectorySchema = z.string().trim().min(1).max(4_096);
-const channelPreviewUrlSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(2_048)
-  .refine(
-    (url) => {
-      if (url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\")) return true;
-      try {
-        return ["http:", "https:"].includes(new URL(url).protocol);
-      } catch {
-        return false;
-      }
-    },
-    {
-      message: "Use a root-relative, HTTP, or HTTPS preview URL.",
-    },
-  );
-
 const channelMessageTextSchema = z.string().trim().max(12_000);
 export const channelMessageContentSchema = channelMessageTextSchema.min(1);
 export const channelReactionKindSchema = z.enum(["done", "agree", "celebrate", "love", "laugh"]);
@@ -63,7 +45,7 @@ export type Channel = {
   directory?: string;
   model: ModelConfiguration;
   tasks: ChannelTask[];
-  previewUrl?: string;
+  preview?: Preview;
   latestSequence: number;
   seenThrough: number;
   /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
@@ -276,7 +258,7 @@ export const channelSystemMessageContentSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("preview_changed"),
       actor: channelMessageActorSchema,
-      previewUrl: channelPreviewUrlSchema.nullable(),
+      preview: previewSchema.nullable(),
     })
     .strict(),
   z
@@ -406,10 +388,12 @@ const channelChangesSchema = z
       .describe(
         "The complete task list for initial planning or intentional replacement. Preserve retained task IDs and outcomes; use edit_channel_tasks for progress updates.",
       ),
-    previewUrl: channelPreviewUrlSchema
+    preview: previewSchema
       .nullable()
       .optional()
-      .describe("The current runnable preview URL, or null to clear it."),
+      .describe(
+        "The current runnable preview: a URL or an existing screenId, or null to clear it.",
+      ),
   })
   .strict();
 export type ChannelChanges = z.output<typeof channelChangesSchema>;
@@ -425,7 +409,7 @@ export const editChannelInputSchema = channelChangesSchema
 export const updateChannelInputSchema = channelChangesSchema
   .omit({ model: true })
   .refine(hasChanges, {
-    message: "Update the name, purpose, directory, tasks, preview URL, or any combination of them.",
+    message: "Update the name, purpose, directory, tasks, preview, or any combination of them.",
   });
 
 export const postChannelMessageInputSchema = z
@@ -452,8 +436,15 @@ export type EditChannelInput = z.output<typeof editChannelInputSchema>;
 export type PostChannelMessageInput = z.output<typeof postChannelMessageInputSchema>;
 export type UpdateChannelInput = z.output<typeof updateChannelInputSchema>;
 
-export function channelHasUnread(channel: Channel): boolean {
+type ChannelReadPosition = Pick<Channel, "latestSequence" | "seenThrough">;
+
+export function channelHasUnread(channel: ChannelReadPosition): boolean {
   return channel.latestSequence > channel.seenThrough;
+}
+
+/** The read position that unread messages follow, or null when everything has been read. */
+export function channelUnreadAfter(channel: ChannelReadPosition): number | null {
+  return channelHasUnread(channel) ? channel.seenThrough : null;
 }
 
 /** Complete delivery policy for user, lead, and member messages. */

@@ -267,6 +267,8 @@ function getPagerDotPresentation(pane: WorkspacePane): {
       return { label: "App", colorClassName: "bg-amber-500" };
     case "channel":
       return { label: "Channel", colorClassName: "bg-cyan-500" };
+    case "screen":
+      return { label: "Screen", colorClassName: "bg-sky-500" };
     case "session":
       return { label: "Session", colorClassName: "bg-muted-foreground/40" };
     case "canvas":

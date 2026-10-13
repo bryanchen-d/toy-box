@@ -10,10 +10,13 @@ import { Button } from "@/shared/ui/button";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
+import { splitReferences } from "@/shared/references";
 import { cn } from "@/shared/utils";
 import type { SessionState } from "../../model";
+import { isPromptReference } from "../../model/references";
 import { systemMessageLabel } from "../../model/systemMessages";
 import { sessionMutations } from "../../mutations";
+import { PromptReferenceText } from "../references/PromptReferences";
 
 type QueuedMessage = SessionState["queuedMessages"][number];
 type QueuedUserMessage = Extract<QueuedMessage, { role: "user" }>;
@@ -106,7 +109,11 @@ function QueuedMessageRow({
     message.status !== "queued" || steerMutation.isPending || steerMutation.data === true;
   const attachments = message.role === "user" ? (message.attachments ?? []) : [];
   const label =
-    message.role === "system" ? systemMessageLabel(message.content) : message.content.trim();
+    message.role === "system"
+      ? systemMessageLabel(message.content)
+      : splitReferences(message.content.trim(), isPromptReference)
+          .map((segment) => (typeof segment === "string" ? segment : segment.label))
+          .join("");
 
   return (
     <div
@@ -134,7 +141,13 @@ function QueuedMessageRow({
       <ScrollableFade
         className={cn("flex-1 whitespace-nowrap", message.role === "system" && "italic")}
       >
-        <span className="shrink-0">{label}</span>
+        <span className="shrink-0">
+          {message.role === "user" ? (
+            <PromptReferenceText content={message.content.trim()} />
+          ) : (
+            label
+          )}
+        </span>
       </ScrollableFade>
       {attachments.length > 0 && <AttachmentGallery attachments={attachments} variant="summary" />}
       {!isSending && (

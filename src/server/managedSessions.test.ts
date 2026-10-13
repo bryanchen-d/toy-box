@@ -5,6 +5,7 @@ import type { Session } from "@sessions/model";
 import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import { SettingsDatabase } from "@workspace/server/state/settings";
 import { applySessionState, deleteSessionState } from "@workspace/server/state/sessions";
+import { deleteSavedDraft, saveDraft } from "@workspace/server/state/drafts";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
 import type { WorkspaceEvent } from "@workspace/model/events";
 
@@ -179,16 +180,15 @@ describe("Session catalog projection", () => {
 
   test("retains older running, waiting, unread and draft work outside the history window", async () => {
     await openSessionTypeTestDatabase();
-    const protectedIds = ["old-running", "old-waiting", "old-unread", "old-prompt"];
+    const protectedIds = ["old-running", "old-waiting", "old-unread", "old-unsent"];
     for (const [index, status] of (["running", "waiting", "unread"] as const).entries()) {
       applySessionState({ type: `session.${status}`, sessionId: protectedIds[index]!, at: 1 });
     }
-    applySessionState({
-      type: "session.prompt.drafted",
-      sessionId: "old-prompt",
-      prompt: { text: "Unsent work", origin: "test", updatedAt: Date.now() },
+    saveDraft("session:old-unsent", "Unsent work", "test");
+    onTestFinished(() => {
+      protectedIds.forEach((id) => deleteSessionState(id));
+      deleteSavedDraft("session:old-unsent");
     });
-    onTestFinished(() => protectedIds.forEach((id) => deleteSessionState(id)));
     const sessions = [
       ...protectedIds.map((id) => catalogSession(id, 0)),
       { ...catalogSession("old-draft", 0), provider: undefined },

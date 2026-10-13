@@ -26,12 +26,18 @@ A file exposes seven operations with distinct transport needs:
 | Operation | Contract                                                                            |
 | --------- | ----------------------------------------------------------------------------------- |
 | Browse    | Validated RPC returns one directory's immediate children                            |
-| Search    | Validated RPC ranks a directory's files, honoring Git ignores, for `@` references   |
+| Search    | Validated RPC ranks a directory's files, honoring Git ignores, for `#` completions  |
 | Create    | Validated RPC exclusively creates an empty machine file                             |
 | Read      | Validated RPC returns UTF-8 content and modification time                           |
 | Write     | Validated RPC persists UTF-8 content and returns the new modification time          |
 | Watch     | `/api/watch/<scope>/<path>` emits external modification or deletion events over SSE |
-| Serve     | `/api/serve/<scope>/<path>` returns raw bytes for browser-native relative resources |
+| Serve     | `/api/serve/<scope>/<path>` returns raw bytes or media ranges for browser URLs      |
+
+The session composer's `#` picker turns a search result into an atomic `[Name](file:PATH)`
+reference using the shared `[label](kind:target)` codec. Sessions interprets its `file` kind.
+The label is a basename; the encoded
+target retains the complete returned path. This is presentation over ordinary message text,
+not another workspace file identity or file-loading path.
 
 The route scope is a session id for an artifact or the literal `machine` for a host file. One resolver (`resolveWorkspaceFile`) maps that `WorkspaceFile` to an allowed absolute path for every operation: a session file resolves beneath its durable artifacts directory; a machine file resolves to its own absolute path.
 Serve responses are privately cached and revalidated from file metadata, so unchanged resources reuse browser-cached bytes without hiding edits.
@@ -44,7 +50,8 @@ Changes are batched before reading each observed file's revision and notifying i
 The watch route owns SSE transport; subscribing publishes the current revision after registration
 so a write between the initial read and subscription is still observed.
 
-`queries.ts` defines canonical browse, search, and file-snapshot identity. `mutations.ts` defines creation and per-file serialized writes. `useFile` owns one file's lifetime for editor panes and app file surfaces: it reads initial content, watches external changes, debounces saves, and submits them through the write mutation. It ignores the watch echo of its own save and flushes pending edits before unmount. Pane identity is keyed by the file's identity (`workspaceFileId`), so opening a different file remounts the complete lifecycle while mode changes preserve it.
+`queries.ts` defines canonical browse, search, and file-snapshot identity; the Session
+file-completion source projects search results into references. `mutations.ts` defines creation and per-file serialized writes. `useFile` owns one file's lifetime for editor panes and app file surfaces: it reads initial content, watches external changes, debounces saves, and submits them through the write mutation. It ignores the watch echo of its own save and flushes pending edits before unmount. Pane identity is keyed by the file's identity (`workspaceFileId`), so opening a different file remounts the complete lifecycle while mode changes preserve it.
 
 The file-mode browser can optionally restrict selection and creation by extension. It can create an empty machine file in any visible directory and returns its absolute path through the same completion callback used to select an existing file. Creation is exclusive, so an existing entry is never replaced; once selected, the new file enters the ordinary `WorkspaceFile` lifecycle above.
 

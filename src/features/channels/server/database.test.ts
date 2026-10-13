@@ -546,7 +546,7 @@ describe("channel database", () => {
           children: [{ id: "verify", title: "Verify the preview", status: "pending" }],
         },
       ],
-      previewUrl: "http://127.0.0.1:3000",
+      preview: { kind: "url", url: "http://127.0.0.1:3000" },
     });
 
     const actor = { type: "agent", agentId: channel.id } as const;
@@ -555,7 +555,7 @@ describe("channel database", () => {
       { type: "channel_renamed", actor, name: "Delivery room" },
       { type: "channel_purpose_changed", actor, purpose: "Ship and validate the product." },
       { type: "channel_directory_changed", actor, directory: "/workspace/delivery" },
-      { type: "preview_changed", actor, previewUrl: "http://127.0.0.1:3000" },
+      { type: "preview_changed", actor, preview: { kind: "url", url: "http://127.0.0.1:3000" } },
     ]);
     expect(messages.map(({ message }) => message.sequence)).toEqual([2, 3, 4, 5]);
     expect(update.events[0]).toEqual({
@@ -568,15 +568,15 @@ describe("channel database", () => {
     );
     expect((await channels.getRoster(channel.id))?.revision).toBe(revision! + 5);
     expect(await channels.getChannel(channel.id)).toEqual(update.channel);
-    const cleared = await channels.updateChannel(channel.id, { previewUrl: null });
+    const cleared = await channels.updateChannel(channel.id, { preview: null });
     expect(cleared.events).toMatchObject([
       {
         type: "message",
         revision: revision! + 6,
-        message: { content: { type: "preview_changed", actor, previewUrl: null } },
+        message: { content: { type: "preview_changed", actor, preview: null } },
       },
     ]);
-    expect(cleared.channel.previewUrl).toBeUndefined();
+    expect(cleared.channel.preview).toBeUndefined();
     expect(await channels.getChannel(channel.id)).toEqual(cleared.channel);
     expect(
       (await channels.updateChannel(channel.id, { purpose: null })).channel.purpose,
@@ -606,6 +606,28 @@ describe("channel database", () => {
         children: [{ id: "verify", title: "Verify the preview", status: "pending" }],
       },
     ]);
+  });
+
+  test("a screen preview persists as one idempotent reference and can be replaced by a URL", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, {
+      name: "Screen room",
+      ...CHANNEL_DEFAULTS,
+    });
+    const preview = { kind: "screen", screenId: "live-window" } as const;
+    const published = await channels.updateChannel(channel.id, { preview });
+    expect((await channels.getChannel(channel.id))?.preview).toEqual(preview);
+    expect(published.events).toMatchObject([
+      { type: "message", message: { content: { type: "preview_changed", preview } } },
+    ]);
+    expect((await channels.updateChannel(channel.id, { preview: { ...preview } })).events).toEqual(
+      [],
+    );
+    const replaced = await channels.updateChannel(channel.id, {
+      preview: { kind: "url", url: "/app" },
+    });
+    expect(replaced.channel.preview).toEqual({ kind: "url", url: "/app" });
+    expect((await channels.listMessagesAfter(channel.id))[0]?.content).toMatchObject({ preview });
   });
 
   test("rejecting a provider change leaves all channel fields unchanged", async () => {

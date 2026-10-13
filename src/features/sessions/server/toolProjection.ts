@@ -1,13 +1,16 @@
 // Domain effects of Toy Box tools, shared by every provider and history replay.
 import type { SessionEvent, ToolCall } from "@sessions/model";
+import type { Attachment } from "@/shared/attachments/model";
 import { isAbsolute } from "node:path";
 import { projectSessionArtifactPath, workspaceFileFromAbsolutePath } from "@files/server/paths";
 import { parsePatchTouchedFiles } from "@sessions/model/fileDiffs";
+import { previewUpdateSchema } from "@/shared/preview";
 
 export type ToolCompletion = {
   success: boolean;
   result?: string;
   details?: string;
+  attachments?: Attachment[];
 };
 
 // How each tool call projects, keyed by CANONICAL name (post-alias — the
@@ -35,7 +38,7 @@ const TOOL_CALL_POLICIES: Record<string, ToolCallPolicyEntry | undefined> = {
   open_file: (args) => projectFileVisibility(args, "file_opened"),
   close_file: (args) => projectFileVisibility(args, "file_closed"),
   create_session: { kind: "translated", projectOnComplete: projectCreatedSession },
-  spawn_worker: { kind: "translated", projectOnComplete: projectCreatedSession },
+  set_session_preview: { kind: "translated", projectOnComplete: projectPreview },
   open_session: (args) => ({
     kind: "translated",
     projectOnStart: projectLinkedSessionEvent(args, "linked_session_added"),
@@ -130,25 +133,27 @@ function projectCreatedSession(eventData: ToolCompletion): SessionEvent[] {
   return result?.opened ? [{ type: "linked_session_added", sessionId: result.sessionId }] : [];
 }
 
+function projectPreview(eventData: ToolCompletion): SessionEvent[] {
+  if (!eventData.success) return [];
+  const result = previewUpdateSchema.strip().safeParse(readToolResult(eventData));
+  return result.success ? [{ type: "preview_changed", preview: result.data.preview }] : [];
+}
+
 function readCreatedSessionResult(
   eventData: ToolCompletion,
 ): { sessionId: string; opened: boolean } | undefined {
+  const parsed = readToolResult(eventData);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const result = parsed as Record<string, unknown>;
+  if (typeof result.sessionId !== "string" || typeof result.opened !== "boolean") return undefined;
+  return { sessionId: result.sessionId, opened: result.opened };
+}
+
+function readToolResult(eventData: ToolCompletion): unknown {
   const raw = eventData.details ?? eventData.result;
   if (!raw) return undefined;
-
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-
-    const result = parsed as Record<string, unknown>;
-    const sessionId = result.sessionId;
-    if (typeof sessionId !== "string") return undefined;
-    if (typeof result.opened !== "boolean") return undefined;
-
-    return {
-      sessionId,
-      opened: result.opened,
-    };
+    return JSON.parse(raw);
   } catch {
     return undefined;
   }

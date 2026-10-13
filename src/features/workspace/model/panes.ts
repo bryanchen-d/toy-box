@@ -8,6 +8,7 @@ import {
 import { fileName } from "@files/model/paths";
 import type { Settings } from "@workspace/model/config/settings";
 import type { SessionCanvas } from "@sessions/model";
+import type { Preview } from "@/shared/preview";
 import { matchesSessionFeatureScope } from "@workspace/model/config/settings";
 
 export const MAX_WORKSPACE_PANES = 4;
@@ -25,6 +26,7 @@ export type WorkspacePane =
   | InboxWorkspacePane
   | AppWorkspacePane
   | ChannelWorkspacePane
+  | ScreenWorkspacePane
   | {
       kind: "session";
       id: string;
@@ -58,6 +60,17 @@ export type ChannelWorkspacePane = {
   id: string;
   channelId: string;
 };
+
+export type ScreenWorkspacePane = {
+  kind: "screen";
+  id: string;
+  screenId: string;
+  sourceSessionId?: string;
+};
+
+export function createScreenPane(screenId: string, sourceSessionId?: string): ScreenWorkspacePane {
+  return { kind: "screen", id: `screen:${screenId}`, screenId, sourceSessionId };
+}
 
 /** The browser-local pane graph, keyed by the pane that published each edge. */
 export type PanePublications = Readonly<Record<string, readonly WorkspacePane[]>>;
@@ -157,6 +170,8 @@ export function paneSourceSessionId(pane: WorkspacePane): string | undefined {
       return ownerSessionId(pane.file);
     case "canvas":
       return pane.sourceSessionId;
+    case "screen":
+      return pane.sourceSessionId;
   }
 }
 
@@ -165,12 +180,14 @@ export function deriveWorkspaceRootPanes(
   openFiles: readonly WorkspaceFile[] = [],
   openAppIds: readonly string[] = [],
   openChannelIds: readonly string[] = [],
+  openScreenIds: readonly string[] = [],
 ): WorkspacePane[] {
   // Selected work surfaces remain primary; files only augment them.
   const candidates: WorkspacePane[] = [
     ...selectedSessionIds.map((sessionId) => createSessionPane(sessionId, false)),
     ...openAppIds.map(createAppPane),
     ...openChannelIds.map(createChannelPane),
+    ...openScreenIds.map((screenId) => createScreenPane(screenId)),
     ...openFiles.map((file) => createEditorPane(file)),
   ];
   const paneIds = new Set<string>();
@@ -191,6 +208,7 @@ export function createLinkedPanes(
   artifacts: readonly string[] = [],
   openedFiles: readonly WorkspaceFile[] = [],
   previousPanes: readonly WorkspacePane[] = [],
+  preview?: Preview,
 ): WorkspacePane[] {
   const previousModes = new Map(
     previousPanes.filter(isEditorPane).map((pane) => [pane.id, pane.mode] as const),
@@ -204,6 +222,7 @@ export function createLinkedPanes(
     ...linkedSessionIds.map(createLinkedSessionPane),
     ...artifacts.map((path) => linkFile(sessionFile(sourceSessionId, path))),
     ...openedFiles.map(linkFile),
+    ...(preview?.kind === "screen" ? [createScreenPane(preview.screenId, sourceSessionId)] : []),
     ...canvases.map((canvas) => createLinkedCanvasPane(sourceSessionId, canvas)),
   ];
 }
@@ -232,6 +251,7 @@ export function deriveVisibleWorkspacePanes({
     const linkedPanes = panePublications[publisher.id] ?? [];
     const prioritizedPanes = [
       ...linkedPanes.filter((pane) => pane.kind === "editor"),
+      ...linkedPanes.filter((pane) => pane.kind === "screen"),
       ...linkedPanes.filter((pane) => pane.kind === "canvas"),
       ...linkedPanes.filter((pane) => pane.kind === "session"),
     ];

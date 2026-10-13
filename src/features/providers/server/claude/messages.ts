@@ -58,11 +58,12 @@ export function decodeInput(content: Content, clientId?: string, timestamp?: str
   };
 }
 
-/** Claude records a slash invocation as command markup, separately from its hidden skill prompt. */
+/** Claude records skill and local command invocations, such as `/cost`, as command markup. */
 function displayPrompt(text: string): string {
-  const command =
-    /^<command-message>[\s\S]*?<\/command-message>\n<command-name>([^<]+)<\/command-name>(?:\n<command-args>([\s\S]*)<\/command-args>)?$/.exec(
-      text,
-    );
-  return command ? [command[1], command[2]].filter(Boolean).join(" ") : text;
+  const tags = /<command-(name|message|args)>([\s\S]*?)<\/command-\1>/g;
+  const command = Object.fromEntries(
+    [...text.matchAll(tags)].map(([, tag, value]) => [tag, value]),
+  );
+  if (!command.name || text.replace(tags, "").trim()) return text;
+  return [command.name, command.args].filter(Boolean).join(" ");
 }

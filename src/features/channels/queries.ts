@@ -1,6 +1,11 @@
 import { reduceChannelState } from "./model/reducer";
 import { experimental_streamedQuery as streamedQuery, queryOptions } from "@tanstack/react-query";
-import { type ChannelObservationEvent, type ChannelState, type ChannelMessage } from "./model";
+import {
+  channelUnreadAfter,
+  type ChannelObservationEvent,
+  type ChannelState,
+  type ChannelMessage,
+} from "./model";
 import { listChannels } from "@channels/server/functions";
 import { ChannelStreamError, streamChannel } from "./stream";
 import { removeChannelFromList } from "./queryCache";
@@ -39,13 +44,12 @@ export const channelQueries = {
           if (event.type === "deleted") return null;
           const state = reduceChannelState(previous!, event);
           const arrived = event.type === "snapshot" || event.type === "resumed";
-          const { seenThrough, latestSequence } = state.channel;
           return {
             ...state,
             arrival: arrived
               ? {
                   id: (previous?.arrival.id ?? 0) + 1,
-                  unreadAfter: seenThrough < latestSequence ? seenThrough : null,
+                  unreadAfter: channelUnreadAfter(state.channel),
                 }
               : previous!.arrival,
           };

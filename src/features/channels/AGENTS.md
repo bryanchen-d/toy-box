@@ -44,7 +44,7 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
 ```
 
 - `Channel` owns its name, optional purpose and working directory, lead model, public
-  tasks, optional preview URL, human read position, latest message sequence, and updated time.
+  tasks, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
   Its `requestSequence` and `completedSequence` refer to transcript milestones. Completion is unread
   when it follows `seenThrough`; a request remains pending until a user reply clears its sequence.
 - `ChannelTask` has a short, stable, channel-unique ID such as `t12`, title, status, optional owner
@@ -64,7 +64,7 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   its private Session ID and public Agent ID. The projection contains its name, optional role,
   model, avatar, and collaboration status. Its read position stays private in Worker metadata.
 - `ChannelMessage` has a durable ID and transactionally allocated sequence. User and Agent messages
-  contain Markdown and optional image attachments. Typed system messages record name, purpose,
+  contain Markdown and optional image or video attachments. Typed system messages record name, purpose,
   directory, preview, membership, and artifact changes. Agent senders retain only their stable Worker ID, so deleting
   a member preserves prior content while the UI presents a deleted identity.
   `tasks_completed` records the task list becoming complete. The lead flags an ordinary message with
@@ -128,8 +128,8 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
   The composer resolves the same policy for its draft, so it shows exactly who a message will wake.
 - Set or clear one reaction per Agent without advancing transcript state.
-- Register durable artifacts once and surface later file edits automatically. Attach screenshots or
-  other images to messages.
+- Register durable artifacts once and surface later file edits automatically. Attach screenshots,
+  other images, and recordings to messages; generated images are attached by their saved paths.
 
 ### Status and reading
 
@@ -333,10 +333,27 @@ to these capabilities under Toy Box's existing trusted-owner server assumption.
 `ChannelPane` takes a Channel ID and owns one cached `ChannelState` for its transcript, overview,
 and composer. It does not read the workspace catalog or derive agent presence from Session state.
 The sidebar uses the catalog and workspace activity independently; private Session previews and
-Files remain explicit integrations with their own capabilities. `ChannelPaneContext` shares the
-state's roster, presence, and composer actions inside the pane.
+Files remain explicit integrations with their own capabilities. `ChannelPaneContext` shares one
+roster, presence, and the composer actions inside the pane. The roster exists from the first
+render, starting from the intrinsic lead, so the composer, transcript, and overview never derive
+their own.
 The composer shell and its intrinsic "To Lead" audience render during SSR. Hydration starts
 observation; the first snapshot populates the tray and roster and enables input.
+It uses the same shared composer shell and native `ComposerInput` as Sessions. Agent mentions remain plain `@handle`
+text, so audience resolution and delivery are unchanged. The draft is the Workspace saved draft
+`channel:<id>`, so it survives reloads and follows the user across clients; reply and mention
+actions edit it through the draft's verbs. The composer owns the member-creation mutation and
+binds it into one pure source. `agentCompletionSource.ts` owns the whole mention policy:
+everyone, the lead, matching members by name, and an offer to create an unknown handle, whose
+acceptance creates the member and resolves to its mention. The completion hook owns that
+acceptance's in-flight guard and error, which the shared menu shows. Its trigger is the model's
+`AGENT_MENTION_TRIGGER`, built from the same mention grammar that parses and delivers mentions,
+so the menu completes exactly what delivery wakes. Each item's description is the agent's role or
+what the option does. `AgentCompletionMenu` supplies avatars and edits a member by opening its
+editor through the shared `CompletionMenu`, which shares menu chrome, item text, editing, group
+headings, active-item scrolling, and focus-preserving click/tap acceptance with Sessions; touch
+scrolling never commits a mention. An agent editor opened from the menu outlives the menu it was opened from.
+The input grows through three rows and retains the existing toolbar typing effect.
 
 The workspace deduplicates Channel panes by Channel ID. Panes and apps share one Query
 stream. `subscribed` detaches hidden views, and Query cancels when the last observer leaves;
@@ -346,22 +363,43 @@ existing observer captures the current shared read cursor. Arrivals during readi
 ends observation and reaches the pane's existing unavailable boundary.
 
 `ChannelUserMessage` adds mentions, reactions, and timeline timestamps to the shared
-[`UserMessage`](../../shared/messages/UserMessage.tsx); agent messages reuse its `CopyControl`.
+[`UserMessage`](../../shared/messages/UserMessage.tsx); agent messages reuse the shared
+[`CopyControl`](../../shared/messages/CopyControl.tsx). `ChannelReactions` takes a message and
+shows its recorded and projected reactions, or nothing. Every agent reference, whether an author,
+reactor, task owner, or sharer, resolves through `channelAgentIdentity`, so a removed agent
+presents one deleted identity everywhere.
 
-- The transcript's rows come from `transcriptRows`: each user message stands alone, one agent's
-  consecutive messages form a run, and matching system messages merge. Day dividers and a "New" rule
-  fall between rows. `SystemMessageGroup` defines each kind's static icon and content function
-  together in one local object. Its shared row renders the resulting content and tooltip;
+- The transcript's rows come from `transcriptRows`, its pure presentation model: each user message
+  stands alone, one agent's consecutive messages form a run, and matching system messages merge.
+  Each message in a run carries its addressee, its body without the leading mentions that addressee
+  names, its request state, whether it repeats the run's header, and whether it collapses. One
+  optional divider precedes a row, labeling a new day, marking where unread messages begin with a
+  blue rule and "New", or both at once rather than stacking two rules. `SystemMessageGroup` defines
+  each kind's static icon and presentation function together in one local object; each function
+  receives its kind's typed contents. Its shared row renders the resulting content and tooltip;
   grouping and the durable message model stay separate.
+  A pane-local view, chosen beside the overview's trigger and hidden with it while pinned, shows
+  all messages or only the user's own and the agent messages that never collapse. Rows form from
+  the shown messages, so runs and dividers follow what the reader sees; changing the view lands
+  the transcript afresh, and read state stays Channel-wide.
+  `useTranscriptViewport` owns the virtualizer and where the reader looks: landing on the first
+  unread row or the end, following the reader's own post, revealing the pending request, and
+  paging history. Paging continues while the first row, or an empty view, is in view, so a sparse
+  view fetches pages it may show nothing of instead of asking the server to filter.
+  TanStack Virtual's mutable instance stays inside that hook, which the compiler
+  skips, and the transcript receives only values current for its render.
   The "New" position comes from the current read position on arrival and holds
   while it's read, so arrivals during reading are never marked. A flagged question is marked until a
   later user message acknowledges it. The activity row shows working agents; waiting
   shows in the overview, since a request already marks what the user needs to answer.
 - The composer docks Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx)
-  for shared artifacts, newest first, plus the tasks and preview. On desktop, the preview link
-  shows a sandboxed iframe on hover, matching artifact previews, with its URL in muted text below;
-  clicking still opens the URL in a new tab. While the Channel reports a
-  pending request, it asks for a reply. An "Input needed" button beside the composer's audience stays visible
+  for shared artifacts, newest first, plus the tasks and preview. URL previews
+  retain their sandboxed hover iframe and open in a new tab. Screen previews
+  show a passive live canvas and open/focus a Screen pane without opening a
+  private agent Session. Tray, overview and historical preview messages share
+  Workspace's preview presentation. Opening never takes input control.
+  While the Channel reports a pending request, it asks for a reply.
+  An "Input needed" button beside the composer's audience stays visible
   until the user replies. Hover previews `state.request`; clicking loads
   any older pages needed and scrolls to the question. Scrolling never changes the composer height.
 - The overview opens as a sheet or pins beside the transcript, which the workspace layout remembers.
@@ -387,11 +425,11 @@ ends observation and reaches the pane's existing unavailable boundary.
 
 - `model/` is the isomorphic domain. `index.ts` owns the types, input schemas, audience policy, and
   public exports. `tasks.ts` owns task identity, outcome schemas, derived diff totals, tree edits,
-  ownership release, and completion. `agent.ts` owns agent names, roles, avatars, the lead profile, and mention
-  handles. `worker.ts` projects Worker metadata into the lead, members, and roster. `reducer.ts`
+  ownership release, and completion. `agent.ts` owns agent names, roles, avatars, the lead profile, mention
+  handles, and the deleted identity an ID resolves to once its agent is removed. `worker.ts` projects Worker metadata into the lead, members, and roster. `reducer.ts`
   reduces the complete public snapshot and owns the metadata and roster transitions shared with
-  the server. `presence.ts`, `reactions.ts`, and `requests.ts`
-  derive how agents, reactions, and requests display.
+  the server. `presence.ts` and `reactions.ts`
+  derive how agents and reactions display.
 - `server/` owns authority. `schema.ts` and `database.ts` own tables and transactions. `index.ts`
   composes the algebra for RPC, tools, and wakes. `functions.ts` is browser RPC ingress, and
   `stream.ts` composes public views and owns observation using `events.ts`'s detail replay ring.
@@ -403,8 +441,8 @@ ends observation and reaches the pane's existing unavailable boundary.
   catalog and streamed detail queries, the SSE adapter, mutations, catalog event patches, and one
   open Channel's visibility and read lifecycle.
 - `components/pane/` holds the pane, composer, and shared pane context, with `transcript/` and
-  `overview/` beneath it. `components/agents/` holds avatars, mentions, the mention picker, the
-  member editor, and working status. `components/sidebar/` holds the Channels panel and its
+  `overview/` beneath it. `components/agents/` holds avatars, mention Markdown, the mention
+  source and menu, the member editor, and working agents. `components/sidebar/` holds the Channels panel and its
   attention priority. The top level holds the create/edit dialog and channel menu.
 - Outside this folder, [Workers](../workers/AGENTS.md) owns agent identity and lifetime.
   [`sessionConfiguration.ts`](../../server/sessionConfiguration.ts) grants ordinary Sessions the

@@ -8,33 +8,40 @@ import {
   UserMinus,
   UserPlus,
 } from "lucide-react";
-import {
-  DELETED_AGENT_NAME,
-  type ChannelAgent,
-  type ChannelRoutine,
-  type ChannelSystemMessage,
+import type {
+  ChannelAgentIdentity,
+  ChannelRoutine,
+  ChannelSystemMessage,
+  ChannelSystemMessageContent,
 } from "@channels/model";
 import type { WorkspaceFile } from "@files/model";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { DoneIndicator } from "@/shared/ui/done-indicator";
 import { useChannelPane } from "../ChannelPaneContext";
+import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 
 type ContentByKind = {
-  [Content in ChannelSystemMessage["content"] as Content["type"]]: Content;
+  [Content in ChannelSystemMessageContent as Content["type"]]: Content;
 };
+type SystemMessageKind = keyof ContentByKind;
 
-type MessageContext = {
-  messages: readonly ChannelSystemMessage[];
-  agents: readonly ChannelAgent[];
+/** A row's contents: one message, or a merged run that transcriptRows grouped by kind. */
+type Contents<Kind extends SystemMessageKind> = [ContentByKind[Kind], ...ContentByKind[Kind][]];
+
+type PresentationContext = {
+  agent: (id: string) => ChannelAgentIdentity;
   revealFile?: (file: WorkspaceFile) => void;
 };
 
 /** One system message, or a run of membership changes or one agent's artifact shares, merged. */
 export function SystemMessageGroup({ messages }: { messages: readonly ChannelSystemMessage[] }) {
-  const { agents } = useChannelPane();
+  const { agent } = useChannelPane();
   const { revealFile } = useWorkspaceSurface();
-  const { icon, content, tooltip } = systemMessagePresentation(messages, agents, revealFile);
+  const { icon, content, tooltip } = presentSystemMessages(
+    messages.map(({ content }) => content),
+    { agent, revealFile },
+  );
 
   // The icon sits in the avatar column, so events read as part of the conversation.
   const body = (
@@ -69,35 +76,30 @@ export function SystemMessageGroup({ messages }: { messages: readonly ChannelSys
   );
 }
 
-/** Presents an already-grouped row; transcriptRows owns which messages belong together. */
-export function systemMessagePresentation<Kind extends keyof ContentByKind>(
-  messages: readonly (Omit<ChannelSystemMessage, "content"> & {
-    content: ContentByKind[Kind] & { type: Kind };
-  })[],
-  agents: readonly ChannelAgent[],
-  revealFile?: (file: WorkspaceFile) => void,
+function presentSystemMessages<Kind extends SystemMessageKind>(
+  [first, ...rest]: readonly (ContentByKind[Kind] & { type: Kind })[],
+  context: PresentationContext,
 ) {
-  const message = messages[0]!.content;
-  const { icon, content } = SYSTEM_MESSAGES[message.type];
-  return { icon, ...content(message, { messages, agents, revealFile }) };
+  const { icon, present } = SYSTEM_MESSAGES[first.type];
+  return { icon, ...present([first, ...rest], context) };
 }
 
 const SYSTEM_MESSAGES: {
-  [Kind in keyof ContentByKind]: {
+  [Kind in SystemMessageKind]: {
     icon: ReactNode;
-    content: (
-      message: ContentByKind[Kind],
-      context: MessageContext,
+    present: (
+      contents: Contents<Kind>,
+      context: PresentationContext,
     ) => { content: ReactNode; tooltip?: string };
   };
 } = {
   tasks_completed: {
     icon: <DoneIndicator className="size-4 shrink-0" />,
-    content: () => ({ content: "All tasks completed" }),
+    present: () => ({ content: "All tasks completed" }),
   },
   channel_renamed: {
     icon: <Pencil className="size-3.5 shrink-0" />,
-    content: ({ name }) => ({
+    present: ([{ name }]) => ({
       content: (
         <>
           Channel renamed: <Value text={name} />
@@ -107,7 +109,7 @@ const SYSTEM_MESSAGES: {
   },
   channel_purpose_changed: {
     icon: <Pencil className="size-3.5 shrink-0" />,
-    content: ({ purpose }) => ({
+    present: ([{ purpose }]) => ({
       content:
         purpose === null ? (
           "Purpose cleared"
@@ -120,36 +122,23 @@ const SYSTEM_MESSAGES: {
   },
   channel_directory_changed: {
     icon: <Folder className="size-3.5 shrink-0" />,
-    content: ({ directory }) => ({
-      // A long path keeps its end, where the distinguishing folders are.
+    present: ([{ directory }]) => ({
       content:
         directory === null ? (
           "Working directory cleared"
         ) : (
           <>
-            Working directory changed:{" "}
-            <Value
-              text={directory.length > 120 ? `...${directory.slice(-117)}` : directory}
-              title={directory}
-            />
+            Working directory changed: <Value text={directory} keep="end" />
           </>
         ),
     }),
   },
   preview_changed: {
     icon: <MonitorPlay className="size-3.5 shrink-0" />,
-    content: ({ previewUrl }) => ({
-      content: previewUrl ? (
+    present: ([{ preview }]) => ({
+      content: preview ? (
         <>
-          Preview updated:{" "}
-          <a
-            href={previewUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-foreground underline underline-offset-2"
-          >
-            <Value text={previewUrl} />
-          </a>
+          Preview updated: <WorkspacePreview preview={preview} variant="inline" />
         </>
       ) : (
         "Preview cleared"
@@ -158,28 +147,25 @@ const SYSTEM_MESSAGES: {
   },
   member_joined: {
     icon: <UserPlus className="size-3.5 shrink-0" />,
-    content: (_message, { messages }) => membershipContent(messages, true),
+    present: (contents) => membershipContent(contents, "joined"),
   },
   member_left: {
     icon: <UserMinus className="size-3.5 shrink-0" />,
-    content: (_message, { messages }) => membershipContent(messages, false),
+    present: (contents) => membershipContent(contents, "left"),
   },
   artifact_shared: {
     icon: <FileUp className="size-3.5 shrink-0" />,
-    content: ({ actor }, { messages, agents, revealFile }) => {
-      const actorName =
-        actor.type === "user"
-          ? "You"
-          : (agents.find(({ id }) => id === actor.agentId)?.name ?? DELETED_AGENT_NAME);
-      const artifacts = messages.flatMap(({ id, content }) =>
-        content.type === "artifact_shared" ? [{ id, ...content.artifact }] : [],
-      );
+    present: (contents, { agent, revealFile }) => {
+      const [{ actor }] = contents;
+      const actorName = actor.type === "user" ? "You" : agent(actor.agentId).name;
+      const artifacts = contents.map(({ artifact }) => artifact);
       return {
         content: (
           <>
             {actorName} shared{" "}
             {artifacts.map((artifact, index) => (
-              <span key={artifact.id}>
+              // eslint-disable-next-line react/no-array-index-key -- The same file can be shared twice in a run.
+              <span key={index}>
                 {index > 0 &&
                   (index === artifacts.length - 1
                     ? artifacts.length > 2
@@ -203,41 +189,58 @@ const SYSTEM_MESSAGES: {
   },
   routine_scheduled: {
     icon: <CalendarClock className="size-3.5 shrink-0" />,
-    content: ({ routine }) => routineContent("New routine scheduled", routine),
+    present: ([{ routine }]) => routineContent("New routine scheduled", routine),
   },
   routine_edited: {
     icon: <CalendarClock className="size-3.5 shrink-0" />,
-    content: ({ routine }) => routineContent("Routine edited", routine),
+    present: ([{ routine }]) => routineContent("Routine edited", routine),
   },
   routine_deleted: {
     icon: <CalendarClock className="size-3.5 shrink-0" />,
-    content: ({ routine }) => routineContent("Routine deleted", routine),
+    present: ([{ routine }]) => routineContent("Routine deleted", routine),
   },
 };
 
-/** A changed value on one line of at most 120 characters, and in full on hover. */
-function Value({ text, title = text }: { text: string; title?: string }) {
+const MAX_VALUE_LENGTH = 120;
+
+/**
+ * A changed value on one line of at most 120 characters, and in full on hover. A long path keeps its
+ * end, where the distinguishing folders are; other values keep their start.
+ */
+function Value({
+  text,
+  title = text,
+  keep = "start",
+}: {
+  text: string;
+  title?: string;
+  keep?: "start" | "end";
+}) {
   const line = text.replace(/\s+/g, " ");
+  const kept = MAX_VALUE_LENGTH - 3;
   return (
     <span className="font-medium text-foreground" title={title}>
-      {line.length > 120 ? `${line.slice(0, 117)}...` : line}
+      {line.length <= MAX_VALUE_LENGTH
+        ? line
+        : keep === "start"
+          ? `${line.slice(0, kept)}...`
+          : `...${line.slice(-kept)}`}
     </span>
   );
 }
 
-function membershipContent(messages: readonly ChannelSystemMessage[], joined: boolean) {
-  const names = messages.flatMap(({ content }) =>
-    content.type === "member_joined" || content.type === "member_left" ? [content.member.name] : [],
-  );
-  const name = names[0] ?? DELETED_AGENT_NAME;
-  const action = joined ? "joined" : "left";
+function membershipContent(
+  contents: Contents<"member_joined" | "member_left">,
+  action: "joined" | "left",
+) {
+  const names = contents.map(({ member }) => member.name);
   const others = names.length - 1;
   return {
     content:
-      names.length === 1
-        ? `${name} ${action} the channel`
-        : `${name} and ${others} ${others === 1 ? "other" : "others"} ${action} the channel`,
-    tooltip: names.length > 1 ? names.join(", ") : undefined,
+      others === 0
+        ? `${names[0]} ${action} the channel`
+        : `${names[0]} and ${others} ${others === 1 ? "other" : "others"} ${action} the channel`,
+    tooltip: others > 0 ? names.join(", ") : undefined,
   };
 }
 

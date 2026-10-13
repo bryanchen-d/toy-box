@@ -7,6 +7,7 @@ import { constants } from "node:zlib";
 import compression from "compression";
 import tailwindcss from "@tailwindcss/vite";
 import { removeUncompressedAssets } from "./cli/build/publicAssets";
+import { socketDevelopment } from "./src/server/socketDevelopment";
 
 export default defineConfig(({ mode }) => {
   const isProduction = mode === "production";
@@ -15,12 +16,6 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",
       allowedHosts: [".ts.net"],
-      proxy: {
-        "/terminal": {
-          target: `ws://127.0.0.1:${process.env.TERMINAL_WS_PORT ?? 3101}`,
-          ws: true,
-        },
-      },
     },
 
     // These two libraries are only used on the server, and therefore,
@@ -45,6 +40,7 @@ export default defineConfig(({ mode }) => {
 
     plugins: lazyPlugins(() => [
       tailwindcss(),
+      socketDevelopment(),
       {
         name: "toy-box:dev-compression",
         apply: "serve",
@@ -98,70 +94,9 @@ export default defineConfig(({ mode }) => {
       viteReact({ compiler: true }),
     ]),
 
-    fmt: {
-      ignorePatterns: ["src/features/workspace/routeTree.gen.ts"],
-    },
-
     staged: {
-      "*.{ts,tsx,json,md,css,html}": "vp check --fix",
-    },
-
-    lint: {
-      plugins: ["react", "typescript", "import"],
-      jsPlugins: [
-        "./.oxlint/react.js",
-        "@tanstack/eslint-plugin-query",
-        "@tanstack/eslint-plugin-router",
-      ],
-      env: {
-        browser: true,
-      },
-      categories: {
-        correctness: "error",
-      },
-      rules: {
-        "react/no-array-index-key": "warn",
-        // React Compiler bailouts outside `correctness` (formerly `reportAllBailouts`).
-        "react/unsupported-syntax": "error",
-        "react/invariant": "error",
-        "react/rule-suppression": "error",
-        "react/syntax": "error",
-        "react/todo": "error",
-        "toy-box-react/no-manual-memoization": "error",
-        "@tanstack/query/exhaustive-deps": "error",
-        "@tanstack/query/no-rest-destructuring": "warn",
-        "@tanstack/query/stable-query-client": "error",
-        "@tanstack/query/no-unstable-deps": "error",
-        "@tanstack/query/infinite-query-property-order": "error",
-        "@tanstack/query/no-void-query-fn": "error",
-        "@tanstack/query/mutation-property-order": "error",
-        "@tanstack/router/create-route-property-order": "warn",
-        "@tanstack/router/route-param-names": "error",
-      },
-      overrides: [
-        {
-          files: ["**/*.test.{js,ts,tsx}"],
-          rules: {
-            "typescript/await-thenable": "off",
-            "typescript/no-floating-promises": [
-              "warn",
-              {
-                allowForKnownSafeCalls: [
-                  {
-                    from: "package",
-                    name: "module",
-                    package: "bun-types",
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-      options: {
-        typeAware: true,
-        typeCheck: true,
-      },
+      "*.{ts,tsx}": ["bun lint --fix", "bun fmt --no-error-on-unmatched-pattern"],
+      "*.{json,md,css,html}": "bun fmt --no-error-on-unmatched-pattern",
     },
   };
 });

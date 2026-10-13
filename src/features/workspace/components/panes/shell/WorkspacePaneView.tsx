@@ -7,6 +7,7 @@ import { PaneSlotsProvider, type PaneSlots } from "./PaneSlots";
 import { CanvasPane } from "@sessions/components/CanvasPane";
 import { SessionPane } from "@sessions/components/SessionPane";
 import { ChannelPane } from "@channels/components/pane/ChannelPane";
+import { ScreenPane } from "@screens/client/ScreenPane";
 
 export type PaneVariant = "normal" | "compact";
 
@@ -42,6 +43,9 @@ export function WorkspacePaneView({
       break;
     case "channel":
       content = <ChannelPane channelId={pane.channelId} isVisible={isVisible} variant={variant} />;
+      break;
+    case "screen":
+      content = <ScreenPane screenId={pane.screenId} isVisible={isVisible} />;
       break;
     case "canvas":
       content = <CanvasPane canvas={pane.canvas} />;

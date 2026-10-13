@@ -4,11 +4,7 @@ import { hydrateThreadInputs } from "./messages";
 
 /** Read stored turns without attaching to the thread's execution. */
 export async function readThreadHistory(rpc: CodexTransport, threadId: string): Promise<Thread> {
-  const { thread } = await rpc.request("thread/read", { threadId, includeTurns: false });
-  if (thread.historyMode !== "paginated")
-    return hydrateThreadInputs(
-      (await rpc.request("thread/read", { threadId, includeTurns: true })).thread,
-    );
+  const { thread } = await rpc.request("thread/read", { threadId });
   const turns: Turn[] = [];
   let cursor: string | null = null;
   do {

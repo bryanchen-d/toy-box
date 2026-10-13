@@ -10,7 +10,6 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
-  ChevronRight,
   Eye,
   EyeOff,
   File as FileIcon,
@@ -18,9 +17,9 @@ import {
   FolderUp,
   Loader2,
   Plus,
-  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { BrowserRow as Row } from "@/shared/ui/browser-row";
 import { Input } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
@@ -364,16 +363,25 @@ function DirectoryNode({ entry, depth }: { entry: DirectoryEntry; depth: number 
               }
             : toggle
         }
-        onCreateFile={
-          onStartFileCreation
-            ? () => {
-                setExpanded(true);
-                onStartFileCreation(entry.path);
-              }
-            : undefined
-        }
         selected={selectedPath === entry.path}
-      />
+      >
+        {onStartFileCreation && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="opacity-50 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            aria-label={`Create a file in ${entry.name}`}
+            title={`New file in ${entry.name}`}
+            onClick={() => {
+              setExpanded(true);
+              onStartFileCreation(entry.path);
+            }}
+          >
+            <Plus />
+          </Button>
+        )}
+      </Row>
       {expanded && (
         <>
           {creatingFileIn === entry.path && onOpenFile && (
@@ -474,91 +482,6 @@ function acceptsExtension(path: string, extensions?: readonly string[]): boolean
   if (!extensions?.length) return true;
   const normalizedPath = path.toLowerCase();
   return extensions.some((extension) => normalizedPath.endsWith(extension.toLowerCase()));
-}
-
-function Row({
-  depth,
-  icon: Icon,
-  label,
-  onActivate,
-  onToggle,
-  expanded,
-  selected,
-  onCreateFile,
-  muted,
-  spin,
-}: {
-  depth: number;
-  icon: LucideIcon;
-  label: string;
-  onActivate?: () => void;
-  onToggle?: () => void;
-  expanded?: boolean;
-  selected?: boolean;
-  onCreateFile?: () => void;
-  muted?: boolean;
-  spin?: boolean;
-}) {
-  return (
-    <div
-      style={{ paddingLeft: depth * 14 + 8 }}
-      className={cn(
-        "group flex items-center gap-1 rounded-sm pr-2 text-sm",
-        selected
-          ? "bg-accent text-accent-foreground"
-          : "hover:bg-accent/50 hover:text-accent-foreground",
-      )}
-    >
-      {onToggle ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={expanded ? "Collapse" : "Expand"}
-          aria-expanded={expanded}
-          className="shrink-0 rounded p-0.5"
-        >
-          <ChevronRight
-            className={cn(
-              "h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:text-accent-foreground",
-              expanded && "rotate-90",
-            )}
-          />
-        </button>
-      ) : (
-        <span className="w-4 shrink-0" />
-      )}
-      <button
-        type="button"
-        onClick={onActivate}
-        disabled={!onActivate}
-        className={cn(
-          "flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left",
-          !onActivate && "pointer-events-none",
-        )}
-      >
-        <Icon
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground group-hover:text-accent-foreground",
-            spin && "animate-spin",
-          )}
-        />
-        <span className={cn("truncate", muted && "text-muted-foreground")}>{label}</span>
-      </button>
-      {onCreateFile && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="opacity-50 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-          aria-label={`Create a file in ${label}`}
-          title={`New file in ${label}`}
-          onClick={onCreateFile}
-        >
-          <Plus />
-        </Button>
-      )}
-    </div>
-  );
 }
 
 function Centered({ children }: { children: ReactNode }) {

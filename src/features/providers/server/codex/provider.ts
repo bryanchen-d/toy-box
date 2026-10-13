@@ -1,18 +1,12 @@
 import type { JsonValue, ModelListResponse, ThreadListResponse } from "./protocol";
-import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
-import type { SessionEvent, SessionSkill } from "@sessions/model";
-import { startCodexClient, stopCodexClient, type CodexTransport } from "./protocol/transport";
+import type { SessionSkill } from "@sessions/model";
+import { startCodexClient, stopCodexClient } from "./protocol/transport";
 import { CodexConnection } from "./connection";
 import { readThreadHistory } from "./history";
-import {
-  codexHistoryEvents,
-  createCodexProjector,
-  isCodexSubagentSpawn,
-  scopeCodexSubagentEvent,
-} from "./projector";
+import { codexHistoryEvents, createCodexProjector, subagentThreadId } from "./projector";
 import type { Model, Thread, ThreadStartParams } from "./protocol";
 
 export const codexProvider: SessionProvider = {
@@ -48,17 +42,18 @@ export const codexProvider: SessionProvider = {
     const nativeId = provider?.sessionId ?? id;
     const rpc = await startCodexClient();
     const thread = await readThreadHistory(rpc, nativeId);
-    const subagentCalls = thread.turns.flatMap((turn) =>
-      turn.items.flatMap((item) =>
-        isCodexSubagentSpawn(item) && item.status === "completed" && item.receiverThreadIds.length
-          ? [{ toolCallId: item.id, threadIds: item.receiverThreadIds }]
-          : [],
-      ),
+    const subagents = await Promise.all(
+      thread.turns
+        .flatMap((turn) => turn.items.flatMap((item) => subagentThreadId(item) ?? []))
+        .map(async (threadId) => [
+          ...(await readThreadHistory(rpc, threadId).then(codexHistoryEvents, () => [])),
+          // Closed or unreadable subagent threads still complete their agent cards.
+          { method: "thread/closed", params: { threadId } },
+        ]),
     );
-    return [
-      ...codexHistoryEvents(thread).flatMap(createCodexProjector(id)),
-      ...(await readSubagentHistory(rpc, id, subagentCalls)),
-    ];
+    return [...codexHistoryEvents(thread), ...subagents.flat()].flatMap(
+      createCodexProjector(id, thread.id),
+    );
   },
   async listSessions() {
     const rpc = await startCodexClient();
@@ -94,7 +89,6 @@ export const codexProvider: SessionProvider = {
     const skills = await listSkills(configuration.directory, configuration.skillDirectories);
     const result = await rpc.request("thread/start", {
       ...nativeConfiguration(configuration, skills),
-      historyMode: "paginated",
       dynamicTools: [
         {
           type: "namespace",
@@ -164,17 +158,8 @@ export const codexProvider: SessionProvider = {
     const { thread } = await (
       await startCodexClient()
     ).request("thread/read", { threadId: nativeId });
-    // Paginated history may live in the native state database. updatedAt is
-    // authoritative there; legacy rollouts expose their actual file mtime.
-    if (thread.historyMode === "legacy" && thread.path) {
-      try {
-        return (await stat(thread.path)).mtimeMs <= capturedAt;
-      } catch {
-        return false;
-      }
-    }
-    // Native database timestamps have second precision. A snapshot captured
-    // during that second must be replayed before we can trust it as a cache.
+    // Native timestamps have second precision. A snapshot captured during
+    // that second must be replayed before we can trust it as a cache.
     return (thread.updatedAt + 1) * 1000 <= capturedAt;
   },
   async delete(nativeId) {
@@ -182,60 +167,6 @@ export const codexProvider: SessionProvider = {
   },
   stop: stopCodexClient,
 };
-
-async function readSubagentHistory(
-  rpc: CodexTransport,
-  sessionId: string,
-  calls: Array<{ toolCallId: string; threadIds: string[] }>,
-): Promise<SessionEvent[]> {
-  const histories = await Promise.all(
-    calls.map(async ({ toolCallId, threadIds }) => {
-      const threads = (
-        await Promise.all(
-          threadIds.map(async (threadId) => {
-            try {
-              return await readThreadHistory(rpc, threadId);
-            } catch {
-              // A closed native child must not make its root history unreadable.
-              return undefined;
-            }
-          }),
-        )
-      ).filter((thread): thread is Thread => thread !== undefined);
-      const failedTurn = threads
-        .map((thread) => thread.turns[0])
-        .find((turn) => turn?.status === "failed");
-      const activity = threads.flatMap((thread) => {
-        const initialTurn = thread.turns[0];
-        if (!initialTurn) return [];
-
-        const project = createCodexProjector(sessionId);
-        const scope = (event: SessionEvent) => {
-          const scoped = scopeCodexSubagentEvent(event, toolCallId);
-          return scoped ? [scoped] : [];
-        };
-        return [
-          ...project({ method: "thread/started", params: { thread } }).flatMap(scope),
-          ...project({
-            method: "turn/completed",
-            params: { threadId: thread.id, turn: initialTurn },
-          }).flatMap(scope),
-        ];
-      });
-
-      return [
-        ...activity,
-        {
-          type: "tool_end" as const,
-          toolCallId,
-          success: failedTurn === undefined,
-          ...(failedTurn?.error?.message ? { result: failedTurn.error.message } : {}),
-        },
-      ];
-    }),
-  );
-  return histories.flat();
-}
 
 function nativeConfiguration(
   configuration: SessionConfiguration,
@@ -264,7 +195,7 @@ function nativeConfiguration(
       ...(configuration.model?.reasoningEffort
         ? { model_reasoning_effort: configuration.model.reasoningEffort }
         : {}),
-      ...(configuration.disableMemory ? { "features.memory_tool": false } : {}),
+      ...(configuration.disableMemory ? { "features.memories": false } : {}),
     },
   };
 }

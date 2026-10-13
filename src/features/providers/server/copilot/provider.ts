@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { approveAll } from "@github/copilot-sdk";
 import type {
   CopilotSession,
+  CopilotClient,
   SessionConfig,
   SessionContext,
   Tool as CopilotTool,
@@ -15,9 +16,11 @@ import { SESSION_STATE_PATH } from "./constants";
 import { startCopilotClient, stopCopilotClient } from "./client";
 import { connectCopilotSession } from "./connection";
 import { adaptModelCatalog } from "./models";
-import { toSdkSessionModelOptions, toSdkSetModelOptions } from "./modelConfiguration";
+import { toSdkSessionModelOptions } from "./modelConfiguration";
 import { toSessionSkills } from "./skills";
 import { createSdkEventProjector } from "./projector";
+import { computerUseServers } from "./computerUse";
+import { saveGeneratedImages } from "./generatedImages";
 
 export const copilotProvider: SessionProvider = {
   id: "copilot",
@@ -82,14 +85,10 @@ export const copilotProvider: SessionProvider = {
   async create(sessionId, configuration) {
     const client = await startCopilotClient();
     const session = await client.createSession({
-      ...nativeConfiguration(sessionId, configuration),
+      ...(await nativeConfiguration(sessionId, configuration, client)),
       sessionId,
     });
     try {
-      // TODO: Remove once SDK creation initializes Git context from workingDirectory.
-      await session.rpc.metadata.setWorkingDirectory({
-        workingDirectory: configuration.directory,
-      });
       const connection = await connect(
         session,
         sessionId,
@@ -104,25 +103,11 @@ export const copilotProvider: SessionProvider = {
     }
   },
   async resume(session, configuration) {
-    const native = await (
-      await startCopilotClient()
-    ).resumeSession(
+    const client = await startCopilotClient();
+    const native = await client.resumeSession(
       session.provider?.sessionId ?? session.id,
-      nativeConfiguration(session.id, configuration),
+      await nativeConfiguration(session.id, configuration, client),
     );
-    // Some CLI versions restore the persisted model despite a resume override.
-    if (configuration.model) {
-      const current = await native.rpc.model.getCurrent();
-      if (
-        current.modelId !== configuration.model.name ||
-        (configuration.model.reasoningEffort !== undefined &&
-          current.reasoningEffort !== configuration.model.reasoningEffort) ||
-        (configuration.model.contextTier !== undefined &&
-          current.contextTier !== configuration.model.contextTier)
-      ) {
-        await native.setModel(configuration.model.name, toSdkSetModelOptions(configuration.model));
-      }
-    }
     return connect(native, session.id, configuration.allowUserQuestions, configuration.model);
   },
   async readDirectory(nativeId) {
@@ -158,10 +143,11 @@ async function connect(
   return connectCopilotSession(session, sessionId, appliedModel);
 }
 
-function nativeConfiguration(
+async function nativeConfiguration(
   sessionId: string,
   configuration: SessionConfiguration,
-): SessionConfig {
+  client: CopilotClient,
+): Promise<SessionConfig> {
   const tools: CopilotTool<any>[] = configuration.tools.map((tool) => ({
     ...tool,
     skipPermission: true,
@@ -189,6 +175,9 @@ function nativeConfiguration(
     ...toSdkSessionModelOptions(configuration.model),
     workingDirectory: configuration.directory,
     enableConfigDiscovery: true,
+    mcpServers: await computerUseServers(client),
+    imageGeneration: { enabled: true },
+    hooks: { onPostToolUse: saveGeneratedImages },
     enableSkills: true,
     skillDirectories: configuration.skillDirectories,
     systemMessage: { mode: "append", content: configuration.instructions },

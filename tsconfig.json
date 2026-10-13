@@ -1,5 +1,6 @@
 {
   "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["test-results"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
@@ -30,6 +31,7 @@
       "@briefs/*": ["./src/features/briefs/*"],
       "@sessions/*": ["./src/features/sessions/*"],
       "@channels/*": ["./src/features/channels/*"],
+      "@screens/*": ["./src/features/screens/*"],
       "@terminal/*": ["./src/features/terminal/*"],
       "@whiteboard/*": ["./src/features/whiteboard/*"],
       "@workers/*": ["./src/features/workers/*"],

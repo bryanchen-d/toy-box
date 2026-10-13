@@ -320,6 +320,7 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
         ];
       }
 
+      const attachments = readToolResultImages(data);
       const toolEnd: SessionEvent = {
         type: "tool_end",
         toolCallId,
@@ -327,6 +328,7 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
         success: data.success,
         result,
         details: data.result?.detailedContent,
+        ...(attachments.length ? { attachments } : {}),
       };
 
       // Background tool calls can have a non-authoritative SDK completion event.
@@ -482,6 +484,13 @@ function readToolArguments(rawToolName: string, rawArguments: unknown): ToolArgu
 // Single source for tool result text so the fallback order can never drift.
 function readToolResultText(data: ToolExecutionCompleteData): string | undefined {
   return data.result?.content ?? data.error?.message;
+}
+
+// Images in the tool's native output; model-only images in binaryResultsForLlm stay out.
+function readToolResultImages(data: ToolExecutionCompleteData): Attachment[] {
+  return (data.result?.contents ?? []).flatMap((content) =>
+    content.type === "image" ? [{ base64: content.data, mimeType: content.mimeType }] : [],
+  );
 }
 
 /** Native SQL todos and background agents have Copilot-specific completion rules. */

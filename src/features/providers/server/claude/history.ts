@@ -39,38 +39,71 @@ export async function readClaudeHistory(nativeId: string): Promise<SDKMessage[]>
     ),
   );
   const restore = (messages: SessionMessage[]) =>
-    messages
-      .filter(
-        (message) => !("isCompletedLocalCommand" in message && message.isCompletedLocalCommand),
-      )
-      .map((message) => {
-        const record = records.get(message.uuid);
-        return {
-          ...message,
-          tool_use_result: record?.toolUseResult,
-          effort: record?.effort,
-          error: record?.error,
-        } as SDKMessage;
-      });
-  return [...restoreFailedTurns(restore(root)), ...restore(children.flat())];
+    messages.map((message) => {
+      const record = records.get(message.uuid);
+      return {
+        ...message,
+        tool_use_result: record?.toolUseResult,
+        effort: record?.effort,
+        error: record?.error,
+      } as SDKMessage;
+    });
+  return [...asLiveStream(restore(root)), ...restore(children.flat())];
 }
 
-/** Native history keeps no turn results. As in the CLI, a turn whose last assistant message is an
- * API error failed with that message, so its result is restored where the live stream sent one. */
-export function restoreFailedTurns(messages: SDKMessage[]): SDKMessage[] {
-  return messages.flatMap((message, index) =>
-    message.type === "assistant" && message.error && messages[index + 1]?.type !== "assistant"
-      ? [
-          message,
-          {
-            type: "result",
-            subtype: "success",
-            is_error: true,
-            result: message.message.content
-              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-              .join("\n"),
-          } as SDKMessage,
-        ]
-      : [message],
-  );
+// The CLI records Toy Box's model switches as this command, in native history only.
+const MODEL_SWITCH = /^<command-name>\/model<\/command-name>/;
+
+/** Replays native history as the live stream sent it. History keeps no turn results: as in the CLI,
+ * a turn whose last assistant message is an API error failed with it, so that result is restored.
+ * History also records each model switch as a `/model` command the live stream never sends. */
+export function asLiveStream(messages: SDKMessage[]): SDKMessage[] {
+  return messages.flatMap((message, index) => {
+    if (
+      message.type === "user" &&
+      typeof message.message.content === "string" &&
+      MODEL_SWITCH.test(message.message.content)
+    )
+      return [];
+    if (message.type === "assistant" && message.error && messages[index + 1]?.type !== "assistant")
+      return [
+        message,
+        {
+          type: "result",
+          subtype: "success",
+          is_error: true,
+          result: message.message.content
+            .flatMap((block) => (block.type === "text" ? [block.text] : []))
+            .join("\n"),
+        } as SDKMessage,
+      ];
+    return [message];
+  });
+}
+
+// Workaround (Claude Agent SDK 0.3.296; listed in providers/AGENTS.md): session info reads `cwd`
+// only from a transcript's first 64 KB, so a large first message, such as a pasted image, hides
+// it. Read the first entry that records one instead; remove once `getSessionInfo()` finds it.
+export async function readTranscriptDirectory(nativeId: string): Promise<string | undefined> {
+  let directory: string | undefined;
+  const found = new Error("Found the transcript directory.");
+  try {
+    await importSessionToStore(
+      nativeId,
+      {
+        async append(_key, entries) {
+          const cwd = entries.find((entry) => typeof entry.cwd === "string")?.cwd;
+          if (typeof cwd !== "string") return;
+          directory = cwd;
+          // Stop reading the transcript once its directory is known.
+          throw found;
+        },
+        load: async () => null,
+      },
+      { includeSubagents: false, batchSize: 8 },
+    );
+  } catch (error) {
+    if (error !== found) throw error;
+  }
+  return directory;
 }

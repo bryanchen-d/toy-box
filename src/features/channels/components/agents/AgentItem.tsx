@@ -27,7 +27,7 @@ export function AgentItem({ agent, action }: { agent: ChannelAgent; action?: Rea
           onMouseLeave={preview.onMouseLeave}
           className="relative shrink-0 rounded-full"
         >
-          <AgentAvatar name={agent.name} avatar={agent.avatar} className="size-6" />
+          <AgentAvatar agent={agent} className="size-6" />
           {presence.state !== "idle" && (
             <RunningIndicator
               waiting={presence.state === "waiting"}

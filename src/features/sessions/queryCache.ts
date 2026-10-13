@@ -6,6 +6,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import type { WorkspaceEvent } from "@workspace/model/events";
+import { draftSessionId } from "@workspace/model/state/drafts";
 import type {
   Session,
   SessionLaunch,
@@ -109,12 +110,13 @@ export function applyWorkspaceEventToSessionQueries(
     case "session.running":
     case "session.waiting":
     case "session.unread":
-    case "session.prompt.drafted":
-      // Activity can bring an older session back into the browsing window.
-      if (!snapshotSessionsState(queryClient)?.sessions.some(({ id }) => id === event.sessionId)) {
-        void queryClient.invalidateQueries({ queryKey: sessionQueries.stateKey(), exact: true });
-      }
+      refetchIfOutsideCatalog(queryClient, event.sessionId);
       return;
+    case "draft.changed": {
+      const sessionId = draftSessionId(event.key);
+      if (sessionId) refetchIfOutsideCatalog(queryClient, sessionId);
+      return;
+    }
   }
 }
 
@@ -279,4 +281,11 @@ function parseEventDate(value: string | undefined, fallback: Date): Date {
   if (!value) return fallback;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+/** Activity, including an unsent draft, can bring an older session back into the browsing window. */
+function refetchIfOutsideCatalog(queryClient: QueryClient, sessionId: string): void {
+  if (!snapshotSessionsState(queryClient)?.sessions.some(({ id }) => id === sessionId)) {
+    void queryClient.invalidateQueries({ queryKey: sessionQueries.stateKey(), exact: true });
+  }
 }

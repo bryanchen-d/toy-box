@@ -6,6 +6,8 @@ import type { SessionOwnership, SessionsState, SessionType } from "@sessions/mod
 import { broadcast } from "@workspace/server/events";
 import { getStateDatabase } from "@/server/database";
 import { getHyperSessionIds, hasHyperSession } from "@workspace/server/state/hyperSessions";
+import { draftSessionId, type DraftKey } from "@workspace/model/state/drafts";
+import { getSavedDrafts } from "@workspace/server/state/drafts";
 import { getSessionStates } from "@workspace/server/state/sessions";
 import { getSettings } from "@workspace/server/state/settings";
 
@@ -36,6 +38,11 @@ export async function readSessionCatalog(
     .slice(0, RECENT_SESSION_LIMIT);
   for (const { id } of recentSessions) retainedSessionIds.add(id);
   for (const id of Object.keys(getSessionStates())) retainedSessionIds.add(id);
+  // Unsent drafts keep their sessions in the catalog, like live and unread work.
+  for (const [key, draft] of Object.entries(getSavedDrafts())) {
+    const sessionId = draftSessionId(key as DraftKey);
+    if (sessionId && draft?.text.trim()) retainedSessionIds.add(sessionId);
+  }
   return {
     sessions: sessions.filter(({ id, provider }) => retainedSessionIds.has(id) || !provider),
     worktrees,

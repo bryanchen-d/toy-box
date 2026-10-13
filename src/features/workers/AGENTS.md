@@ -16,7 +16,8 @@ before publishing a new Worker or updating its metadata.
 policy. Trusted owners may supply a shared Session ID. Channels uses its own ID for its lead.
 
 - A session-owned Worker inherits its parent's model and directory unless overridden and is retained
-  by default.
+  by default. Spawning does not open a pane; children are discoverable under their parent in the
+  sidebar, and `open_session` explicitly opens them.
 - A file-owned Worker belongs to one exact session file and is always ephemeral.
 - An app-owned Worker belongs to one saved app and is ephemeral by default.
 - A channel-owned Worker is durable until member or Channel deletion. Channels interprets its name

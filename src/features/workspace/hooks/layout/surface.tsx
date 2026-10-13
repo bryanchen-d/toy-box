@@ -6,6 +6,7 @@ import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { createPanePublicationsStore } from "@workspace/hooks/layout/panePublications";
 import {
   createEditorPaneId,
+  createScreenPane,
   MAX_HYPER_PANES,
   MAX_WORKSPACE_PANES,
   resolveEditorAutoFocus,
@@ -37,6 +38,7 @@ const { StoreProvider, useStoreContext: useWorkspaceSurface } = createStoreConte
     openFile?: (path: string) => void;
     /** Brings a file's pane forward, opening the file when it isn't showing. */
     revealFile?: (file: WorkspaceFile) => void;
+    revealScreen: (screenId: string) => boolean;
     /** Whether Channel overviews stay pinned open, where the surface remembers it. */
     channelOverviewPinned?: boolean;
     setChannelOverviewPinned?: (pinned: boolean) => void;
@@ -59,6 +61,7 @@ export function WorkspaceSurfaceProvider({
   onOpenApp,
   onOpenFile,
   onRevealFile,
+  onOpenScreen,
   channelOverviewPinned,
   onChannelOverviewPinnedChange,
   children,
@@ -68,6 +71,7 @@ export function WorkspaceSurfaceProvider({
   onOpenApp: (appId: string) => void;
   onOpenFile?: (path: string) => void;
   onRevealFile?: (file: WorkspaceFile) => void;
+  onOpenScreen?: (screenId: string) => Promise<void>;
   channelOverviewPinned?: boolean;
   onChannelOverviewPinnedChange?: (pinned: boolean) => void;
   children: ReactNode;
@@ -90,6 +94,22 @@ export function WorkspaceSurfaceProvider({
       ),
   });
   const seenPaneIdsRef = useRef<ReadonlySet<string> | null>(null);
+
+  function revealScreen(screenId: string): boolean {
+    const paneId = createScreenPane(screenId).id;
+    const published = Object.values(workspaceSurface.panePublications.get()).some((linked) =>
+      linked.some((pane) => pane.id === paneId),
+    );
+    if (published || panes.some((pane) => pane.id === paneId)) {
+      workspaceSurface.focusedPaneAtom.set(paneId);
+      return true;
+    }
+    if (!onOpenScreen) return false;
+    void onOpenScreen(screenId)
+      .then(() => workspaceSurface.focusedPaneAtom.set(paneId))
+      .catch((error) => console.error("Unable to open screen:", error));
+    return true;
+  }
 
   // Panes present when a surface mounts are not newly opened, except for an
   // artifact-first draft whose artifact is the surface's initial destination.
@@ -133,6 +153,7 @@ export function WorkspaceSurfaceProvider({
         openApp: onOpenApp,
         openFile: onOpenFile,
         revealFile: onRevealFile,
+        revealScreen,
         channelOverviewPinned,
         setChannelOverviewPinned: onChannelOverviewPinnedChange,
       }}

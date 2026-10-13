@@ -1,10 +1,8 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   ChevronRight,
   Clock3,
-  ExternalLink,
-  MonitorPlay,
   MoreHorizontal,
   Pencil,
   Play,
@@ -24,7 +22,7 @@ import { channelMutations } from "@channels/mutations";
 import { ArtifactPill } from "@workspace/components/outputs/ArtifactPill";
 import { SessionMetadataBadges } from "@sessions/components/location/SessionMetadataBadges";
 import { Badge } from "@/shared/ui/badge";
-import { Button, buttonVariants } from "@/shared/ui/button";
+import { Button } from "@/shared/ui/button";
 import { Checklist } from "@/shared/ui/checklist";
 import {
   DropdownMenu,
@@ -35,12 +33,12 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { SectionHeading } from "@/shared/ui/section-heading";
 import { RelativeTime } from "@/shared/ui/relative-time";
-import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ShowMore, useShowMore } from "@/shared/ui/show-more";
 import { nextCronOccurrence } from "@/shared/cron";
 import { cn } from "@/shared/utils";
 import { useChannelPane } from "../ChannelPaneContext";
 import { channelTaskItems, TaskDiff } from "../channelTaskItems";
+import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 
 /** What the overview shows: the Channel's context, team members, tasks, artifacts, and routines. */
 export function ChannelOverviewContent({
@@ -52,6 +50,7 @@ export function ChannelOverviewContent({
   onRemoveMember,
   onAddAgent,
   onBrowseDirectory,
+  onPreviewOpen,
 }: {
   channel: Channel;
   artifacts: ChannelArtifact[];
@@ -61,6 +60,7 @@ export function ChannelOverviewContent({
   onRemoveMember: (member: ChannelMember) => void;
   onAddAgent: () => void;
   onBrowseDirectory: () => void;
+  onPreviewOpen: () => void;
 }) {
   const { lead, members, agents } = useChannelPane();
   const sortedMembers = [...members].sort((left, right) => left.name.localeCompare(right.name));
@@ -87,24 +87,8 @@ export function ChannelOverviewContent({
             <SessionMetadataBadges cwd={channel.directory} />
           </button>
         )}
-        {channel.previewUrl && (
-          <a
-            href={channel.previewUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={channel.previewUrl}
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "flex w-full min-w-0 justify-start font-normal",
-            )}
-          >
-            <MonitorPlay />
-            <span className="font-medium">Preview</span>
-            <ScrollableFade className="min-w-0 flex-1 whitespace-nowrap text-left text-muted-foreground">
-              <span className="shrink-0">{channel.previewUrl}</span>
-            </ScrollableFade>
-            <ExternalLink />
-          </a>
+        {channel.preview && (
+          <WorkspacePreview preview={channel.preview} variant="row" onOpen={onPreviewOpen} />
         )}
       </div>
 
@@ -202,6 +186,7 @@ export function ChannelOverviewContent({
 function RoutineItem({ channelId, routine }: { channelId: string; routine: ChannelRoutine }) {
   const { mutate: runRoutine } = useMutation(channelMutations.runRoutine(channelId));
   const { mutate: deleteRoutine } = useMutation(channelMutations.deleteRoutine(channelId));
+  const [now] = useState(() => new Date());
 
   return (
     <div role="listitem" className="flex items-start gap-2 text-sm">
@@ -215,7 +200,7 @@ function RoutineItem({ channelId, routine }: { channelId: string; routine: Chann
             <span className="text-foreground/90">{routine.title}</span>
             <Badge variant="metadata" title={routine.schedule}>
               <Clock3 className="h-3 w-3 shrink-0" />
-              <RelativeTime date={nextCronOccurrence(routine.schedule, new Date())} />
+              <RelativeTime date={nextCronOccurrence(routine.schedule, now)} />
             </Badge>
           </span>
         </summary>

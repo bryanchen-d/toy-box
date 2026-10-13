@@ -1,5 +1,6 @@
 import type { JSONType } from "zod";
 import type { WorkspaceFile } from "@files/model";
+import type { Preview } from "@/shared/preview";
 import type { ModelConfiguration } from "@providers/model";
 import type { Attachment } from "@/shared/attachments/model";
 import type { SessionSystemMessage } from "./systemMessages";
@@ -110,6 +111,7 @@ export type SessionState = {
   todos: TodoItem[];
   linkedSessionIds: string[];
   canvases: SessionCanvas[];
+  preview?: Preview;
   artifacts: SessionArtifact[];
   openedFiles: WorkspaceFile[];
   lastSeenEventId?: number;
@@ -191,15 +193,11 @@ export type ToolCall = {
     content: string;
     success: boolean;
     details?: string;
+    /** Images the tool produced, such as native image generation. */
+    attachments?: Attachment[];
   };
   subagent?: SubagentActivity;
   question?: SessionQuestion;
-};
-
-export type DraftPrompt = {
-  text: string;
-  updatedAt: number;
-  origin: string;
 };
 
 export type SessionEvent = (
@@ -242,6 +240,7 @@ export type SessionEvent = (
       success: boolean;
       result?: string;
       details?: string;
+      attachments?: Attachment[];
     }
   | {
       type: "question_requested";
@@ -269,6 +268,7 @@ export type SessionEvent = (
   | { type: "linked_session_added"; sessionId: string }
   | { type: "linked_session_removed"; sessionId: string }
   | { type: "canvas_opened"; canvas: SessionCanvasOpen }
+  | { type: "preview_changed"; preview: Preview | null }
   | { type: "artifacts_changed"; artifacts: SessionArtifact[] }
   | { type: "file_opened"; file: WorkspaceFile }
   | { type: "file_closed"; file: WorkspaceFile }

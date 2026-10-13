@@ -19,16 +19,16 @@ export function useSessions({ hiddenSessionIds }: { hiddenSessionIds: string[] }
   const create = useMutation(sessionMutations.createSession());
   const draftSessions =
     data?.sessions.filter((session) => !session.provider && !data.ownership[session.id]) ?? [];
-  const prompts = useWorkspaceSelector((workspace) =>
+  const drafts = useWorkspaceSelector((workspace) =>
     Object.fromEntries(
       draftSessions.map(({ id }) => {
-        const prompt = workspace.sessionStates[id]?.prompt;
-        return [id, { hasText: Boolean(prompt?.text), updatedAt: prompt?.updatedAt }];
+        const draft = workspace.drafts[`session:${id}`];
+        return [id, { hasText: Boolean(draft?.text), updatedAt: draft?.updatedAt }];
       }),
     ),
   );
   const sessions = data?.sessions.map((session) => {
-    const updatedAt = prompts[session.id]?.updatedAt;
+    const updatedAt = drafts[session.id]?.updatedAt;
     return updatedAt ? { ...session, updatedAt: new Date(updatedAt) } : session;
   });
 
@@ -37,7 +37,7 @@ export function useSessions({ hiddenSessionIds }: { hiddenSessionIds: string[] }
       const reusable = draftSessions.find(
         (session) =>
           !session.artifactPath &&
-          !prompts[session.id]?.hasText &&
+          !drafts[session.id]?.hasText &&
           !hiddenSessionIds.includes(session.id),
       );
       if (reusable) return reusable.id;

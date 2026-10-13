@@ -16,6 +16,9 @@ and apps compose sessions rather than introducing another transcript or executio
   and are keyed by session ID outside the value.
 - `protocol.ts` owns RPC schemas and infers every TypeScript type that crosses those validated
   boundaries.
+- `references.ts` owns the `session` and `file` prompt references carried in message text:
+  their construction from a session or search path, and `isPromptReference`, which recognizes
+  those kinds among the shared codec's references.
 - `systemMessages.ts` owns the validated system-message vocabulary, labels, coalescing,
   model-facing prompts, and the structured display codec retained in native provider history.
 - `questions.ts` owns derived queries over pending and blocking transcript questions.
@@ -27,6 +30,13 @@ and apps compose sessions rather than introducing another transcript or executio
 - `reducer.ts` is the one pure transition function shared by live server execution, persisted
   history replay, and browser streaming. Its status records provider activity; the workspace
   projects the user-facing waiting state from pending blocking questions.
+- `SessionState.preview` is the optional current runnable result: a URL or
+  Screen ID, using `shared/preview.ts` like Channels. Successful
+  `set_session_preview` results project to `preview_changed`.
+  Replacing or clearing the reference never stops the underlying application.
+  Screens owns host-addressed capture/control state independently of sessions;
+  only the reference is replayed. Agents list and present screens for people;
+  app automation uses provider computer-use tools or playwright-cli.
 - `constants.ts` contains stable persisted identity and path conventions.
 
 `Message` is one canonical transcript entry. `SessionMessage` is an identified user or system
@@ -46,6 +56,20 @@ ordinary, unpinned sessions, plus all managed and pinned sessions. Drafts and se
 activity are retained as well. This bounds browsing metadata without deleting history; old ordinary
 sessions outside the catalog do not reopen through a URL. The sidebar filters the retained catalog
 before displaying up to 50 ordinary matches, while keeping pins visible outside that display limit.
+Sessions with Worker children have a compact child-count badge and chevron beside the title.
+The badge is a separate disclosure button, collapsed by default.
+It occupies only the title line; the relative time and location keep their normal alignment.
+Expanding it reveals nested sidebar rows, newest first within each parent, with deeper
+descendants independently expandable. Clicking the session title still opens the session.
+Expansion is local to the mounted row; collapsed descendants are neither built nor mounted.
+Children follow their parent's visibility
+without consuming the ordinary-session limit or forming separate pinned or time groups.
+The sidebar and app SDK share the catalog's child-session selector; no Worker query or
+additional ownership state is needed. Provider-native subagents remain transcript tool calls,
+not independently addressable sidebar rows.
+Spawning a Worker renders an ordinary tool call in the transcript and never publishes a linked
+pane, including when replaying older spawn results.
+An explicit `open_session` call still publishes the child through the ordinary session pane path.
 
 `Session.context` carries its execution `directory` and available native catalog Git fields.
 Session IDs, including automation IDs, are plain UUIDs. Imported histories use `provider:nativeId`, which
@@ -59,7 +83,7 @@ directory and worktree choice; worktrees retain their own state.
 ## Client access and lifecycle
 
 `queries.ts` is the declarative read API for the durable session list, one transcript snapshot,
-and CWD-scoped skills. `mutations.ts` is the request/response operation API for
+and directory-, role-, and provider-scoped skills. `mutations.ts` is the request/response operation API for
 creation, first-turn launch, delivery, queue control, abort, rewind, rename, deletion, and worktree actions. It
 owns only the cache transitions that make those operations immediate and rolls optimistic changes
 back when the request fails.
@@ -100,7 +124,7 @@ Channel context and rosters, post user-attributed messages, share artifacts, and
 member work. Collaboration identity and `@mention` delivery belong to Channels.
 
 `useSessions.ts` owns the catalog and optimistic creation, including reuse of an untouched
-draft session. `useDraftPrompt.ts` synchronizes unsent composer text. First submission in
+draft session. Unsent composer text is a Workspace saved draft keyed `session:<id>`. First submission in
 `useSession.ts` adds the provider and context to the existing catalog entry and transitions the
 same ID to running, so its timestamp and directory appear before provider creation completes.
 Creation failure reconciles catalog and workspace state from the server.
@@ -119,12 +143,121 @@ files) and what is waiting (queued messages) above the message being written. Se
 share Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx).
 Queued user messages can be sent now, removed, or edited:
 editing takes a message out of the queue and back into the draft, as does stopping the turn, so
-queued input never disappears. Draft text syncs through the
-workspace. `/` completes skills at the start of a prompt and
-`@` inserts working-directory file paths as plain text, so references need no message schema.
+queued input never disappears. Draft text is a Workspace saved draft, so it follows the
+session across clients. `/` completes skills at the start of a prompt and `#` inserts working-directory file
+references. `@` filters the existing session catalog by title, newest first, with relative
+update times. It reuses the sidebar's `selectTopLevelSessions` selector, then excludes the current
+session and providerless drafts. Workers, automations, and Hyper are excluded. It does not scan
+older provider history or read transcripts while picking.
+File completions retain the previous rows during search, disabling selection until the query
+catches up. Skills are described by their purpose on a second line, and files show their folder
+beside their name; session choices show the title and relative update time, without provider/ID
+subtitles.
+Empty session, file, and skill results share italic no-match text.
+
+Sessions and Channels share one composer shell in `shared/composers/`. A `ComposerDraft`, from
+`useComposerDraft`, is the message being written: host-owned text plus images, sent together to
+its `onSend`, or another destination the host picks, and then cleared. Hosts edit it only
+through its verbs: `setValue` replaces the text, `append` puts messages back after the text and
+images, and `submit` sends. A send whose promise rejects appends its message back, unless another
+draft has been started since. It refuses to send while composing, while images are still being
+read, or when empty, and it autofocuses on desktop. `<Composer draft>` edits that draft: it owns
+image paste and drop, and the Enter, Shift+Enter, and empty-draft Backspace conventions after an
+open menu's keys and the host's own; each handler in that chain defers by `defaultPrevented`.
+Hosts configure it in its own terms through explicit props, since its layout is fixed: a `label`
+and `placeholder`, a `tray` above the input, `completions` (sources plus the menu that renders
+their items), the `references` it shows as pills, toolbar `controls`, and `actions`. The composer
+matches, navigates, and inserts completions; hosts own their draft text and send targets. Every
+host's text is a Workspace saved draft, spread into `useComposerDraft` from `useSavedDraft`.
+`SessionComposer` reads `session:<id>`, or `inbox` when it composes new Inbox work, so neither
+host passes it a prompt. Its draft runs Inbox work or delivers to the session by default;
+delivery menus and Cmd+Enter send it elsewhere. `DeliveryControls.tsx` owns those choices:
+Inbox's Run and Send, and a running session's Queue and Send now, whose `sendNowHotkey` the
+placeholder and key handling share. Toolbar icon buttons are `ComposerAction`s, named by their
+tooltips; `ComposerSendButton` is the one bound to the draft.
+
+The shell's input is `shared/composers/input/ComposerInput`: a native editable surface
+whose references render as atomic pills while its public value remains a string. Typing,
+reference insertion, paste, and cut use native undo. Voice writes, queue restoration, and
+Channel reply/mention actions replace or append through the draft's verbs;
+these replacements start a new editing history, as does clearing the draft on submission.
+Composition publishes typed text but defers an incoming replacement until composition ends;
+the pending replacement takes precedence over provisional input. Plain-text paste and
+canonical-source copy preserve reference identity without accepting HTML. `dom.ts` owns
+browser editing mechanics; the input owns composition, focus, and value adoption, and reports
+its selection, the caret's editable text run, to completions. Its handle exposes only focus and
+composition state.
+`beforeinput` is the single plain-text guard against formatting commands. `beforeinput` owns
+pill deletion, from a key or not: a deletion that would separate a pill from its caret stop removes
+both as one undoable edit. A final break after a deleted pill is removed unless it ends a newline.
+The input grows through three rows before scrolling; measured overflow exposes session
+expansion even for a single wrapping paragraph. Hosts can override sizing; expansion and
+toolbar typing feedback remain separate presentation controls.
+
+[`shared/references.ts`](../../shared/references.ts) owns the host-independent
+`Reference { kind, target, label }` primitive, its `[label](kind:target)` codec, and
+`splitReferences`, which divides text into literal runs and the references a host accepts. It is
+foundational to messages as well as the composer: the input builds its pills from that split,
+given a host's `ComposerReferences` presentation, and queue summaries render and label from it.
+Kinds are URI-scheme identifiers defined by hosts, not a shared catalog. An unlabeled reference
+decodes with its target as its label. Sessions recognizes `session` and `file`, encoded as
+`[Title](session:PUBLIC_ID)` and `[Name](file:PATH)`.
+Completion triggers are not part of the encoding. Other kinds remain ordinary text or Markdown
+in Sessions; Channels' `@handle` mentions retain their own addressing semantics.
+The composer does not parse Markdown.
+The target escapes only what a Markdown link destination cannot carry (`%`, whitespace,
+parentheses, and backslash), so agents read ordinary paths and IDs; earlier fully encoded
+sources still decode. The label is a snapshot, never a lookup key. File targets
+retain the path returned by directory search; a relative path resolves in the receiving
+session's working directory, including a new worktree, rather than identifying one physical
+file across all sessions. Their labels use the basename. Drafts, queues,
+provider history, and copied messages retain that self-contained source.
+[`components/references/`](components/references/) groups the shared reference presentation,
+styles, and tests for the composer, queue summaries, and sent user messages; queue text stays literal,
+while sent messages retain their existing Markdown sanitization.
+One `promptReferenceKinds` table gives each kind its title and icon. The icon is the
+stylesheet's mask, so pills and completion menu items show the same one, and one class helper
+distinguishes draft pills from message pills.
+File and session pills share a 10rem ellipsis cap with their own icons; the tooltip and
+accessible label retain the full file path or session title and public ID.
+Their feature-owned stylesheet supplies pill layout; the shared input owns only atomic
+selection and caret behavior.
+Both use the configured accent color; queued and sent message pills add a thin accent border
+and a slightly stronger tint.
+The session-history instructions direct the agent to `read_session` using the public ID.
+Only encoded references are recognized. Pills are constructed on insertion, paste, and
+draft adoption; ordinary typing stays native rather than being re-parsed after each key.
+The composer does not infer references from bare names/paths or apply Markdown rules.
+`completions/completionSources.ts` is a pure `promptCompletionSources` over the prompt's scope
+and Hyper membership, which `SessionComposer` reads and passes in. Each source declares its id,
+trigger, and no-match text, and projects an existing catalog query (`skillQueries`, the session
+catalog, or `fileQueries.search`) into menu items with `select`, so a catalog is observed only
+while its menu is open. The composer passes its session ID, directory, and model provider
+explicitly, including from Inbox before a session exists.
+Shared `useCompletions(sources)` follows the selection reported by the input and owns matching,
+Query observation, per-source previous-item retention, acceptance guards, and the input, menu,
+and item props. A trigger is a token pattern: a one-character trigger, then the query as its
+first capture; `wordTrigger` builds the common start-or-after-whitespace form. Accepting an item
+inserts its value, or the text its source's `accept` returns; a promise defers insertion, holds
+off other acceptances, and surfaces a rejection as the menu's error. A `CompletionItem` has a
+value, a label, an optional detail shown muted beside the label (where it is), an optional
+description shown as a second line (what it is or does), and an optional group. The shared
+`CompletionMenu` owns the menu chrome, group headings, each item's text,
+searching and no-match text, errors, and editing: a host's `edit` returns how to edit what an item
+names, and the menu renders one "Edit" button that keeps focus and never accepts its item. Hosts
+supply only an item's icon, trailing metadata, and edit handler. The Session menu supplies icons,
+the Global badge, and update times, and edits a skill by opening its file, without dispatching on
+its source. Query
+errors use the existing error boundary, not per-source error messages. Draft writes remain
+host-owned.
+Pointer-down preserves the insertion target; a completed click/tap accepts an item.
+Touch scroll/cancel does not select, and leaving the menu invalidates the preserved target.
+Focus that a menu gesture moved into the menu ends the completion when it leaves, since the
+input has already blurred.
 
 `SessionUserMessage` adds session rewind to the feature-independent
-[`UserMessage`](../../shared/messages/UserMessage.tsx), which also exports `CopyControl`.
+[`UserMessage`](../../shared/messages/UserMessage.tsx), whose actions separate themselves from
+the shared [`CopyControl`](../../shared/messages/CopyControl.tsx) only when they render.
 
 Assistant Markdown keeps Streamdown's
 HTML and protocol sanitization but omits URL hardening so relative links remain semantic anchors;

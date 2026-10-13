@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Hash, Plus } from "lucide-react";
-import { AgentStatus } from "@channels/components/agents/AgentStatus";
+import { WorkingAgents } from "@channels/components/agents/WorkingAgents";
 import { useChannels } from "@channels/useChannels";
 import { SidebarListItem } from "@/shared/sidebar/SidebarListItem";
 import { SidebarPanel } from "@/shared/sidebar/SidebarPanel";
@@ -85,7 +85,7 @@ export function ChannelsPanel({
               titleContent={
                 <span className="flex items-center gap-3">
                   <span>{channel.name}</span>
-                  <AgentStatus
+                  <WorkingAgents
                     working={agents
                       .filter(({ isRunning }) => isRunning)
                       .map((agent) => ({ agent }))}

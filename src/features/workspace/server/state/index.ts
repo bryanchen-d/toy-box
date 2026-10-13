@@ -2,13 +2,15 @@
 
 import type { Settings } from "../../model/config/settings";
 import type { WorkspaceAction } from "../../model/state/actions";
+import type { DraftKey } from "../../model/state/drafts";
 import { finishWorkersForSession } from "@workers/server/registry";
 import { normalizeSettings } from "../../model/config/settings";
 import type { WorkspaceSessionEvent } from "../../model/state/reducer";
 import { SerialTaskQueue } from "@/shared/serialTaskQueue";
 import { broadcast } from "@workspace/server/events";
 import { deleteHyperState } from "./hyperSessions";
-import { applySessionState, setSessionPrompt } from "./sessions";
+import { deleteSavedDraft, saveDraft } from "./drafts";
+import { applySessionState } from "./sessions";
 import { getSettings, persistSettings } from "./settings";
 
 // The settings aggregate is persisted with a read-merge-write operation, so patches must not race.
@@ -41,6 +43,7 @@ async function commitSettingsChange(update: Partial<Settings>): Promise<Settings
 
 export function deleteSessionWorkspaceState(sessionId: string): void {
   applySessionState({ type: "session.deleted", sessionId });
+  deleteSavedDraft(`session:${sessionId}`);
   deleteHyperState(sessionId);
   finishWorkersForSession(sessionId);
 }
@@ -56,10 +59,10 @@ function commitSessionEvent(event: WorkspaceSessionEvent): boolean {
   return true;
 }
 
-/** Derive the canonical prompt with a server timestamp, then broadcast iff it changed. */
-function commitSessionPrompt(sessionId: string, text: string, origin: string): void {
-  const prompt = setSessionPrompt(sessionId, text, origin);
-  if (prompt) broadcast({ type: "session.prompt.drafted", sessionId, prompt });
+/** Stamp a draft with server time, then broadcast it iff it changed. */
+function commitDraft(key: DraftKey, text: string, origin: string): void {
+  const draft = saveDraft(key, text, origin);
+  if (draft) broadcast({ type: "draft.changed", key, draft });
 }
 
 export function setSessionStatus(
@@ -75,8 +78,8 @@ export function setSessionStatus(
 
 export function applyWorkspaceAction(action: WorkspaceAction): void {
   switch (action.type) {
-    case "session.prompt.drafted":
-      commitSessionPrompt(action.sessionId, action.prompt.text, action.prompt.origin);
+    case "draft.changed":
+      commitDraft(action.key, action.draft.text, action.draft.origin);
       return;
     case "session.hyper.promoted":
       if (deleteHyperState(action.sessionId)) broadcast(action);

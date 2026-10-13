@@ -8,6 +8,7 @@ import type { WorkspaceState } from "../model/state/reducer";
 import { applyWorkspaceAction, changeSettings } from "./state";
 import { getEnvironment } from "./state/environment";
 import { getHyperSessionIds } from "./state/hyperSessions";
+import { getSavedDrafts } from "./state/drafts";
 import { getSessionStates } from "./state/sessions";
 import { getSettings } from "./state/settings";
 
@@ -19,6 +20,7 @@ export async function getWorkspaceState(): Promise<WorkspaceState> {
   return {
     settings,
     sessionStates: getSessionStates(),
+    drafts: getSavedDrafts(),
     hyperSessionIds: getHyperSessionIds(),
     workers: getWorkers(),
     customEditors,

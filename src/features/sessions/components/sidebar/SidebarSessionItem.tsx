@@ -14,7 +14,7 @@ type SidebarSessionItemProps = Omit<SidebarListItemProps, "status"> & {
     running: boolean;
     waiting: boolean;
     unread: boolean;
-    hasDraftPrompt: boolean;
+    hasDraft: boolean;
   };
   previewDisabled?: boolean;
 };
@@ -25,6 +25,7 @@ export function SidebarSessionItem({
   previewDisabled = false,
   title,
   titleContent,
+  titleControl,
   icon,
   time,
   badge,
@@ -81,6 +82,7 @@ export function SidebarSessionItem({
           disabled={disabled}
           title={title}
           titleContent={titleContent}
+          titleControl={titleControl}
           icon={icon}
           time={time}
           badge={badge}
@@ -116,7 +118,7 @@ function useJustFinished(live: boolean): boolean {
 
 function getSessionListItemStatus(
   title: string,
-  { running, waiting, unread, hasDraftPrompt }: SidebarSessionItemProps["activity"],
+  { running, waiting, unread, hasDraft }: SidebarSessionItemProps["activity"],
   isActive: boolean,
   justFinished: boolean,
 ): SidebarStatus | undefined {
@@ -139,7 +141,7 @@ function getSessionListItemStatus(
           tooltip: "Session has unread messages",
         };
   }
-  if (hasDraftPrompt) {
+  if (hasDraft) {
     return {
       kind: "draft",
       ariaLabel: `${title} has a draft prompt`,

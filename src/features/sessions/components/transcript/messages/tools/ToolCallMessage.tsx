@@ -22,6 +22,7 @@ const TOOL_RENDERERS: Record<string, ComponentType<ToolCallProps>> = {
   read: ReadToolCall,
   glob: GlobToolCall,
   grep: GlobToolCall,
+  web_search: GlobToolCall,
   edit: FileDiffToolCall,
   patch: FileDiffToolCall,
   fetch: WebFetchToolCall,

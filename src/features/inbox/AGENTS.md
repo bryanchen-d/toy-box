@@ -70,7 +70,13 @@ Presentation combines entries with shared Worker and Session activity to order r
 and show progress and unread state. An active Worker supplies startup progress; ordinary Session
 activity covers later follow-ups. Inbox does not manufacture a Session running status.
 `inboxMutations` owns dispatch and deletion requests plus the immediate successful delete projection.
-Components retain only interaction state such as composer drafts, location choices, and dialog visibility.
+Components retain only interaction state such as location choices and dialog visibility. The
+creation composer's text is the Workspace saved draft `inbox`, so it survives reloads and follows
+the user across clients. A dispatch or send that fails returns its message to that draft unless
+another has been started.
+The creation composer receives its selected directory explicitly and its provider from the
+default model; without a session ID, its completion sources still discover skills for that scope.
+Inbox does not maintain a separate skill catalog.
 
 The Inbox pane publishes one selected result into the browser-local workspace surface: an editor for
 an artifact, or the backing Session for a message or error. Selecting the same row unlinks it;

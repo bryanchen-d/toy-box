@@ -39,13 +39,15 @@ test("native display spans preserve Unicode system messages through replay", () 
     clientId: "client-id",
     timestamp: itemTimestamp(turn, 0),
   };
-  const project = createCodexProjector("public");
+  const project = createCodexProjector("public", "native");
   project({ method: "turn/started", params: { turn } });
   expect(project({ method: "item/started", params: { item, turnId: turn.id } })).toEqual([
     expected,
   ]);
   expect(
-    codexHistoryEvents({ turns: [turn] } as Thread).flatMap(createCodexProjector("public")),
+    codexHistoryEvents({ turns: [turn] } as Thread).flatMap(
+      createCodexProjector("public", "native"),
+    ),
   ).toEqual([expected, { type: "end", reason: "idle" }]);
 });
 

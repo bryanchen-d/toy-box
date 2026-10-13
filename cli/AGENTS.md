@@ -6,7 +6,7 @@ The CLI bundles two parts into one Bun binary: the browser app and the Nitro ser
 
 `bun run build` runs Vite under Bun. Vite, on the Rolldown bundler, compiles the app for the browser and server, and TanStack Start decides what belongs to each. Most UI components are isomorphic and run on both; `createServerFn` handlers and HTTP route handlers stay in the server graph regardless of which feature owns their source files. The browser build lands in `.output/server/public` so it remains below the server when Bun flattens both into its virtual filesystem.
 
-The server build goes to Nitro. Its `bun` preset turns it into one runnable entry, `.output/server/index.mjs`, that owns SSR, server functions, API and stream endpoints, and the terminal WebSocket route. On its own it is an ordinary Bun server you could run directly.
+The server build goes to Nitro. Its `bun` preset turns it into one runnable entry, `.output/server/index.mjs`, that owns SSR, server functions, API and stream endpoints, and the shared `/socket` WebSocket route. Terminal and Screens provide feature-owned handlers behind that route. On its own it is an ordinary Bun server you could run directly.
 
 `bun run build:cli` delegates this composition to `cli/build/index.ts`. After the web build,
 it writes a temporary, declaration-only `app-type-library/node_modules` tree for the app
@@ -19,6 +19,8 @@ compilation, and the finished binary reads nothing from `.output` or `node_modul
 disk. The npm package ships only this binary and its metadata, currently for Apple
 silicon on macOS; new platforms mean extending the build matrix, not changing the model.
 
+The build also embeds Screens' native helper; [Screens](../src/features/screens/AGENTS.md) owns its packaging and permission contract.
+
 The shape is fan out, then collapse. `vite build` fans the app into browser and server builds; `Bun.build()` collapses the Nitro server, browser assets, launcher, and Bun runtime into one native file.
 
 Nitro generates gzip and Brotli browser assets. Before its server bundle reads the public asset
@@ -30,11 +32,34 @@ those compressed assets; the server's executable code and SSR bundles are separa
 
 `cli/index.ts` is the entry point when the binary runs. It reads the HTTP host and port, then turns off Bun's HTTP idle timeout so long-lived streams are not dropped. The Copilot SDK sometimes re-invokes this same binary as a subprocess with a file path as the first argument, so the launcher treats that argument as a working directory only when it is actually a directory. It imports the built Nitro server and, for an interactive run, opens the browser unless the user opted out. Nitro owns application startup and shutdown, including the terminal runtime, bundled skills, scheduler, and worker cleanup; that policy lives under `src/server` rather than in the launcher.
 
+## Socket gateway
+
+`src/server/socket.ts` dispatches `/socket?service=terminal` and
+`/socket?service=screens` to feature-owned handlers on independent physical
+connections. The gateway validates Origin; features own their protocols and
+lifetimes. In production, Nitro serves it. In development, Nitro's in-process runner
+upgrades through crossws's Node adapter, which refuses to run on Bun, so
+`src/server/socketDevelopment.ts` serves it from a Bun listener in Vite's process,
+where RPCs and sockets share the feature runtimes. That listener uses `Bun.serve`
+rather than srvx, whose default SIGINT handler would close only the listener and keep
+Vite running.
+
+## Shutdown
+
+Ctrl+C or SIGTERM runs Nitro's `close` hooks, which release long-lived resources
+such as provider processes, PTYs and the Screens helper, so the process can exit. In
+production, srvx stops accepting connections and waits up to 5 seconds for open
+ones, such as sockets and streams, before Nitro runs them; a second Ctrl+C skips the
+wait. In development, Nitro closes Vite and then runs them; this currently takes 5
+seconds, because Nitro waits for a shutdown reply that its in-process runner never
+sends. Nitro also runs them when Vite restarts, such as after a config edit, so
+process-wide runtimes start again on their next use.
+
 ## Invariants
 
 - Build the web app before compiling the launcher, because the binary embeds `.output`.
 - Keep native addons (compiled `.node` binaries) off the production runtime path. The published binary ships no `node_modules`, so a dependency that loads a native module at runtime will work in development and then fail in the binary. Tailwind's native compiler is safe because it only runs during the build, not at runtime.
 - Keep Nitro's `output.publicDir` and Bun's public asset path aligned at `.output/server/public`, and keep `serveStatic` enabled for production. The non-default nesting is intentional: Bun flattens the compiled server to its virtual root, so Nitro's default sibling `../public` path would escape that root.
 - Preserve `app-type-library` as the packaged type-library basename: the standalone compiler resolves it below Bun's `import.meta.dir` virtual root.
-- Keep the terminal on Nitro's origin so development, production, and remote access share one transport configuration.
+- Keep feature sockets on Nitro's origin.
 - Keep launcher policy limited to process configuration and loading Nitro. Application lifecycle belongs to server plugins and subsystems.

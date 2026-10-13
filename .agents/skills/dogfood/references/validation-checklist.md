@@ -26,11 +26,11 @@ playwright-cli --session test press Enter
 # Debugging
 playwright-cli --session test snapshot    # Current UI tree + refs
 playwright-cli --session test console     # Browser console errors/logs
-playwright-cli --session test network     # Network requests
+playwright-cli --session test requests    # Network requests
 
 # Cleanup
-playwright-cli --session test session-stop
-playwright-cli session-stop-all
+playwright-cli --session test close
+playwright-cli close-all
 ```
 
 ## Typical Workflow

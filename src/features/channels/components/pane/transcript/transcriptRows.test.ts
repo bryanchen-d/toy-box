@@ -4,6 +4,7 @@ import {
   pendingRequestRow,
   transcriptDayLabel,
   transcriptRows,
+  type AgentRunEntry,
   type TranscriptRow,
 } from "./transcriptRows";
 
@@ -15,13 +16,14 @@ function at(day: number, hour: number, minute: number): string {
 function agentPost(
   sequence: number,
   agentId: string,
-  timestamp: string,
+  timestamp = at(26, 10, sequence),
+  content = `Update ${sequence}`,
 ): ChannelConversationMessage {
   const sender = { type: "agent", agentId } as const;
-  return { id: `${sequence}`, sequence, timestamp, sender, content: `Update ${sequence}` };
+  return { id: `${sequence}`, sequence, timestamp, sender, content };
 }
 
-function userPost(sequence: number, timestamp: string): ChannelMessage {
+function userPost(sequence: number, timestamp = at(26, 10, sequence)): ChannelMessage {
   return { id: `${sequence}`, sequence, timestamp, sender: { type: "user" }, content: "Thanks" };
 }
 
@@ -38,7 +40,33 @@ function event(
   };
 }
 
-const rowIds = (rows: TranscriptRow[]) => rows.map((row) => row.messages.map(({ id }) => id));
+const lead = { id: "lead", name: "Lead" };
+const members = [
+  { id: "engine", name: "Engine" },
+  { id: "files", name: "Files" },
+];
+const rowsOf = (messages: ChannelMessage[], unreadAfter?: number) =>
+  transcriptRows(messages, { lead, members, unreadAfter });
+
+const rowIds = (rows: TranscriptRow[]) =>
+  rows.map((row) => {
+    switch (row.type) {
+      case "user":
+        return [row.message.id];
+      case "agent":
+        return row.entries.map(({ message }) => message.id);
+      case "system":
+        return row.messages.map(({ id }) => id);
+    }
+  });
+
+/** The entries of a transcript that is one agent's run. */
+function runOf(messages: ChannelMessage[]): AgentRunEntry[] {
+  const [row] = rowsOf(messages);
+  if (row?.type !== "agent") throw new Error("Expected an agent run.");
+  return row.entries;
+}
+
 const member = { channelId: "channel", id: "files", name: "Files" };
 
 describe("transcript rows", () => {
@@ -49,39 +77,35 @@ describe("transcript rows", () => {
       agentPost(3, "lead", at(26, 10, 10)),
       agentPost(4, "engine", at(26, 10, 11)),
     ];
-    expect(rowIds(transcriptRows(messages))).toEqual([["1", "2"], ["3"], ["4"]]);
+    expect(rowIds(rowsOf(messages))).toEqual([["1", "2"], ["3"], ["4"]]);
   });
 
   test("a run breaks after ten minutes, at midnight, and where unread messages begin", () => {
     expect(
       rowIds(
-        transcriptRows([
-          agentPost(1, "engine", at(26, 10, 0)),
-          agentPost(2, "engine", at(26, 10, 11)),
-        ]),
+        rowsOf([agentPost(1, "engine", at(26, 10, 0)), agentPost(2, "engine", at(26, 10, 11))]),
       ),
     ).toEqual([["1"], ["2"]]);
     expect(
       rowIds(
-        transcriptRows([
-          agentPost(1, "engine", at(26, 23, 58)),
-          agentPost(2, "engine", at(27, 0, 3)),
-        ]),
+        rowsOf([agentPost(1, "engine", at(26, 23, 58)), agentPost(2, "engine", at(27, 0, 3))]),
       ),
     ).toEqual([["1"], ["2"]]);
     expect(
       rowIds(
-        transcriptRows(
-          [agentPost(1, "engine", at(26, 10, 0)), agentPost(2, "engine", at(26, 10, 1))],
-          1,
-        ),
+        rowsOf([agentPost(1, "engine", at(26, 10, 0)), agentPost(2, "engine", at(26, 10, 1))], 1),
       ),
     ).toEqual([["1"], ["2"]]);
   });
 
+  test("a row keeps its first message's identity as later messages join it", () => {
+    const rows = rowsOf([agentPost(1, "engine"), agentPost(2, "engine")]);
+    expect(rows.map(({ key }) => key)).toEqual(["1"]);
+  });
+
   test("user messages stand alone", () => {
     const messages = [userPost(1, at(26, 10, 0)), userPost(2, at(26, 10, 1))];
-    expect(rowIds(transcriptRows(messages))).toEqual([["1"], ["2"]]);
+    expect(rowIds(rowsOf(messages))).toEqual([["1"], ["2"]]);
   });
 
   test("membership changes merge while a question remains an ordinary agent message", () => {
@@ -90,7 +114,7 @@ describe("transcript rows", () => {
       event(2, { type: "member_joined", member: { ...member, id: "engine", name: "Engine" } }),
       { ...agentPost(3, "lead", at(26, 9, 1)), request: true as const },
     ];
-    expect(rowIds(transcriptRows(messages))).toEqual([["1", "2"], ["3"]]);
+    expect(rowIds(rowsOf(messages))).toEqual([["1", "2"], ["3"]]);
   });
 
   test("only consecutive artifact shares from the same agent merge", () => {
@@ -102,38 +126,150 @@ describe("transcript rows", () => {
         artifact,
       }),
     );
-    expect(rowIds(transcriptRows(messages))).toEqual([["1", "2"], ["3"], ["4"], ["5"]]);
+    expect(rowIds(rowsOf(messages))).toEqual([["1", "2"], ["3"], ["4"], ["5"]]);
   });
+});
 
+describe("transcript dividers", () => {
   test("a day divider precedes the first row and each row that begins a new day", () => {
-    const rows = transcriptRows([
+    const rows = rowsOf([
       agentPost(1, "engine", at(26, 23, 50)),
       userPost(2, at(26, 23, 55)),
       agentPost(3, "engine", at(27, 0, 5)),
     ]);
-    expect(rows.map(({ startsDay }) => startsDay)).toEqual([true, false, true]);
+    expect(rows.map(({ divider }) => divider?.day?.getDate())).toEqual([26, undefined, 27]);
   });
 
   test("the New rule precedes the first unread row, unless nothing loaded comes before it", () => {
-    const messages = [
-      userPost(1, at(26, 10, 0)),
-      agentPost(2, "lead", at(26, 10, 1)),
-      agentPost(3, "lead", at(26, 10, 2)),
-    ];
-    expect(transcriptRows(messages, 2).map(({ startsUnread }) => startsUnread)).toEqual([
+    const messages = [userPost(1), agentPost(2, "lead"), agentPost(3, "lead")];
+    expect(rowsOf(messages, 2).map(({ divider }) => divider?.unread ?? false)).toEqual([
       false,
       false,
       true,
     ]);
-    expect(transcriptRows(messages, 0).some(({ startsUnread }) => startsUnread)).toBe(false);
+    expect(rowsOf(messages, 0).some(({ divider }) => divider?.unread)).toBe(false);
+  });
+
+  test("a day and the unread messages beginning together share one divider", () => {
+    const rows = rowsOf(
+      [agentPost(1, "lead", at(26, 18, 0)), agentPost(2, "lead", at(27, 8, 0))],
+      1,
+    );
+    expect(rows[1]!.divider).toEqual({ day: new Date(at(27, 8, 0)), unread: true });
+  });
+});
+
+describe("agent run entries", () => {
+  test("an entry names who it wakes, and none when it's for the user", () => {
+    const addressee = (agentId: string, content: string) =>
+      runOf([agentPost(1, agentId, undefined, content)])[0]!.addressee;
+    expect(addressee("lead", "@engine Build the lift.")).toBe("Engine");
+    expect(addressee("engine", "Lift built.")).toBe("Lead");
+    expect(addressee("lead", "@everyone Standup.")).toBe("Everyone");
+    expect(addressee("lead", "The lift is ready.")).toBeUndefined();
+  });
+
+  test("the body drops the mentions it opens with, since the addressee names them", () => {
+    const [entry] = runOf([agentPost(1, "lead", undefined, "@engine Build the lift.")]);
+    expect(entry!.body).toBe("Build the lift.");
+    expect(entry!.message.content).toBe("@engine Build the lift.");
+  });
+
+  test("only a run's first message names its author", () => {
+    const run = runOf([agentPost(1, "lead"), agentPost(2, "lead")]);
+    expect(run.map(({ startsRun }) => startsRun)).toEqual([true, false]);
+  });
+
+  test("after the first, a header appears only when the addressee changes or the lead asks", () => {
+    const run = runOf([
+      agentPost(1, "lead", undefined, "@engine Build the lift."),
+      agentPost(2, "lead", undefined, "@engine Then the stairs."),
+      agentPost(3, "lead", undefined, "@files Index the plans."),
+      { ...agentPost(4, "lead", undefined, "@files Which plan?"), request: true },
+    ]);
+    expect(run.map(({ showHeader }) => showHeader)).toEqual([true, false, true, true]);
+  });
+
+  test("coordination between agents collapses; messages for the user and requests stay whole", () => {
+    const run = runOf([
+      agentPost(1, "lead", undefined, "@engine Build the lift."),
+      agentPost(2, "lead", undefined, "The lift is ready."),
+      { ...agentPost(3, "lead", undefined, "@engine Which floor?"), request: true },
+    ]);
+    expect(run.map(({ collapsible }) => collapsible)).toEqual([true, false, false]);
+  });
+
+  test("a request stays pending until a later user message acknowledges it", () => {
+    const asked = { ...agentPost(1, "lead"), request: true as const };
+    expect(runOf([asked])[0]!.request).toBe("pending");
+    expect(runOf([asked, userPost(3)])[0]!.request).toBe("acknowledged");
+  });
+
+  test("a later request pends while an earlier reply keeps acknowledging its own", () => {
+    const rows = rowsOf([
+      { ...agentPost(1, "lead"), request: true },
+      userPost(3),
+      { ...agentPost(4, "lead"), request: true },
+    ]);
+    const requests = rows.flatMap((row) =>
+      row.type === "agent" ? row.entries.map(({ request }) => request) : [],
+    );
+    expect(requests).toEqual(["acknowledged", "pending"]);
+  });
+});
+
+describe("your messages view", () => {
+  const yours = (messages: ChannelMessage[], unreadAfter?: number) =>
+    transcriptRows(messages, { lead, members, unreadAfter, view: "yours" });
+
+  test("shows the user's messages and agent messages for them", () => {
+    const messages = [
+      userPost(1),
+      agentPost(2, "lead", undefined, "The lift is ready."),
+      agentPost(3, "lead", undefined, "@engine Build the stairs."),
+      agentPost(4, "lead", undefined, "@everyone Standup."),
+      agentPost(5, "engine", undefined, "Stairs built."),
+      event(6, { type: "member_joined", member }),
+    ];
+    expect(rowIds(yours(messages))).toEqual([["1"], ["2"]]);
+  });
+
+  test("a request stays, even when it also addresses agents", () => {
+    const asked = {
+      ...agentPost(1, "lead", undefined, "@engine Which floor?"),
+      request: true as const,
+    };
+    expect(rowIds(yours([asked]))).toEqual([["1"]]);
+  });
+
+  test("an agent's messages for the user form one run across the coordination between them", () => {
+    const rows = yours([
+      agentPost(1, "lead", undefined, "The lift is ready."),
+      agentPost(2, "engine", undefined, "Stairs next?"),
+      agentPost(3, "lead", undefined, "@engine Yes."),
+      agentPost(4, "lead", undefined, "The stairs are next."),
+    ]);
+    expect(rowIds(rows)).toEqual([["1", "4"]]);
+  });
+
+  test("the New rule precedes the first unread message the view shows", () => {
+    const rows = yours(
+      [
+        userPost(1),
+        agentPost(2, "lead", undefined, "@engine Build the lift."),
+        agentPost(3, "lead", undefined, "The lift is ready."),
+      ],
+      1,
+    );
+    expect(rows.map(({ divider }) => divider?.unread ?? false)).toEqual([false, true]);
   });
 });
 
 describe("pending request row", () => {
-  const rows = transcriptRows([
-    userPost(1, at(26, 10, 0)),
-    agentPost(2, "lead", at(26, 10, 1)),
-    { ...agentPost(3, "lead", at(26, 10, 2)), request: true },
+  const rows = rowsOf([
+    userPost(1),
+    agentPost(2, "lead"),
+    { ...agentPost(3, "lead"), request: true },
   ]);
 
   test("locates the canonical pending question within an agent run", () => {

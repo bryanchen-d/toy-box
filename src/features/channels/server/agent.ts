@@ -7,15 +7,16 @@ import { getStateDatabase } from "@/server/database";
 import { channelAgentFromWorker, type ChannelAgentContext } from "@channels/model/worker";
 import { ChannelDatabase } from "./database";
 import { channelLeadTools, channelMemberTools } from "./tools";
+import { screenTools } from "@screens/server/tools";
 
 export async function getChannelAgentConfiguration(worker: Extract<Worker, { type: "channel" }>) {
   const channel = await new ChannelDatabase(await getStateDatabase()).getChannel(worker.channelId);
   if (!channel) throw new Error("Channel agent is incomplete.");
   const agent = channelAgentFromWorker(worker);
   const model = agent.isLead ? channel.model : agent.model;
-  const additionalInstructions = buildChannelAgentInstructions(agent, channel);
   return {
     tools: [
+      ...screenTools,
       ...artifactAppTools,
       ...appLifecycleTools,
       ...automationTools,
@@ -24,7 +25,7 @@ export async function getChannelAgentConfiguration(worker: Extract<Worker, { typ
       ...(agent.isLead ? channelLeadTools : channelMemberTools),
     ],
     directory: channel.directory,
-    additionalInstructions,
+    additionalInstructions: buildChannelAgentInstructions(agent, channel),
     disableMemory: true as const,
     ...(model ? { model } : {}),
   };
@@ -90,7 +91,7 @@ A routine is scheduled, recurring work that serves the channel's purpose. Add on
 Post a concise channel update when the plan changes, a meaningful milestone lands, or the user must decide. Do not repeat information members already shared. Add unique clarity through a decision, implication, quality judgment, or next move that creates momentum. When you need a user decision, missing context, or action, explain exactly what they need to do with send_channel_message and set request. Posting the question without it or leaving a waitingFor note alone does not flag the user. Any subsequent user message acknowledges the request, but you must judge whether it actually resolves the need. If not, send and flag a new request.
 
 ### Close the loop
-For finite work, completing the task list tells the user the work is done, so it is an evidence-backed judgment. Never complete it merely because members report success. Use the final read_channel to reassess the tasks and inspect the actual result against the purpose, each promised outcome, and the quality bar a discerning user would apply. Reopen any task with an unresolved finding, missing result, insufficient validation, or outcome you would not confidently stand behind. For user-facing software, keep validation open until the actual preview has been exercised with playwright-cli across relevant desktop, mobile, and color-scheme states and screenshots are attached to the channel. Compilation, source inspection, and validators do not satisfy this requirement. If a reviewer reports an unresolved finding, keep the corresponding task open until it is fixed and verified. Confirm that no member remains waiting and that the preview and shared artifacts reflect the result. Then post one concise mentionless update for the user that explains what was achieved, points to the running preview when available, and links only the artifacts worth opening. Never mark unfinished work done. For an ongoing or ad hoc purpose, close the current batch clearly and leave the task list ready for what comes next instead of pretending the channel itself is complete.
+For finite work, completing the task list tells the user the work is done, so it is an evidence-backed judgment. Never complete it merely because members report success. Use the final read_channel to reassess the tasks and inspect the actual result against the purpose, each promised outcome, and the quality bar a discerning user would apply. Reopen any task with an unresolved finding, missing result, insufficient validation, or outcome you would not confidently stand behind. For user-facing software, keep validation open until the actual preview has been exercised and screenshots are attached to the channel. Use playwright-cli for web previews across relevant desktop, mobile, and color-scheme states. For native apps, use provider computer-use tools to exercise the app and verify visible outcomes. Use list_screens and the channel preview to show the running window to the user. Compilation, source inspection, and validators do not satisfy this requirement. If a reviewer reports an unresolved finding, keep the corresponding task open until it is fixed and verified. Confirm that no member remains waiting and that the preview and shared artifacts reflect the result. Then post one concise mentionless update for the user that explains what was achieved, points to the running preview when available, and links only the artifacts worth opening. Never mark unfinished work done. For an ongoing or ad hoc purpose, close the current batch clearly and leave the task list ready for what comes next instead of pretending the channel itself is complete.
 `
     : "";
 
@@ -107,9 +108,9 @@ Use judgment to choose the smallest useful action:
 - Set a brief status before work that takes time, then do the work. Skip status for catch-up and quick replies. When a channel message prompted the work, link its sequence. Use lookingAt only while reviewing a referenced file, artifact, attachment, or URL. Use workingOn for other substantive work. Otherwise omit both targets.
 
 Always respect these channel boundaries:
-- Attach screenshots and other images to the message that presents them. Do not share images as artifacts.
+- Attach screenshots, other images, and recordings to the message that presents them; attach a generated image by its saved file path. When motion or a multi-step flow matters, record it with playwright-cli video-start <path> and video-stop. Do not share them as artifacts. The channel displays attachments and shared artifacts, so don't repeat their file paths in the message.
 - Use an artifact for one canonical shared file the group needs to read, edit, build on, or review together, such as a plan, spec, design, review, diagram, or single-file static HTML prototype. Share the existing file once without copying it, then keep working in that same file because later edits appear automatically. Never paste that document into a message or copy or reshare it to validate, publish, rename, or mark it final. Put substantive document content in the artifact and keep the channel handoff to a concise summary. Do not share project entrypoints or files that require a build, server, or supporting assets.
-- Use the channel preview for a runnable app or experience that requires a server, build, or supporting files. Only the lead publishes its URL.
+- Use the channel preview for a runnable app or experience. Only the lead publishes it through update_channel: {kind:"url",url} for a web experience or {kind:"screen",screenId} for a display or window from list_screens. Screens are host capabilities, not agent-owned resources.
 
 ## Finish
 Before publishing a result or handoff, call read_channel again. Mention every member whose waiting status the message fulfills so they wake. Publish only new useful information.

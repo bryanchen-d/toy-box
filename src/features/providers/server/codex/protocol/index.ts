@@ -1,6 +1,7 @@
-// Generated from codex-cli 0.153.2 (experimental app-server schema).
+// Generated from codex-cli 0.161.0 (experimental app-server schema).
 // OpenAI Codex, Apache-2.0: https://github.com/openai/codex
 // Regenerate using ./generate.ts. Do not edit wire types by hand.
+/* oxlint-disable typescript/no-redundant-type-constituents -- Upstream unions list known variants beside open fallbacks. */
 
 export type InitializeParams = {
   clientInfo: ClientInfo;
@@ -13,6 +14,11 @@ export type ClientInfo = { name: string; title: string | null; version: string }
  * Client-declared capabilities negotiated during initialize.
  */
 export type InitializeCapabilities = {
+  /**
+   * Use explicit gateway OAuth login instead of automatic browser authorization.
+   * Applies to this app-server's gateway runtime; later connections cannot undo it.
+   */
+  explicitGatewayOauth?: boolean;
   /**
    * Opt into receiving experimental API methods and fields.
    */
@@ -112,6 +118,9 @@ export type Model = {
   supportedReasoningEfforts: Array<ReasoningEffortOption>;
   defaultReasoningEffort: ReasoningEffort;
   inputModalities: Array<InputModality>;
+  /**
+   * @deprecated Always false; models no longer support personality selection.
+   */
   supportsPersonality: boolean;
   /**
    * Multi-agent runtime declared by this model, when available.
@@ -126,6 +135,10 @@ export type Model = {
    * Catalog default service tier id for this model, when one is configured.
    */
   defaultServiceTier: string | null;
+  /**
+   * Null when the catalog does not provide access-program metadata.
+   */
+  availableAccessPrograms: ModelAccessPrograms | null;
   isDefault: boolean;
 };
 
@@ -138,6 +151,22 @@ export type InputModality = "text" | "image" | "audio";
  * See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning
  */
 export type ReasoningEffort = string;
+
+/**
+ * Caller-specific explicit access programs advertised by model discovery.
+ */
+export type ModelAccessPrograms = {
+  /**
+   * Accepted explicit selections.
+   */
+  cyber: Array<CyberAccessProgram>;
+};
+
+/**
+ * Requested cyber treatment for an OpenAI model turn.
+ * Authorization and model-tier restrictions remain server-owned.
+ */
+export type CyberAccessProgram = "standard" | "daybreakBlue" | "daybreakRed";
 
 export type ModelAvailabilityNux = { message: string };
 
@@ -172,7 +201,11 @@ export type GetAccountParams = {
   refreshToken?: boolean;
 };
 
-export type GetAccountResponse = { account: Account | null; requiresOpenaiAuth: boolean };
+export type GetAccountResponse = {
+  account: Account | null;
+  requiresOpenaiAuth: boolean;
+  workspaceRouting: WorkspaceRouting | null;
+};
 
 export type Account =
   | { type: "apiKey" }
@@ -185,6 +218,7 @@ export type PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -197,6 +231,17 @@ export type PlanType =
   | "edu_plus"
   | "edu_pro"
   | "unknown";
+
+export type WorkspaceRouting = {
+  chatgptAccountId: string;
+  backendOrigin: string;
+  accountRoutingOverride: AccountRoutingOverride;
+};
+
+/**
+ * Backend routing policy. Wire values match the accounts/check contract.
+ */
+export type AccountRoutingOverride = "NO_CONSTRAINT" | "us" | "us_cr";
 
 export type SkillsListParams = {
   /**
@@ -295,6 +340,12 @@ export type ThreadListParams = {
    */
   sourceKinds?: Array<ThreadSourceKind> | null;
   /**
+   * Optional originator allowlist, matching any supplied value exactly.
+   * Supported by hosted backends only; the local app-server rejects a nonempty list.
+   * Omitted or empty lists leave originators unrestricted.
+   */
+  originators?: Array<string> | null;
+  /**
    * Optional archived filter; when set to true, only archived threads are returned.
    * If false or null, only non-archived threads are returned.
    */
@@ -372,6 +423,12 @@ export type Thread = {
    * Identifier for this thread. Codex-generated thread IDs are UUIDv7.
    */
   id: string;
+  /**
+   * Current environments for a loaded thread, in priority order, primary first.
+   * `null` means the thread is not loaded or the server does not expose its selection.
+   * An empty list means no environments are selected. This does not report connection status.
+   */
+  environments: Array<ThreadEnvironment> | null;
   /**
    * Optional implementation-specific thread data.
    */
@@ -455,6 +512,11 @@ export type Thread = {
    */
   cliVersion: string;
   /**
+   * Originator recorded when the thread was created, independent of its current client or executor.
+   * Null when the recorded originator is unavailable.
+   */
+  originator: string | null;
+  /**
    * Origin of the thread (CLI, VSCode, codex exec, codex app-server, etc.).
    */
   source: SessionSource;
@@ -484,7 +546,11 @@ export type Thread = {
    */
   name: string | null;
   /**
-   * Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read`
+   * Saved Daybreak choice, independent of turn execution. Null if unset.
+   */
+  daybreakEnabled: boolean | null;
+  /**
+   * Only populated on `thread/resume`, `thread/fork`, and `thread/read`
    * (when `includeTurns` is true) responses.
    * For all other responses and notifications returning a Thread,
    * the turns field will be an empty list.
@@ -526,6 +592,39 @@ export type AgentPath = string;
  * Codex-generated thread IDs are UUIDv7, and some use cases rely on that.
  */
 export type ThreadId = string;
+
+/**
+ * An environment selected by a loaded thread, independent of connection status.
+ */
+export type ThreadEnvironment = {
+  environmentId: string;
+  cwd: LegacyAppPathString;
+  runtimeWorkspaceRoots: Array<LegacyAppPathString>;
+};
+
+/**
+ * A UTF-8 path for preserving raw path compatibility at the app-server API
+ * boundary while Codex migrates to [`PathUri`].
+ *
+ * Supports storing arbitrary strings read from the API and converting to and
+ * from [`PathUri`] using an explicitly selected native path convention.
+ *
+ * When converting from [`PathUri`], "native" refers to the supplied
+ * [`PathConvention`], which may be foreign to the operating system running
+ * this process. The inner string is private so path-producing code must use a
+ * path conversion method instead of bypassing the intended conversion
+ * boundary. Non-UTF-8 paths are converted to UTF-8 lossily because this API
+ * value is serialized as a JSON string.
+ *
+ * Deserialization and [`Self::from_string`] accept any UTF-8 string without
+ * interpreting or validating it. Use [`Self::from_string`] when a caller
+ * already owns legacy app-server path text and needs to preserve its wire
+ * spelling; use [`Self::from_path`], [`Self::from_abs_path`], or
+ * [`Self::from_path_uri`] when converting an actual path value. Relative
+ * path text remains valid until an operation such as [`Self::to_path_uri`]
+ * requires an absolute path.
+ */
+export type LegacyAppPathString = string;
 
 /**
  * Extra app-server data for a thread.
@@ -582,7 +681,7 @@ export type Turn = {
   itemsView: TurnItemsView;
   status: TurnStatus;
   /**
-   * Only populated when the Turn's status is failed.
+   * Error associated with a failed or interrupted turn.
    */
   error: TurnError | null;
   /**
@@ -674,9 +773,13 @@ export type ThreadItem =
       arguments: JsonValue;
       appContext: McpToolCallAppContext | null;
       /**
-       * Deprecated: use `appContext.resourceUri` instead.
+       * Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.
        */
       mcpAppResourceUri?: string;
+      /**
+       * Presentation captured from the invoked descriptor; absent in older history.
+       */
+      mcpAppUi: McpAppUi | null;
       pluginId: string | null;
       readOnlyHint: boolean | null;
       result: McpToolCallResult | null;
@@ -763,7 +866,7 @@ export type FunctionCallOutputBody = string | Array<FunctionCallOutputContentIte
  */
 export type FunctionCallOutputContentItem =
   | { type: "input_text"; text: string }
-  | { type: "input_image"; image_url: string; detail?: ImageDetail }
+  | ({ type: "input_image"; detail?: ImageDetail } & ({ image_url: string } | { file_id: string }))
   | { type: "input_audio"; audio_url: string }
   | { type: "encrypted_content"; encrypted_content: string };
 
@@ -784,30 +887,6 @@ export type ImageGenerationFailure = {
   limitId: string;
   resetsAt: number | null;
 };
-
-/**
- * A UTF-8 path for preserving raw path compatibility at the app-server API
- * boundary while Codex migrates to [`PathUri`].
- *
- * Supports storing arbitrary strings read from the API and converting to and
- * from [`PathUri`] using an explicitly selected native path convention.
- *
- * When converting from [`PathUri`], "native" refers to the supplied
- * [`PathConvention`], which may be foreign to the operating system running
- * this process. The inner string is private so path-producing code must use a
- * path conversion method instead of bypassing the intended conversion
- * boundary. Non-UTF-8 paths are converted to UTF-8 lossily because this API
- * value is serialized as a JSON string.
- *
- * Deserialization and [`Self::from_string`] accept any UTF-8 string without
- * interpreting or validating it. Use [`Self::from_string`] when a caller
- * already owns legacy app-server path text and needs to preserve its wire
- * spelling; use [`Self::from_path`], [`Self::from_abs_path`], or
- * [`Self::from_path_uri`] when converting an actual path value. Relative
- * path text remains valid until an operation such as [`Self::to_path_uri`]
- * requires an absolute path.
- */
-export type LegacyAppPathString = string;
 
 /**
  * Classifies an assistant message as interim commentary or final answer text.
@@ -899,6 +978,13 @@ export type PatchChangeKind =
 
 export type HookPromptFragment = { text: string; hookRunId: string };
 
+/**
+ * UI resource and display preference for model invocations, captured from the tool descriptor.
+ */
+export type McpAppUi = { resourceUri: string; preferredModelDisplayMode: McpAppDisplayMode };
+
+export type McpAppDisplayMode = "inline" | "fullscreen";
+
 export type McpToolCallAppContext = {
   connectorId: string;
   linkId: string | null;
@@ -939,7 +1025,7 @@ export type UserInput =
        */
       text_elements: Array<TextElement>;
     }
-  | { type: "image"; detail?: ImageDetail; url: string }
+  | ({ type: "image"; detail?: ImageDetail } & ({ url: string } | { fileId: string }))
   | { type: "localImage"; detail?: ImageDetail; path: string }
   | { type: "audio"; url: string }
   | { type: "localAudio"; path: string }
@@ -980,9 +1066,11 @@ export type CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | { httpConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamConnectionFailed: { httpStatusCode: number | null } }
   | "internalServerError"
@@ -993,7 +1081,9 @@ export type CodexErrorInfo =
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
   | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
   | { activeTurnNotSteerable: { turnKind: NonSteerableTurnKind } }
-  | "other";
+  | "other"
+  | string
+  | { [key: string]: unknown };
 
 export type NonSteerableTurnKind = "review" | "compact";
 
@@ -1047,6 +1137,9 @@ export type ThreadStartParams = {
   serviceName?: string | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
+  /**
+   * @deprecated `friendly` and `pragmatic` no longer select a style.
+   */
   personality?: Personality | null;
   /**
    * @deprecated Ignored. Use Ultra reasoning effort for proactive multi-agent behavior.
@@ -1067,6 +1160,12 @@ export type ThreadStartParams = {
    * the assignment; ephemeral threads expose it only in live responses.
    */
   projectId?: string | null;
+  /**
+   * Initial Daybreak choice for this persistent thread. Omitted or null
+   * leaves it unset. This does not select a turn's `cyberAccessProgram`
+   * or grant access. Not supported for ephemeral threads.
+   */
+  daybreakEnabled?: boolean | null;
   /**
    * Optional sticky environments for this thread.
    *
@@ -1099,6 +1198,9 @@ export type ThreadStartParams = {
  */
 export type MultiAgentMode = { custom: string } | "explicitRequestOnly" | "proactive";
 
+/**
+ * Deprecated: `friendly` and `pragmatic` no longer select a style.
+ */
 export type Personality = "none" | "friendly" | "pragmatic";
 
 /**
@@ -1187,6 +1289,10 @@ export type ThreadStartResponse = {
   model: string;
   modelProvider: string;
   serviceTier: string | null;
+  /**
+   * Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
+   */
+  disabledPluginIds: Array<string>;
   cwd: AbsolutePathBuf;
   /**
    * Thread-scoped runtime workspace roots used to materialize
@@ -1303,6 +1409,10 @@ export type ThreadResumeParams = {
   config?: { [key in string]?: JsonValue } | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
+  /**
+   * @deprecated `friendly` and `pragmatic` no longer select a style.
+   * Changing this does not rewrite the thread's existing instructions.
+   */
   personality?: Personality | null;
   /**
    * When true, return only thread metadata and live-resume state without
@@ -1434,6 +1544,7 @@ export type ResponseItem =
       encrypted_content: string;
       internal_chat_message_metadata_passthrough?: InternalChatMessageMetadataPassthrough;
     }
+  | { type: "configuration_update"; reasoning: ConfigurationReasoning }
   | { type: "compaction_trigger" }
   | {
       type: "context_compaction";
@@ -1447,9 +1558,14 @@ export type AgentMessageInputContent =
   | { type: "input_text"; text: string }
   | { type: "encrypted_content"; encrypted_content: string };
 
+/**
+ * Reasoning settings interpreted by the backend for the routed model.
+ */
+export type ConfigurationReasoning = { effort: ReasoningEffort };
+
 export type ContentItem =
   | { type: "input_text"; text: string }
-  | { type: "input_image"; image_url: string; detail?: ImageDetail }
+  | ({ type: "input_image"; detail?: ImageDetail } & ({ image_url: string } | { file_id: string }))
   | { type: "input_audio"; audio_url: string }
   | { type: "output_text"; text: string };
 
@@ -1511,6 +1627,10 @@ export type ThreadResumeResponse = {
   model: string;
   modelProvider: string;
   serviceTier: string | null;
+  /**
+   * Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
+   */
+  disabledPluginIds: Array<string>;
   cwd: AbsolutePathBuf;
   /**
    * Thread-scoped runtime workspace roots used to materialize
@@ -1538,6 +1658,10 @@ export type ThreadResumeResponse = {
   activePermissionProfile: ActivePermissionProfile | null;
   reasoningEffort: ReasoningEffort | null;
   /**
+   * Effective collaboration mode. Absent when resuming from an older server.
+   */
+  collaborationMode: CollaborationMode | null;
+  /**
    * @deprecated Always `explicitRequestOnly`. Use `reasoningEffort` for Ultra behavior.
    */
   multiAgentMode: MultiAgentMode;
@@ -1559,6 +1683,25 @@ export type ThreadResumeResponse = {
    * `sortDirection: "desc"`. The first page includes the item identified by the cursor.
    */
   itemsBackwardsCursor: string | null;
+};
+
+/**
+ * Collaboration mode for a Codex session.
+ */
+export type CollaborationMode = { mode: ModeKind; settings: Settings };
+
+/**
+ * Initial collaboration mode to use when the TUI starts.
+ */
+export type ModeKind = "plan" | "default";
+
+/**
+ * Settings for a collaboration mode.
+ */
+export type Settings = {
+  model: string;
+  reasoning_effort: ReasoningEffort | null;
+  developer_instructions: string | null;
 };
 
 export type TurnsPage = {
@@ -1665,33 +1808,13 @@ export type ThreadRevertResponse = {
   itemsBackwardsCursor: string | null;
 };
 
-/**
- * DEPRECATED: `thread/rollback` will be removed soon.
- */
-export type ThreadRollbackParams = {
-  threadId: string;
-  /**
-   * The number of turns to drop from the end of the thread. Must be >= 1.
-   *
-   * This only modifies the thread's history and does not revert local file changes
-   * that have been made by the agent. Clients are responsible for reverting these changes.
-   */
-  numTurns: number;
-};
-
-export type ThreadRollbackResponse = {
-  /**
-   * The updated thread after applying the rollback, with `turns` populated.
-   *
-   * The ThreadItems stored in each Turn are lossy since we explicitly do not
-   * persist all agent interactions, such as command executions. This is the same
-   * behavior as `thread/resume`.
-   */
-  thread: Thread;
-};
-
 export type TurnStartParams = {
   threadId: string;
+  /**
+   * Replace this thread's disabled plugin IDs.
+   * Omitted/null preserves the list; [] clears it.
+   */
+  disabledPluginIds?: Array<string> | null;
   clientUserMessageId?: string | null;
   input: Array<UserInput>;
   /**
@@ -1772,7 +1895,8 @@ export type TurnStartParams = {
    */
   summary?: ReasoningSummary | null;
   /**
-   * Override the personality for this turn and subsequent turns.
+   * @deprecated `friendly` and `pragmatic` no longer select a style.
+   * Changing this does not rewrite the thread's existing instructions.
    */
   personality?: Personality | null;
   /**
@@ -1793,29 +1917,10 @@ export type TurnStartParams = {
    */
   multiAgentMode?: MultiAgentMode | null;
   /**
-   * EXPERIMENTAL - Request a workspace-authorized cyber program for this
+   * EXPERIMENTAL - Request an authorized cyber program for this
    * turn. Omission preserves automatic behavior. This does not grant access.
    */
   cyberAccessProgram?: CyberAccessProgram | null;
-};
-
-/**
- * Collaboration mode for a Codex session.
- */
-export type CollaborationMode = { mode: ModeKind; settings: Settings };
-
-/**
- * Initial collaboration mode to use when the TUI starts.
- */
-export type ModeKind = "plan" | "default";
-
-/**
- * Settings for a collaboration mode.
- */
-export type Settings = {
-  model: string;
-  reasoning_effort: ReasoningEffort | null;
-  developer_instructions: string | null;
 };
 
 /**
@@ -1828,12 +1933,6 @@ export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type AdditionalContextEntry = { value: string; kind: AdditionalContextKind };
 
 export type AdditionalContextKind = "untrusted" | "application";
-
-/**
- * Requested cyber treatment for a ChatGPT-authenticated Codex turn.
- * Authorization and model-tier restrictions remain server-owned.
- */
-export type CyberAccessProgram = "standard" | "daybreakBlue" | "daybreakRed";
 
 export type TurnToolOutput = {
   name: string;
@@ -1994,7 +2093,6 @@ export type CodexMethods = {
   "thread/delete": { params: ThreadDeleteParams; result: ThreadDeleteResponse };
   "thread/unsubscribe": { params: ThreadUnsubscribeParams; result: ThreadUnsubscribeResponse };
   "thread/revert": { params: ThreadRevertParams; result: ThreadRevertResponse };
-  "thread/rollback": { params: ThreadRollbackParams; result: ThreadRollbackResponse };
   "turn/start": { params: TurnStartParams; result: TurnStartResponse };
   "turn/steer": { params: TurnSteerParams; result: TurnSteerResponse };
   "turn/interrupt": { params: TurnInterruptParams; result: TurnInterruptResponse };

@@ -12,7 +12,8 @@ import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePan
 import { PaneStatus } from "@workspace/components/panes/shell/PaneSlots";
 import { WorkersMenu } from "@workers/components/WorkersMenu";
 import { AppStateStore } from "../host/state";
-import { AppErrorBoundary, AppHost, AppMessage, appErrorMessage } from "../host/AppHost";
+import { PaneMessage } from "@/shared/ui/pane-message";
+import { AppErrorBoundary, AppHost, appErrorMessage } from "../host/AppHost";
 
 export function AppPane({ pane, variant }: { pane: AppWorkspacePane; variant: PaneVariant }) {
   const {
@@ -36,7 +37,7 @@ export function AppPane({ pane, variant }: { pane: AppWorkspacePane; variant: Pa
 
   if (!app) {
     return (
-      <AppMessage
+      <PaneMessage
         title="App not found"
         detail="This saved app may have been deleted in another Toy Box window."
       />
@@ -44,7 +45,7 @@ export function AppPane({ pane, variant }: { pane: AppWorkspacePane; variant: Pa
   }
   if (!definition) {
     return (
-      <AppMessage
+      <PaneMessage
         title="App definition unavailable"
         detail={`The installed TSX definition "${app.definitionId}" could not be loaded.`}
       />
@@ -53,7 +54,7 @@ export function AppPane({ pane, variant }: { pane: AppWorkspacePane; variant: Pa
 
   return (
     <ClientOnly
-      fallback={<AppMessage title="Loading app" detail="Getting everything ready…" loading />}
+      fallback={<PaneMessage title="Loading app" detail="Getting everything ready…" loading />}
     >
       <AppErrorBoundary
         key={`${app.id}:${definition.revision}`}
@@ -101,11 +102,11 @@ function MountedApp({
   const bundleQuery = useQuery(appQueries.bundle(definition.id, definition.revision));
 
   if (bundleQuery.isPending) {
-    return <AppMessage title={`Loading ${app.title}`} detail="Loading app…" loading />;
+    return <PaneMessage title={`Loading ${app.title}`} detail="Loading app…" loading />;
   }
   if (bundleQuery.isError) {
     return (
-      <AppMessage
+      <PaneMessage
         title={`Unable to load ${app.title}`}
         detail={appErrorMessage(bundleQuery.error)}
       />

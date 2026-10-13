@@ -174,6 +174,61 @@ describe("history replay", () => {
     expect(assistantToolCalls(state)).toEqual([]);
   });
 
+  test("restores worker tool calls but only opens a child pane when explicitly requested", async () => {
+    const spawnEvents = [
+      { type: "user.message", data: { content: "Delegate a review" } },
+      {
+        type: "tool.execution_start",
+        data: {
+          toolCallId: "spawn-child",
+          toolName: "spawn_worker",
+          arguments: { task: "Review the runtime" },
+        },
+      },
+      {
+        type: "tool.execution_complete",
+        data: {
+          toolCallId: "spawn-child",
+          success: true,
+          result: { content: JSON.stringify({ sessionId: "child", opened: true }) },
+        },
+      },
+    ] as SdkSessionEvent[];
+
+    const spawned = await replayHistory(spawnEvents);
+    expect(spawned.linkedSessionIds).toEqual([]);
+    expect(assistantToolCalls(spawned)).toEqual([
+      {
+        id: "spawn-child",
+        name: "spawn_worker",
+        arguments: { task: "Review the runtime" },
+        result: {
+          content: JSON.stringify({ sessionId: "child", opened: true }),
+          success: true,
+          details: undefined,
+        },
+      },
+    ]);
+
+    const opened = await replayHistory([
+      ...spawnEvents,
+      {
+        type: "tool.execution_start",
+        data: {
+          toolCallId: "open-child",
+          toolName: "open_session",
+          arguments: { sessionId: "child" },
+        },
+      },
+      {
+        type: "tool.execution_complete",
+        data: { toolCallId: "open-child", success: true },
+      },
+    ] as SdkSessionEvent[]);
+    expect(opened.linkedSessionIds).toEqual(["child"]);
+    expect(assistantToolCalls(opened)).toEqual(assistantToolCalls(spawned));
+  });
+
   test("keeps omitted tools out of the transcript", async () => {
     const state = await replayHistory([
       { type: "user.message", data: { content: "Check status" } },

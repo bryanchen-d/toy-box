@@ -1,7 +1,7 @@
 import { Separator } from "@/shared/ui/separator";
 import {
   ActionSpacer,
-  BrowseFilesButton,
+  BrowseMenu,
   HyperButton,
   SidebarSplitButton,
   TerminalToggle,
@@ -29,6 +29,7 @@ export function SidebarRail({
   onCreateAutomation,
   onCreateChannel,
   onBrowseFiles,
+  onBrowseScreens,
   onToggleHyper,
   isHyperOpen,
   onToggleTerminal,
@@ -40,6 +41,7 @@ export function SidebarRail({
   onCreateAutomation: () => void;
   onCreateChannel: () => void;
   onBrowseFiles: () => void;
+  onBrowseScreens: () => void;
   onToggleHyper: () => void;
   isHyperOpen: boolean;
   onToggleTerminal: () => void;
@@ -75,7 +77,7 @@ export function SidebarRail({
       <div className="min-h-0 flex-1" />
 
       <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
-      <BrowseFilesButton onBrowseFiles={onBrowseFiles} />
+      <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="right" />
       <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
       <Separator className={SEPARATOR} />
       <ActionSpacer />

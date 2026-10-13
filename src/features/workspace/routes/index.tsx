@@ -26,6 +26,7 @@ import {
 import {
   createAppPane,
   createEditorPaneId,
+  createScreenPane,
   deriveOpenSessionIds,
   deriveReachablePaneIds,
   deriveVisibleWorkspacePanes,
@@ -50,7 +51,7 @@ import {
   filterSessionList,
   type SessionFilters,
 } from "@sessions/components/sidebar/sessionFilters";
-import { sessionQueries } from "@sessions/queries";
+import { selectTopLevelSessions, sessionQueries } from "@sessions/queries";
 import { providerQueries } from "@providers/queries";
 import { useHasModels } from "@providers/useModels";
 import { channelQueries } from "@channels/queries";
@@ -69,9 +70,10 @@ const searchSchema = z
     files: z.array(workspaceFileSchema).optional(),
     apps: z.array(z.string()).optional(),
     channels: z.array(z.string()).optional(),
+    screens: z.array(z.string()).optional(),
   })
-  .transform(({ sessions = [], files = [], apps = [], channels = [] }) => {
-    const roots = deriveWorkspaceRootPanes(sessions, files, apps, channels);
+  .transform(({ sessions = [], files = [], apps = [], channels = [], screens = [] }) => {
+    const roots = deriveWorkspaceRootPanes(sessions, files, apps, channels, screens);
     const normalizedSessions = roots.flatMap((pane) =>
       pane.kind === "session" ? [pane.sessionId] : [],
     );
@@ -80,11 +82,15 @@ const searchSchema = z
     const normalizedChannels = roots.flatMap((pane) =>
       pane.kind === "channel" ? [pane.channelId] : [],
     );
+    const normalizedScreens = roots.flatMap((pane) =>
+      pane.kind === "screen" ? [pane.screenId] : [],
+    );
     return {
       sessions: normalizedSessions.length > 0 ? normalizedSessions : undefined,
       files: normalizedFiles.length > 0 ? normalizedFiles : undefined,
       apps: normalizedApps.length > 0 ? normalizedApps : undefined,
       channels: normalizedChannels.length > 0 ? normalizedChannels : undefined,
+      screens: normalizedScreens.length > 0 ? normalizedScreens : undefined,
     };
   });
 
@@ -150,6 +156,10 @@ function WorkspacePage() {
     select: (search) => search.files ?? [],
     structuralSharing: true,
   });
+  const selectedScreenIds = Route.useSearch({
+    select: (search) => search.screens ?? [],
+    structuralSharing: true,
+  });
   const initialLayout = Route.useLoaderData();
   const { isMobile: isMobileLayout, hydrated } = useViewport();
 
@@ -170,6 +180,7 @@ function WorkspacePage() {
               files: undefined,
               apps: undefined,
               channels: undefined,
+              screens: undefined,
             }
           : prev;
         return { ...search, [key]: next.length > 0 ? next : undefined };
@@ -214,7 +225,7 @@ function WorkspacePage() {
     openWorkspaceFile(machineFile(path));
   }
 
-  function closeWorkspaceRoot(key: "apps" | "channels", id: string) {
+  function closeWorkspaceRoot(key: "apps" | "channels" | "screens", id: string) {
     void updateWorkspaceRoot(key, (current) => current.filter((open) => open !== id), {
       replaceHistory: true,
     });
@@ -236,6 +247,17 @@ function WorkspacePage() {
     else openWorkspaceFile(file);
   }
 
+  async function openScreen(screenId: string) {
+    const paneId = createScreenPane(screenId).id;
+    if (!openPanes.some((pane) => pane.id === paneId)) {
+      const full = openPanes.length >= MAX_WORKSPACE_PANES;
+      await updateWorkspaceRoot("screens", (ids) => (full ? [screenId] : [...ids, screenId]), {
+        replaceWorkspace: full,
+      });
+    }
+    focusWorkspaceSurfacePane("main", paneId);
+  }
+
   const primarySelectedSessionId = selectedSessionIds[0];
   const panePublications = useSelector(workspaceSurfaces.main.panePublications);
   const hyperPanePublications = useSelector(workspaceSurfaces.hyper.panePublications);
@@ -244,6 +266,7 @@ function WorkspacePage() {
     openFiles,
     selectedAppIds,
     selectedChannelIds,
+    selectedScreenIds,
   );
   const rootPaneIds = new Set(rootPanes.map((pane) => pane.id));
   const resolvePaneClose = (pane: WorkspacePane): (() => void) | undefined => {
@@ -257,6 +280,8 @@ function WorkspacePage() {
         return () => closeWorkspaceRoot("apps", pane.appId);
       case "channel":
         return () => closeWorkspaceRoot("channels", pane.channelId);
+      case "screen":
+        return () => closeWorkspaceRoot("screens", pane.screenId);
       case "inbox":
       case "canvas":
         return undefined;
@@ -468,9 +493,9 @@ function WorkspacePage() {
 
   const deferredFilter = useDeferredValue(filter.query);
 
-  // Managed sessions are presented by their automation, inbox, hyper, or parent surface.
-  const listedSessions = (sessions ?? []).filter(
-    ({ id }) => !ownership?.[id] && !hyperSessionIds.includes(id),
+  const listedSessions = selectTopLevelSessions(
+    { sessions: sessions ?? [], ownership: ownership ?? {} },
+    hyperSessionIds,
   );
 
   useWarmSessionSnapshots();
@@ -601,6 +626,7 @@ function WorkspacePage() {
     selectedSessionIds.length > 0 ||
     selectedAppIds.length > 0 ||
     selectedChannelIds.length > 0 ||
+    selectedScreenIds.length > 0 ||
     openFiles.length > 0;
   const isInboxOpen = !hasWorkspaceRoot && (!isMobileLayout || isSidebarCollapsed);
 
@@ -672,6 +698,7 @@ function WorkspacePage() {
     onOpenInbox: handleOpenInbox,
     isInboxOpen,
     onOpenFile: openFile,
+    onOpenScreen: openScreen,
     onToggleTerminal: toggleTerminal,
     isTerminalOpen,
   } satisfies SidebarProps;
@@ -731,6 +758,7 @@ function WorkspacePage() {
         onOpenApp={openAppInMainSurface}
         onOpenFile={openFile}
         onRevealFile={revealFile}
+        onOpenScreen={openScreen}
         channelOverviewPinned={isChannelOverviewPinned}
         onChannelOverviewPinnedChange={setIsChannelOverviewPinned}
       >

@@ -107,23 +107,23 @@ test("metadata messages update the public channel alongside transcript activity"
     system(102, { type: "channel_renamed", actor, name: "Release" }),
     system(103, { type: "channel_purpose_changed", actor, purpose: "Ship it" }),
     system(104, { type: "channel_directory_changed", actor, directory: "/work" }),
-    system(105, { type: "preview_changed", actor, previewUrl: "/preview" }),
+    system(105, { type: "preview_changed", actor, preview: { kind: "url", url: "/preview" } }),
   ];
   const changed = events.reduce(reduceChannelState, snapshot());
   expect(changed.channel).toMatchObject({
     name: "Release",
     purpose: "Ship it",
     directory: "/work",
-    previewUrl: "/preview",
+    preview: { kind: "url", url: "/preview" },
     latestSequence: 105,
     updatedAt: events[0]!.message.timestamp,
   });
   const cleared = [
     system(106, { type: "channel_purpose_changed", actor, purpose: null }),
     system(107, { type: "channel_directory_changed", actor, directory: null }),
-    system(108, { type: "preview_changed", actor, previewUrl: null }),
+    system(108, { type: "preview_changed", actor, preview: null }),
   ].reduce(reduceChannelState, changed);
-  expect([cleared.channel.purpose, cleared.channel.directory, cleared.channel.previewUrl]).toEqual([
+  expect([cleared.channel.purpose, cleared.channel.directory, cleared.channel.preview]).toEqual([
     undefined,
     undefined,
     undefined,

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { FolderOpen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { ChevronRight, FolderOpen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useReducedMotionConfig } from "motion/react";
 import { Typewriter } from "motion-plus/react";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
+import { Badge } from "@/shared/ui/badge";
+import { cn } from "@/shared/utils";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { useWorkspaceSessionActivity } from "@workspace/hooks/state";
@@ -14,13 +16,15 @@ import { SessionMetadataBadges } from "../location/SessionMetadataBadges";
 type SessionListItemProps = {
   session: Session;
   onSelect: (sessionId: string, toggleInWorkspace: boolean) => void;
-  onPinToggle: () => void;
+  onPinToggle?: () => void;
   onRename: () => void;
   onBrowseDirectory: (directory: string) => void;
   onDelete: () => void;
   isActive?: boolean;
   isPinned?: boolean;
   isWorktree?: boolean;
+  childCount: number;
+  renderChildren?: () => ReactNode;
 };
 
 export function SessionListItem({
@@ -33,8 +37,12 @@ export function SessionListItem({
   isActive = false,
   isPinned = false,
   isWorktree = false,
+  childCount,
+  renderChildren,
 }: SessionListItemProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const childListId = useId();
   const isDraft = !session.provider;
   const activity = useWorkspaceSessionActivity(session.id);
   const sessionLabel =
@@ -61,6 +69,28 @@ export function SessionListItem({
         activity={activity}
         title={sessionLabel}
         titleContent={<SessionListItemTitle title={sessionLabel} loading={isTitleLoading} />}
+        titleControl={
+          renderChildren && (
+            <Badge
+              variant="count"
+              render={<button type="button" />}
+              className="cursor-pointer gap-0.5 text-foreground hover:bg-muted"
+              aria-label={`${isExpanded ? "Collapse" : "Expand"} ${childCount} child ${childCount === 1 ? "session" : "sessions"} for ${sessionLabel}`}
+              aria-expanded={isExpanded}
+              aria-controls={childListId}
+              onClick={() => setIsExpanded((expanded) => !expanded)}
+            >
+              {childCount}
+              <ChevronRight
+                aria-hidden
+                className={cn(
+                  "transition-transform duration-200 motion-reduce:transition-none",
+                  isExpanded && "rotate-90",
+                )}
+              />
+            </Badge>
+          )
+        }
         icon={isPinned ? <Pin className="size-3.5 shrink-0 text-accent" aria-hidden /> : undefined}
         time={
           !isDraft &&
@@ -84,10 +114,12 @@ export function SessionListItem({
         }
         menuItems={
           <>
-            <DropdownMenuItem disabled={isDraft} onClick={onPinToggle}>
-              {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-              {isPinned ? "Unpin session" : "Pin session"}
-            </DropdownMenuItem>
+            {onPinToggle && (
+              <DropdownMenuItem disabled={isDraft} onClick={onPinToggle}>
+                {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                {isPinned ? "Unpin session" : "Pin session"}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem disabled={isDraft} onClick={onRename}>
               <Pencil className="h-3.5 w-3.5" />
               Rename session
@@ -110,10 +142,23 @@ export function SessionListItem({
         onClick={handleClick}
         titleClassName={isDraft || !session.title ? "italic text-muted-foreground" : "font-medium"}
       />
+      {renderChildren && (
+        <ul
+          id={childListId}
+          aria-label={`Child sessions of ${sessionLabel}`}
+          hidden={!isExpanded}
+          className={cn(
+            "ml-4 mt-2 flex-col gap-2 border-l border-border pl-2",
+            isExpanded ? "flex" : "hidden",
+          )}
+        >
+          {isExpanded && renderChildren()}
+        </ul>
+      )}
       {deleteOpen && (
         <DestructiveConfirmationDialog
           title="Delete session?"
-          description="This will permanently delete this session and all its messages. This action cannot be undone."
+          description="This will permanently delete this session, its child sessions, and all their messages. This action cannot be undone."
           mutation={sessionMutations.deleteSession(session.id)}
           onSubmit={onDelete}
           onOpenChange={setDeleteOpen}

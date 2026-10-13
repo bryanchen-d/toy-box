@@ -458,7 +458,8 @@ type AppShare = {
 };
 
 type WorkspaceFile =
-  { kind: "session"; sessionId: string; path: string } | { kind: "machine"; path: string };
+  | { kind: "session"; sessionId: string; path: string }
+  | { kind: "machine"; path: string };
 ```
 
 In an artifact app, use `const actions = useAppActions()`. It exposes every

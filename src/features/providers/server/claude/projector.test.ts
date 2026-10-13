@@ -4,7 +4,7 @@ import { applySessionEvent, createInitialSessionState } from "@sessions/model/re
 import { computeFileDiffStats, getToolCallFileDiffs } from "@sessions/model/fileDiffs";
 import { getModelReasoningConfig, modelCatalogKey, modelConfigurationKey } from "@providers/model";
 import { createClaudeProjector } from "./projector";
-import { restoreFailedTurns } from "./history";
+import { asLiveStream } from "./history";
 import { toModelInfo } from "./models";
 
 const native = (value: unknown) => value as SDKMessage;
@@ -38,7 +38,7 @@ test("catalog, startup, and history agree on the model and its reasoning options
     toModelInfo({
       value: "opus[1m]",
       resolvedModel: "claude-opus-5-5[1m]",
-      displayName: "Opus (1M context)",
+      displayName: "Opus 5.5",
       description: "",
       supportedEffortLevels: ["low", "high"],
     }),
@@ -87,7 +87,7 @@ test("a turn that ends in an API error fails with it once, live and in history",
     native({ type: "result", subtype: "success", is_error: true, result: limit }),
     native({ type: "system", subtype: "session_state_changed", state: "idle" }),
   ]);
-  const history = replay(restoreFailedTurns([prompt, failure]));
+  const history = replay(asLiveStream([prompt, failure]));
 
   for (const state of [live, history])
     expect(state.messages).toEqual([
@@ -109,7 +109,7 @@ test("a recoverable API error neither fails nor interrupts its turn", () => {
     native({ type: "result", subtype: "success", is_error: false }),
     native({ type: "system", subtype: "session_state_changed", state: "idle" }),
   ]);
-  const history = replay(restoreFailedTurns([prompt, removed, reply]));
+  const history = replay(asLiveStream([prompt, removed, reply]));
 
   for (const state of [live, history])
     expect(state.messages).toEqual([
@@ -137,6 +137,46 @@ test("CLI-authored messages are neither output nor a model change, unlike real m
   expect(switched.model).toEqual({ provider: "claude", name: "claude-b", reasoningEffort: "low" });
 });
 
+test("models project once per transition, and each live turn's init restates the model", () => {
+  const reply = (model: string, fields: object = {}) =>
+    native({
+      type: "assistant",
+      message: { id: model, model, content: [] },
+      parent_tool_use_id: null,
+      ...fields,
+    });
+  const init = (model: string) => native({ type: "system", subtype: "init", model });
+  const changes = (messages: SDKMessage[]) =>
+    messages
+      .flatMap(createClaudeProjector("test"))
+      .flatMap((event) =>
+        event.type === "model_changed"
+          ? [
+              [event.parentToolCallId ?? "main", event.model.name, event.model.reasoningEffort]
+                .filter(Boolean)
+                .join(" "),
+            ]
+          : [],
+      );
+  const child = { parent_tool_use_id: "child" };
+
+  expect(
+    changes([
+      init("a"),
+      reply("a"),
+      reply("a", child),
+      reply("a"),
+      reply("a", child),
+      reply("b"),
+      init("a"),
+    ]),
+  ).toEqual(["main a", "child a", "main b", "main a"]);
+  expect(changes(["high", "high", "low"].map((effort) => reply("a", { effort })))).toEqual([
+    "main a high",
+    "main a low",
+  ]);
+});
+
 test.each(["[Request interrupted by user]", "[Request interrupted by user for tool use]"])(
   "replay hides the native interruption notice %s without hiding user input",
   (text) => {
@@ -160,6 +200,33 @@ test.each(["[Request interrupted by user]", "[Request interrupted by user for to
     ]);
   },
 );
+
+test("typed commands show without their output, and model switches leave no command, live and in history", () => {
+  const cli = (content: string) =>
+    native({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
+  const command = (name: string, args = "") =>
+    `<command-name>/${name}</command-name>\n            <command-message>${name}</command-message>\n            <command-args>${args}</command-args>`;
+  const switched = cli(
+    "<local-command-stdout>Set model to `claude-sonnet-5-5`</local-command-stdout>",
+  );
+  // A typed `/cost` replays as `/usage`. A model switch sends only its output live, while native
+  // history also records it as a `/model` command.
+  const live = replay([cli(command("usage")), switched, prompt]);
+  const history = replay(
+    asLiveStream([
+      cli(command("usage")),
+      cli(command("model", "claude-sonnet-5-5")),
+      switched,
+      prompt,
+    ]),
+  );
+
+  for (const state of [live, history])
+    expect(state.messages).toEqual([
+      { role: "user", content: "/usage", rewindable: false },
+      { role: "user", content: "Say hi", rewindable: false },
+    ]);
+});
 
 test("native tool results replay edits, a completed checklist, and an answered question", async () => {
   const messages = (await Bun.file(new URL("./transcript.fixture.jsonl", import.meta.url)).text())
@@ -264,8 +331,8 @@ test("background history retains the launch result and nested child activity", (
       {
         type: "tool_use",
         id: "child",
-        name: "Task",
-        input: { prompt: "Inspect", subagent_type: "Explore", run_in_background: true },
+        name: "Agent",
+        input: { prompt: "Inspect", subagent_type: "Explore" },
       },
     ]),
     assistant(
@@ -297,6 +364,8 @@ test("background history retains the launch result and nested child activity", (
   const root = state.messages.find((message) => message.role === "assistant");
   expect(root?.toolCalls?.[0]).toMatchObject({
     name: "agent",
+    // Native agents run in the background unless the call opts out.
+    arguments: { agent_type: "Explore", mode: "background" },
     result: { success: true, content: "Launched" },
     subagent: {
       content: "Inspected.",
@@ -316,7 +385,7 @@ test.each(["completed", "failed", "stopped"] as const)(
     };
     receive(
       assistant([
-        { type: "tool_use", id: "child", name: "Task", input: { run_in_background: true } },
+        { type: "tool_use", id: "child", name: "Agent", input: { run_in_background: true } },
       ]),
     );
     receive({

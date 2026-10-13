@@ -38,11 +38,14 @@ export function ChannelOverview({
   artifacts,
   routines,
   variant,
+  actions,
 }: {
   channel: Channel;
   artifacts: ChannelArtifact[];
   routines: ChannelRoutine[];
   variant: PaneVariant;
+  /** The pane's other actions, which precede the overview's trigger and give way to it when pinned. */
+  actions?: ReactNode;
 }) {
   const {
     openFile,
@@ -136,6 +139,7 @@ export function ChannelOverview({
         mention();
       }}
       onBrowseDirectory={browseDirectory}
+      onPreviewOpen={closeSheet}
     />
   );
 
@@ -143,25 +147,28 @@ export function ChannelOverview({
     <>
       <PaneActions>
         {!isPinned && (
-          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-            <SheetTrigger render={trigger} />
-            <SheetContent
-              ref={overviewRef}
-              initialFocus={overviewRef}
-              showCloseButton={false}
-              style={canPin ? { width: OVERVIEW_WIDTH } : undefined}
-              className="w-[92%] gap-0 overflow-hidden p-0 sm:max-w-md"
-            >
-              <OverviewHeader
-                title={<SheetTitle>{channel.name}</SheetTitle>}
-                menu={channelMenu}
-                canPin={canPin}
-                isPinned={isPinned}
-                onPresent={present}
-              />
-              {overviewContent}
-            </SheetContent>
-          </Sheet>
+          <>
+            {actions}
+            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+              <SheetTrigger render={trigger} />
+              <SheetContent
+                ref={overviewRef}
+                initialFocus={overviewRef}
+                showCloseButton={false}
+                style={canPin ? { width: OVERVIEW_WIDTH } : undefined}
+                className="w-[92%] gap-0 overflow-hidden p-0 sm:max-w-md"
+              >
+                <OverviewHeader
+                  title={<SheetTitle>{channel.name}</SheetTitle>}
+                  menu={channelMenu}
+                  canPin={canPin}
+                  isPinned={isPinned}
+                  onPresent={present}
+                />
+                {overviewContent}
+              </SheetContent>
+            </Sheet>
+          </>
         )}
       </PaneActions>
 

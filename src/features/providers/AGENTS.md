@@ -73,6 +73,17 @@ check the list whenever a provider is upgraded:
 
 - Claude resume (`server/claude/provider.ts`): the CLI never restores reasoning effort, and it
   restores the model only when it recognizes it, falling back to its default otherwise (seen with
-  CLI 2.1.285). Resume starts with the model and effort of the last reply in history instead. A
+  CLI 2.1.296). Resume starts with the model and effort of the last reply in history instead. A
   session with no successful reply still starts on the CLI default. Remove once the CLI restores
   both itself.
+- Claude transcript directory (`server/claude/history.ts`): `getSessionInfo()` reads `cwd` only
+  from a transcript's first 64 KB, so a large first message hides it (seen with SDK 0.3.296).
+  `readDirectory` reads the first transcript entry that records one instead. Remove once the SDK
+  finds it itself.
+- Copilot computer use (`server/copilot/computerUse.ts`): headless SDK servers load no built-in
+  plugins, so sessions cannot request computer use (seen through CLI 1.0.97-1). Respect the user's
+  opt-in by registering that runtime version's bundled stdio server. Remove when the SDK exposes
+  activation or headless honors the setting.
+- Copilot generated images (`server/copilot/generatedImages.ts`): `image_generation` returns images
+  without saving them and has no output path (seen with CLI 1.0.97-1). A post-tool hook saves them
+  and reports the path so agents can attach them. Remove when Copilot writes them to disk itself.

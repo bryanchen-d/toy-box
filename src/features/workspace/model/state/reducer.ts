@@ -1,13 +1,15 @@
-import type { DraftPrompt } from "@sessions/model";
 import type { CustomEditorKind } from "@files/model";
 import { workerReferencesSession, type Worker } from "@workers/model";
 import { areSettingsEqual, DEFAULT_SETTINGS, type Settings } from "../config/settings";
 import type { WorkspaceEvent } from "../events";
+import { sameSavedDraft, type DraftKey, type SavedDrafts } from "./drafts";
 
 /** The complete shared workspace projection assembled by the server and reduced by clients. */
 export type WorkspaceState = {
   settings: Settings;
   sessionStates: Record<string, WorkspaceSessionState>;
+  /** Each composer's unsent text, shared across clients. */
+  drafts: SavedDrafts;
   hyperSessionIds: string[];
   workers: Worker[];
   customEditors: CustomEditorKind[];
@@ -20,18 +22,21 @@ export type WorkspaceEnvironment = {
 };
 
 /**
- * Shared lifecycle and composer state for one session. Missing means idle.
+ * Shared lifecycle for one session. Missing means idle.
  * A live session remembers `since`, when its current run began.
  */
 export type WorkspaceSessionState =
-  | { status: "running" | "waiting"; since: number; prompt?: DraftPrompt }
-  | { status: "unread"; prompt?: DraftPrompt }
-  | { status: "idle"; prompt: DraftPrompt };
+  | { status: "running" | "waiting"; since: number }
+  | { status: "unread" };
+
+/** A session's shared status, including idle, which has no stored state. */
+export type WorkspaceSessionStatus = WorkspaceSessionState["status"] | "idle";
 
 export function createEmptyWorkspaceState(): WorkspaceState {
   return {
     settings: DEFAULT_SETTINGS,
     sessionStates: {},
+    drafts: {},
     hyperSessionIds: [],
     workers: [],
     customEditors: [],
@@ -48,13 +53,19 @@ export function reduceWorkspaceState(state: WorkspaceState, event: WorkspaceEven
     case "session.deleted": {
       const next = reduceSessionInWorkspace(state, event.sessionId, event);
       const withoutHyper = setHyperSessionMembership(next, event.sessionId, false);
-      return removeWorkers(withoutHyper, (worker) =>
+      const withoutWorkers = removeWorkers(withoutHyper, (worker) =>
         workerReferencesSession(worker, event.sessionId),
       );
+      return removeDraft(withoutWorkers, `session:${event.sessionId}`);
     }
+    case "channel.deleted":
+      return removeDraft(state, `channel:${event.channelId}`);
+    case "draft.changed":
+      return sameSavedDraft(state.drafts[event.key], event.draft)
+        ? state
+        : { ...state, drafts: { ...state.drafts, [event.key]: event.draft } };
     case "session.hyper.promoted":
       return setHyperSessionMembership(state, event.sessionId, false);
-    case "session.prompt.drafted":
     case "session.running":
     case "session.waiting":
     case "session.idle":
@@ -93,7 +104,6 @@ export type WorkspaceSessionEvent = Extract<
   WorkspaceEvent,
   {
     type:
-      | "session.prompt.drafted"
       | "session.running"
       | "session.waiting"
       | "session.idle"
@@ -109,9 +119,6 @@ export function reduceWorkspaceSessionState(
   event: WorkspaceSessionEvent,
 ): WorkspaceSessionState | undefined {
   switch (event.type) {
-    case "session.prompt.drafted":
-      if (state?.prompt && sameDraftPrompt(state.prompt, event.prompt)) return state;
-      return state ? { ...state, prompt: event.prompt } : { status: "idle", prompt: event.prompt };
     case "session.running":
     case "session.waiting": {
       const status = event.type === "session.running" ? "running" : "waiting";
@@ -119,25 +126,20 @@ export function reduceWorkspaceSessionState(
       // Waiting is a pause within the same run, so moving between the live states keeps its start.
       const since =
         state?.status === "running" || state?.status === "waiting" ? state.since : event.at;
-      return { status, since, ...(state?.prompt ? { prompt: state.prompt } : {}) };
+      return { status, since };
     }
     case "session.idle":
-      if (!state) return state;
-      return idleSessionState(state.prompt);
+      return undefined;
     case "session.unread":
-      return state?.status === "unread"
-        ? state
-        : { status: "unread", ...(state?.prompt ? { prompt: state.prompt } : {}) };
+      return state?.status === "unread" ? state : { status: "unread" };
     case "session.read":
-      return state?.status === "unread" ? idleSessionState(state.prompt) : state;
+      return state?.status === "unread" ? undefined : state;
     case "session.deleted":
       return undefined;
   }
 }
 
-export function isWorkspaceSessionLive(
-  status: WorkspaceSessionState["status"] | undefined,
-): boolean {
+export function isWorkspaceSessionLive(status: WorkspaceSessionStatus | undefined): boolean {
   return status === "running" || status === "waiting";
 }
 
@@ -162,14 +164,10 @@ function reduceSessionInWorkspace(
   };
 }
 
-function idleSessionState(prompt?: DraftPrompt): WorkspaceSessionState | undefined {
-  return prompt ? { status: "idle", prompt } : undefined;
-}
-
-function sameDraftPrompt(left: DraftPrompt, right: DraftPrompt): boolean {
-  return (
-    left.text === right.text && left.origin === right.origin && left.updatedAt === right.updatedAt
-  );
+function removeDraft(state: WorkspaceState, key: DraftKey): WorkspaceState {
+  if (!state.drafts[key]) return state;
+  const { [key]: _, ...drafts } = state.drafts;
+  return { ...state, drafts };
 }
 
 function setHyperSessionMembership(

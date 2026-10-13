@@ -61,7 +61,7 @@ function AgentForm({ agent, onClose }: { agent: ChannelMember; onClose: () => vo
   return (
     <>
       <DialogTitle className="flex items-center gap-2.5">
-        <AgentAvatar name={agent.name} avatar={agent.avatar} className="size-9" />
+        <AgentAvatar agent={agent} className="size-9" />
         {agent.name}
       </DialogTitle>
 

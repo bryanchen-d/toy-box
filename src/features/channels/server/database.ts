@@ -33,6 +33,7 @@ import {
 } from "@channels/model";
 import { reduceChannel } from "@channels/model/reducer";
 import { applyPatch } from "@channels/model/changes";
+import { previewSchema } from "@/shared/preview";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { modelConfigurationSchema } from "@providers/model";
 import { inStateTransaction } from "@/server/database";
@@ -623,8 +624,8 @@ async function updateChannelFields(
     updates.push({ type: "channel_purpose_changed", actor, purpose: next.purpose ?? null });
   if (next.directory !== current.directory)
     updates.push({ type: "channel_directory_changed", actor, directory: next.directory ?? null });
-  if (next.previewUrl !== current.previewUrl)
-    updates.push({ type: "preview_changed", actor, previewUrl: next.previewUrl ?? null });
+  if (!Bun.deepEquals(next.preview, current.preview))
+    updates.push({ type: "preview_changed", actor, preview: next.preview ?? null });
   if (!channelTasksComplete(current.tasks) && channelTasksComplete(next.tasks))
     updates.push({ type: "tasks_completed" });
   // User edits count as activity; task revisions alone stay quiet.
@@ -661,7 +662,7 @@ async function updateChannelFields(
 }
 
 function channelColumns(
-  channel: Pick<Channel, "name" | "purpose" | "directory" | "model" | "tasks" | "previewUrl">,
+  channel: Pick<Channel, "name" | "purpose" | "directory" | "model" | "tasks" | "preview">,
 ) {
   return {
     name: channel.name,
@@ -669,7 +670,7 @@ function channelColumns(
     directory: channel.directory ?? null,
     model: JSON.stringify(channel.model),
     tasks: JSON.stringify(channel.tasks),
-    preview_url: channel.previewUrl ?? null,
+    preview: channel.preview ? JSON.stringify(channel.preview) : null,
   };
 }
 
@@ -837,7 +838,7 @@ type ChannelRow = {
   directory: string | null;
   model: string;
   tasks: string;
-  preview_url: string | null;
+  preview: string | null;
   latest_sequence: number;
   revision: number;
   seen_through: number;
@@ -886,7 +887,7 @@ function channelFromRow(row: ChannelRow): Channel {
     ...(row.directory ? { directory: row.directory } : {}),
     model: modelConfigurationSchema.parse(JSON.parse(row.model)),
     tasks: channelTasksSchema.parse(JSON.parse(row.tasks)),
-    ...(row.preview_url ? { previewUrl: row.preview_url } : {}),
+    ...(row.preview ? { preview: previewSchema.parse(JSON.parse(row.preview)) } : {}),
     latestSequence: row.latest_sequence,
     seenThrough: row.seen_through,
     completedSequence: row.completed_sequence,

@@ -3,8 +3,8 @@ import { CatchBoundary } from "@tanstack/react-router";
 import { useSelector } from "@tanstack/react-store";
 import { Store } from "@tanstack/store";
 import { useEffect, useLayoutEffect, useState, type ComponentType, type ReactNode } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { PaneMessage } from "@/shared/ui/pane-message";
 import { appQueries } from "@apps/queries";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
@@ -115,44 +115,15 @@ export function AppErrorBoundary({
       getResetKey={() => resetKey}
       onCatch={(error, info) => console.error("App render failed:", error, info)}
       errorComponent={({ error, reset }) => (
-        <AppMessage title={`${title} crashed`} detail={appErrorMessage(error)}>
+        <PaneMessage title={`${title} crashed`} detail={appErrorMessage(error)}>
           <Button size="sm" variant="outline" onClick={reset}>
             Try again
           </Button>
-        </AppMessage>
+        </PaneMessage>
       )}
     >
       {children}
     </CatchBoundary>
-  );
-}
-
-export function AppMessage({
-  title,
-  detail,
-  loading = false,
-  children,
-}: {
-  title: string;
-  detail: string;
-  loading?: boolean;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="flex h-full items-center justify-center bg-background p-8 text-center">
-      <div className="flex max-w-md flex-col items-center gap-3">
-        {loading ? (
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        ) : (
-          <AlertTriangle className="size-5 text-destructive" />
-        )}
-        <div>
-          <h2 className="font-medium">{title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
 

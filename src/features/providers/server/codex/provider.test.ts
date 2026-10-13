@@ -73,7 +73,7 @@ test("history reads every stored turn page without acquiring the thread's writer
     const page = params.cursor ? 2 : 1;
     const result =
       method === "thread/read"
-        ? { thread: { id: "native", historyMode: "paginated", turns: [] } }
+        ? { thread: { id: "native", turns: [] } }
         : {
             data: [
               {
@@ -227,9 +227,7 @@ test("second-precision native timestamps cannot hide edits made during snapshot 
   const rpc = new transport.CodexTransport((line) => {
     const { id } = JSON.parse(line);
     queueMicrotask(() =>
-      rpc.receive(
-        JSON.stringify({ id, result: { thread: { historyMode: "paginated", updatedAt } } }) + "\n",
-      ),
+      rpc.receive(JSON.stringify({ id, result: { thread: { updatedAt } } }) + "\n"),
     );
   });
   spyOn(transport, "startCodexClient").mockResolvedValue(rpc);

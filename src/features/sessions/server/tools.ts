@@ -2,6 +2,7 @@ import { defineTool } from "@sessions/server/tools/definition";
 import { z } from "zod";
 import { sessionNameSchema } from "@sessions/model/protocol";
 import { modelConfigurationSchema } from "@providers/model";
+import { previewUpdateSchema } from "@/shared/preview";
 
 export const STANDARD_SESSION_INSTRUCTIONS =
   "Keep this session's title recognizable. Before completing the first turn, you MUST call `update_session_title` once with a concise 2-6 word title after understanding the user's initial intent. On later turns, call it again before responding only when the session's focus has changed materially, not for ordinary follow-ups or refinements. Do not mention routine title updates to the user.";
@@ -222,4 +223,13 @@ const deleteSessionTool = defineTool("delete_session", {
 
 export const hyperLifecycleTools = [createSessionTool];
 export const lifecycleTools = [deleteSessionTool];
-export const sessionLayoutTools = [openSession, closeSession];
+const setSessionPreview = defineTool("set_session_preview", {
+  description:
+    "Sets this session's current runnable preview to {kind:'url',url}, {kind:'screen',screenId}, or null to clear it. " +
+    "A screen preview shows a display or window from list_screens. Changing this reference does not stop any application or screen. " +
+    "Use a preview for a runnable experience, and ordinary artifacts for files.",
+  parameters: previewUpdateSchema,
+  handler: ({ preview }) => ({ preview }),
+});
+
+export const sessionLayoutTools = [openSession, closeSession, setSessionPreview];

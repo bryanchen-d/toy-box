@@ -48,7 +48,6 @@ export function InboxPane({ onFocusPane }: { onFocusPane?: (paneId: string) => v
     panePublications,
     (linkedPanes) => linkedPanes[INBOX_PANE.id]?.[0],
   );
-  const [prompt, setPrompt] = useState("");
   // An untouched selection follows the latest directory; null preserves an explicit clear.
   const [directorySelection, setDirectorySelection] = useState<string | null>();
   const [useWorktree, setUseWorktree] = useState(defaultUseWorktree);
@@ -86,18 +85,13 @@ export function InboxPane({ onFocusPane }: { onFocusPane?: (paneId: string) => v
     if (!isLinked) onFocusPane?.(pane.id);
   }
 
+  // A launch that fails returns its message to the composer.
   function handleRun(message: Pick<UserMessage, "content" | "attachments">) {
-    const launch = createLaunchInput(message);
-    void dispatchTaskMutation
-      .mutateAsync(launch)
-      .catch(() => restorePrompt(launch.message.content));
+    return dispatchTaskMutation.mutateAsync(createLaunchInput(message));
   }
 
   function handleSend(message: Pick<UserMessage, "content" | "attachments">) {
-    const launch = createLaunchInput(message);
-    void createSessionMutation
-      .mutateAsync(launch)
-      .catch(() => restorePrompt(launch.message.content));
+    return createSessionMutation.mutateAsync(createLaunchInput(message));
   }
 
   function createLaunchInput(message: Pick<UserMessage, "content" | "attachments">) {
@@ -105,12 +99,6 @@ export function InboxPane({ onFocusPane }: { onFocusPane?: (paneId: string) => v
       message: { ...message, model: defaultModel ?? undefined },
       location: { directory, useWorktree },
     };
-  }
-
-  function restorePrompt(text: string) {
-    // The composer clears itself on submit; restore the prompt unless the
-    // user has already started composing the next task.
-    setPrompt((current) => (current.trim() ? current : text));
   }
 
   return (
@@ -126,8 +114,6 @@ export function InboxPane({ onFocusPane }: { onFocusPane?: (paneId: string) => v
             />
             {hasModels && (
               <SessionComposer
-                prompt={prompt}
-                onPromptChange={setPrompt}
                 onSubmit={handleSend}
                 onRun={handleRun}
                 models={models}

@@ -1,8 +1,17 @@
-import { expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import { beforeEach, expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
 import * as client from "./client";
 import { copilotProvider } from "./provider";
+import * as computerUse from "./computerUse";
+import { saveGeneratedImages } from "./generatedImages";
+
+beforeEach(() => {
+  const servers = spyOn(computerUse, "computerUseServers").mockResolvedValue({
+    "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" },
+  });
+  onTestFinished(() => servers.mockRestore());
+});
 
 test("catalog metadata retains the native repository display fields", async () => {
   const start = spyOn(client, "startCopilotClient").mockResolvedValue({
@@ -39,14 +48,13 @@ test("catalog metadata retains the native repository display fields", async () =
   ]);
 });
 
-test("creation uses the canonical ID and initializes the working directory", async () => {
-  const setWorkingDirectory = mock(async (_input: { workingDirectory: string }) => {});
+test("creation uses the canonical ID and configures the working directory", async () => {
+  const createSession = mock(async ({ sessionId }: { sessionId: string }) => ({
+    sessionId,
+    on: () => () => {},
+  }));
   const start = spyOn(client, "startCopilotClient").mockResolvedValue({
-    createSession: async ({ sessionId }: { sessionId: string }) => ({
-      sessionId,
-      rpc: { metadata: { setWorkingDirectory } },
-      on: () => () => {},
-    }),
+    createSession,
   } as unknown as CopilotClient);
   onTestFinished(() => start.mockRestore());
 
@@ -60,7 +68,14 @@ test("creation uses the canonical ID and initializes the working directory", asy
     skillDirectories: [],
   });
 
-  expect(setWorkingDirectory).toHaveBeenCalledWith({ workingDirectory: "/repo" });
+  expect(createSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: "public",
+      workingDirectory: "/repo",
+      mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
+      hooks: { onPostToolUse: saveGeneratedImages },
+    }),
+  );
   expect(connection.provider).toEqual({
     id: "copilot",
     sessionId: "public",
@@ -70,25 +85,24 @@ test("creation uses the canonical ID and initializes the working directory", asy
   expect(events).toEqual([{ type: "model_changed", model }]);
 });
 
-test("resume does not switch a model already applied by the SDK", async () => {
-  const setModel = mock(async () => {
-    throw new Error("The native switch rejects an explicit none effort");
-  });
+test("resume requests the configured model and computer use from the native session", async () => {
+  const resumeSession = mock(async (_id: string, _configuration: object) => ({
+    sessionId: "native",
+  }));
   const start = spyOn(client, "startCopilotClient").mockResolvedValue({
-    resumeSession: async () => ({
-      sessionId: "native",
-      rpc: {
-        model: { getCurrent: async () => ({ modelId: "gpt-5.4-mini", reasoningEffort: "none" }) },
-      },
-      setModel,
-    }),
+    resumeSession,
   } as unknown as CopilotClient);
   onTestFinished(() => start.mockRestore());
 
   await copilotProvider.resume(
     { id: "public", provider: { id: "copilot", sessionId: "native" } },
     {
-      model: { provider: "copilot", name: "gpt-5.4-mini", reasoningEffort: "none" },
+      model: {
+        provider: "copilot",
+        name: "gpt-6-luna",
+        reasoningEffort: "max",
+        contextTier: "long_context",
+      },
       directory: "/repo",
       allowUserQuestions: false,
       tools: [],
@@ -97,49 +111,17 @@ test("resume does not switch a model already applied by the SDK", async () => {
     },
   );
 
-  expect(setModel).not.toHaveBeenCalled();
-});
-
-test.each([
-  ["model", { modelId: "gpt-6-sol", reasoningEffort: "max", contextTier: "long_context" }],
-  ["effort", { modelId: "gpt-6-luna", reasoningEffort: "low", contextTier: "long_context" }],
-  ["context tier", { modelId: "gpt-6-luna", reasoningEffort: "max", contextTier: "default" }],
-])(
-  "resume switches when the native %s differs from the requested configuration",
-  async (_, current) => {
-    const setModel = mock(async (_model: string, _options: object) => {});
-    const start = spyOn(client, "startCopilotClient").mockResolvedValue({
-      resumeSession: async () => ({
-        sessionId: "native",
-        rpc: { model: { getCurrent: async () => current } },
-        setModel,
-      }),
-    } as unknown as CopilotClient);
-    onTestFinished(() => start.mockRestore());
-
-    await copilotProvider.resume(
-      { id: "public", provider: { id: "copilot", sessionId: "native" } },
-      {
-        model: {
-          provider: "copilot",
-          name: "gpt-6-luna",
-          reasoningEffort: "max",
-          contextTier: "long_context",
-        },
-        directory: "/repo",
-        allowUserQuestions: false,
-        tools: [],
-        instructions: "",
-        skillDirectories: [],
-      },
-    );
-
-    expect(setModel).toHaveBeenCalledWith("gpt-6-luna", {
+  expect(resumeSession).toHaveBeenCalledWith(
+    "native",
+    expect.objectContaining({
+      model: "gpt-6-luna",
       reasoningEffort: "max",
       contextTier: "long_context",
-    });
-  },
-);
+      mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
+      hooks: { onPostToolUse: saveGeneratedImages },
+    }),
+  );
+});
 
 test("read-only history preserves attachments and projector state across native pages", async () => {
   const read = mock(async ({ cursor }: { cursor?: string }) => ({

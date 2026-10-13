@@ -1,14 +1,9 @@
-import {
-  deleteSession,
-  getSessionInfo,
-  importSessionToStore,
-  listSessions,
-} from "@anthropic-ai/claude-agent-sdk";
+import { deleteSession, getSessionInfo, listSessions } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
 import type { SessionProvider } from "@providers/server/provider";
 import { ClaudeConnection } from "./connection";
-import { closeClaudeQuery, startClaudeQuery, stopClaude } from "./client";
-import { readClaudeHistory } from "./history";
+import { claudeSkillPlugins, closeClaudeQuery, startClaudeQuery, stopClaude } from "./client";
+import { readClaudeHistory, readTranscriptDirectory } from "./history";
 import { createClaudeProjector } from "./projector";
 import { toModelInfo } from "./models";
 
@@ -30,7 +25,7 @@ export const claudeProvider: SessionProvider = {
       persistSession: false,
       cwd: directory ?? homedir(),
       skills: "all",
-      plugins: skillDirectories.map((path) => ({ type: "local", path })),
+      plugins: claudeSkillPlugins(directory, skillDirectories),
     });
     try {
       return (await native.reloadSkills()).skills.map((skill) => ({
@@ -60,7 +55,7 @@ export const claudeProvider: SessionProvider = {
   },
   create: (sessionId, configuration) => ClaudeConnection.open({ id: sessionId }, configuration),
   async resume(session, configuration) {
-    // Workaround (Claude CLI 2.1.285; listed in providers/AGENTS.md): resume never restores
+    // Workaround (Claude CLI 2.1.296; listed in providers/AGENTS.md): resume never restores
     // reasoning effort and restores the model only when the CLI recognizes it. Reopen with the
     // last reply's model and effort from history; remove once the CLI restores both itself.
     const model =
@@ -83,30 +78,3 @@ export const claudeProvider: SessionProvider = {
   delete: deleteSession,
   stop: stopClaude,
 };
-
-// The SDK reads a session's `cwd` only from the first 64 KB of its transcript, so a large first
-// message, such as a pasted image, hides it. Resuming such a session reads the first transcript
-// entry that records one, stopping there, rather than running in the home directory.
-async function readTranscriptDirectory(nativeId: string): Promise<string | undefined> {
-  let directory: string | undefined;
-  const found = new Error("Found the transcript directory.");
-  try {
-    await importSessionToStore(
-      nativeId,
-      {
-        async append(_key, entries) {
-          const cwd = entries.find((entry) => typeof entry.cwd === "string")?.cwd;
-          if (typeof cwd !== "string") return;
-          directory = cwd;
-          // Stop reading the transcript once its directory is known.
-          throw found;
-        },
-        load: async () => null,
-      },
-      { includeSubagents: false, batchSize: 8 },
-    );
-  } catch (error) {
-    if (error !== found) throw error;
-  }
-  return directory;
-}

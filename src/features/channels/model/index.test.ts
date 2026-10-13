@@ -6,6 +6,7 @@ import {
   channelLead,
   channelRoutineInputSchema,
   channelSystemMessageContentSchema,
+  channelUnreadAfter,
   editChannelInputSchema,
   markChannelReadInputSchema,
   postChannelMessageInputSchema,
@@ -65,6 +66,17 @@ describe("channel delivery policy", () => {
   );
 });
 
+describe("channel unread position", () => {
+  test("unread messages follow the read position while anything does", () => {
+    expect(channelUnreadAfter({ seenThrough: 4, latestSequence: 7 })).toBe(4);
+    expect(channelUnreadAfter({ seenThrough: 0, latestSequence: 2 })).toBe(0);
+  });
+
+  test("a fully read channel has no unread position", () => {
+    expect(channelUnreadAfter({ seenThrough: 7, latestSequence: 7 })).toBeNull();
+  });
+});
+
 describe("channel audience labels", () => {
   test("names each agent a message reaches", () => {
     expect(channelAudienceLabel([members[0]!, members[1]!], 3)).toBe("Critic, Builder");
@@ -118,21 +130,27 @@ test("a working status points to at most one assigned message", () => {
   ).toBe(false);
 });
 
-test("channel previews accept only HTTP and root-relative URLs", () => {
-  expect(updateChannelInputSchema.safeParse({ previewUrl: "http://127.0.0.1:3000" }).success).toBe(
-    true,
-  );
-  expect(updateChannelInputSchema.safeParse({ previewUrl: "/?files=%5B%5D" }).success).toBe(true);
-  expect(updateChannelInputSchema.safeParse({ previewUrl: "javascript:alert(1)" }).success).toBe(
-    false,
-  );
-  expect(updateChannelInputSchema.safeParse({ previewUrl: "//example.com" }).success).toBe(false);
-  for (const previewUrl of ["/preview", "https://example.com", null]) {
+test("channel previews accept validated URL or screen targets", () => {
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "url", url: "http://127.0.0.1:3000" } })
+      .success,
+  ).toBe(true);
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "url", url: "/?files=%5B%5D" } }).success,
+  ).toBe(true);
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "url", url: "javascript:alert(1)" } })
+      .success,
+  ).toBe(false);
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "url", url: "//example.com" } }).success,
+  ).toBe(false);
+  for (const url of ["/preview", "https://example.com", null]) {
     expect(
       channelSystemMessageContentSchema.safeParse({
         type: "preview_changed",
         actor: user,
-        previewUrl,
+        preview: url ? { kind: "url", url } : null,
       }).success,
     ).toBe(true);
   }
@@ -140,7 +158,18 @@ test("channel previews accept only HTTP and root-relative URLs", () => {
     channelSystemMessageContentSchema.safeParse({
       type: "preview_changed",
       actor: user,
-      previewUrl: "javascript:alert(1)",
+      preview: { kind: "url", url: "javascript:alert(1)" },
+    }).success,
+  ).toBe(false);
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "screen", screenId: "screen" } }).success,
+  ).toBe(true);
+  expect(
+    updateChannelInputSchema.safeParse({ preview: { kind: "screen", screenId: "" } }).success,
+  ).toBe(false);
+  expect(
+    updateChannelInputSchema.safeParse({
+      preview: { kind: "screen", screenId: "screen", url: "/preview" },
     }).success,
   ).toBe(false);
 });

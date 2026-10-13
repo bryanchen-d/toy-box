@@ -1,15 +1,12 @@
 import { z } from "zod";
+import { draftKeySchema, savedDraftSchema } from "./drafts";
 
 /** Client-issued workspace transitions, validated by the workspace RPC. */
 export const workspaceActionSchema = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal("session.prompt.drafted"),
-    sessionId: z.string(),
-    prompt: z.object({
-      text: z.string().max(64 * 1024),
-      updatedAt: z.number(),
-      origin: z.string().min(1).max(128),
-    }),
+    type: z.literal("draft.changed"),
+    key: draftKeySchema,
+    draft: savedDraftSchema,
   }),
   sessionAction("hyper.promoted"),
   sessionAction("read"),

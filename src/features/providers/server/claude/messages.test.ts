@@ -34,7 +34,7 @@ test("images and system notifications round trip through native message content"
   });
 });
 
-test("a persisted skill invocation displays its original slash prompt", () => {
+test("skill and local command invocations display as their slash command", () => {
   expect(
     decodeInput(
       "<command-message>plugin:skill</command-message>\n<command-name>/plugin:skill</command-name>\n<command-args>Make an app</command-args>",
@@ -43,4 +43,10 @@ test("a persisted skill invocation displays its original slash prompt", () => {
     type: "user_message",
     content: "/plugin:skill Make an app",
   });
+  // A typed `/cost` replays, live and in history, as the command it runs.
+  expect(
+    decodeInput(
+      "<command-name>/usage</command-name>\n            <command-message>usage</command-message>\n            <command-args></command-args>",
+    ),
+  ).toMatchObject({ type: "user_message", content: "/usage" });
 });

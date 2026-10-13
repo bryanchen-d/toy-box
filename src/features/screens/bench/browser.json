@@ -1,0 +1,6 @@
+{
+  "browser": {
+    "launchOptions": { "args": ["--window-size=1280,800"] },
+    "contextOptions": { "viewport": null }
+  }
+}

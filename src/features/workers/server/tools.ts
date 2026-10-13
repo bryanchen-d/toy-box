@@ -6,7 +6,8 @@ import { workerNameSchema } from "../model";
 const spawnWorkerTool = defineTool("spawn_worker", {
   description:
     "Spawns an anonymous worker owned by the current session for delegated or parallel work. " +
-    "It inherits the current model and directory by default. Retained children open as linked panes and remain available for follow-up. Ephemeral children run headlessly and are deleted after their initial execution. " +
+    "It inherits the current model and directory by default. Children appear beneath their parent in the sidebar without opening a pane; use open_session to open one explicitly. " +
+    "Retained children remain available for follow-up. Ephemeral children are deleted after their initial execution. " +
     "Every child is deleted with the current session.",
   parameters: z.object({
     task: z.string().describe("The task to delegate to the new worker"),
@@ -32,16 +33,15 @@ const spawnWorkerTool = defineTool("spawn_worker", {
   }),
   handler: async (args, invocation) => {
     const { spawnSessionWorker } = await import("@workers/server");
-    const ephemeral = args.ephemeral ?? false;
     const { sessionId } = await spawnSessionWorker({
       parentSessionId: invocation.sessionId,
-      ephemeral,
+      ephemeral: args.ephemeral ?? false,
       ...(args.name === undefined ? {} : { name: args.name }),
       message: { content: args.task, model: args.model },
       location: { directory: args.directory, useWorktree: args.useWorktree },
     });
 
-    return JSON.stringify({ sessionId, opened: !ephemeral });
+    return JSON.stringify({ sessionId });
   },
 });
 

@@ -1,2 +1,6 @@
 [run]
 bun = true
+
+[fmt]
+flavor = "oxfmt"
+ignorePatterns = ["src/features/workspace/routeTree.gen.ts"]

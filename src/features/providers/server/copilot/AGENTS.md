@@ -18,16 +18,27 @@ model-only system events.
 The projector resolves persisted attachment references from native `session.binary_asset`
 events or inline blobs returned by `sessions.readPersistedEvents()`. The native reader restores
 attachment bytes without activating the session.
+Sessions opt in to native image generation, which is not persisted, on both create and resume.
+Images in a tool's native output (`result.contents`) become its result attachments; images sent
+only to the model (`binaryResultsForLlm`), such as `view` and screenshots, stay out of the transcript.
+`generatedImages.ts` is a post-tool hook that saves each generated image under
+`~/.copilot/generated_images/<session>/` and tells the model the path, as Codex does, so agents
+can attach it.
 
 Copilot uses the Sessions-owned UUID as its native session ID.
 The registry persists the provider and resolves native identity for resume, history, and deletion.
-On resume, check the native model snapshot before calling `setModel`: some CLI versions ignore the
-resume override, while others apply it and can reject a redundant model switch. The applied model
+Creation and resume pass the working directory and model selection in the native session
+configuration, which applies them without follow-up RPCs. The applied model
 seeds the live Session stream at creation and resume; persisted `session.start` and `session.resume`
 events project those selections into historical replay.
 Explicit/automatic names and conversation-only rewind use native SDK RPCs.
 Skills include native discovery and the role-scoped bundled directories supplied by
 Sessions. Native permissions follow Toy Box's existing trusted-owner policy.
+`computerUse.ts` respects the user's `enabledMcpServers` computer-use opt-in.
+Headless SDK servers load no built-in plugins, so create and resume register
+the matching CLI version's cached computer-use binary as a stdio MCP server.
+If that optional binary is missing, it warns and starts without computer use.
+This supplies the provider's tools; Screens itself only lists human-viewable screens.
 
 Session discovery and workspace context use `listSessions()` and `getSessionMetadata()`;
 history pages through `rpc.sessions.readPersistedEvents()` without acquiring a connection. Do not parse native history files for metadata. The provider

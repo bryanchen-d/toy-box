@@ -28,6 +28,7 @@ import { getPersistedWorker } from "@workers/server/database";
 import { workerTools } from "@workers/server/tools";
 import { settingsTools } from "@workspace/server/tools";
 import { getSettings } from "@workspace/server/state/settings";
+import { screenTools } from "@screens/server/tools";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SessionTool = Tool<any>;
@@ -42,10 +43,12 @@ type SessionTypePolicy = {
   settings?: true;
   editor?: true;
   inbox?: true;
+  screens?: true;
 };
 
 const sessionTypePolicies: Record<SessionType, SessionTypePolicy> = {
   standard: {
+    screens: true,
     instructions: [STANDARD_SESSION_INSTRUCTIONS, SESSION_HISTORY_DISCOVERY_INSTRUCTIONS],
     title: true,
     layout: true,
@@ -54,6 +57,7 @@ const sessionTypePolicies: Record<SessionType, SessionTypePolicy> = {
     staffChannels: true,
   },
   hyper: {
+    screens: true,
     instructions: [HYPER_SESSION_INSTRUCTIONS, SESSION_HISTORY_DISCOVERY_INSTRUCTIONS],
     hyperLifecycle: true,
     layout: true,
@@ -116,6 +120,7 @@ function getSessionTools(
 ): SessionTool[] {
   return [
     ...sessionHistoryTools,
+    ...(policy.screens ? screenTools : []),
     ...modelTools,
     ...(policy.hyperLifecycle ? hyperLifecycleTools : []),
     ...workerTools,

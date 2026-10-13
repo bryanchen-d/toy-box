@@ -21,27 +21,15 @@ export function adaptModelCatalog(models: readonly ModelCatalogInfo[]): ModelCat
   });
 }
 
+/** Billing advertises each tier's prompt allowance; the runtime reports the same context limit. */
 function deriveContextTiers(model: ModelCatalogInfo): ContextTier[] | undefined {
   const tokenPrices = model.billing?.tokenPrices;
-  const defaultPromptTokens = tokenPrices?.maxPromptTokens ?? tokenPrices?.contextMax;
-  const { max_context_window_tokens: longTokenWindow, max_prompt_tokens: longPromptTokens } =
-    model.capabilities.limits;
+  const defaultTokens = tokenPrices?.maxPromptTokens;
+  const longContextTokens = tokenPrices?.longContext?.maxPromptTokens;
+  if (defaultTokens === undefined || longContextTokens === undefined) return undefined;
 
-  if (
-    !tokenPrices?.longContext ||
-    defaultPromptTokens === undefined ||
-    longPromptTokens === undefined
-  ) {
-    return undefined;
-  }
-
-  // Billing supplies the default prompt budget; capabilities supply the reserved output window.
-  const outputTokens = longTokenWindow - longPromptTokens;
   return [
-    {
-      name: "default",
-      tokenWindow: defaultPromptTokens + outputTokens,
-    },
-    { name: "long_context", tokenWindow: longTokenWindow },
+    { name: "default", tokenWindow: defaultTokens },
+    { name: "long_context", tokenWindow: longContextTokens },
   ];
 }

@@ -1,7 +1,8 @@
 import { AgentAvatar } from "@channels/components/agents/AgentAvatar";
-import { DELETED_AGENT_NAME } from "@channels/model";
-import type { ChannelMessageReaction } from "@channels/model/reactions";
+import type { ChannelConversationMessage } from "@channels/model";
+import { channelMessageReactions, type ChannelMessageReaction } from "@channels/model/reactions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn } from "@/shared/utils";
 import { useChannelPane } from "../ChannelPaneContext";
 
 const REACTION_PRESENTATION = {
@@ -17,22 +18,28 @@ const REACTION_PRESENTATION = {
 // A few reactors show by face; the rest count, and every name is a hover away.
 const VISIBLE_REACTORS = 3;
 
-export function ChannelReactions({ reactions }: { reactions: readonly ChannelMessageReaction[] }) {
-  const { agents } = useChannelPane();
+/** The reactions agents gave a message, and the working agents looking at or acting on it. */
+export function ChannelReactions({
+  message,
+  className,
+}: {
+  message: ChannelConversationMessage;
+  className?: string;
+}) {
+  const { agents, agent, presence } = useChannelPane();
+  const reactions = channelMessageReactions(message, agents, presence);
+  if (reactions.length === 0) return null;
   const groups = new Map<ChannelMessageReaction["reaction"], ChannelMessageReaction[]>();
   for (const reaction of reactions) {
     groups.set(reaction.reaction, [...(groups.get(reaction.reaction) ?? []), reaction]);
   }
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className={cn("flex flex-wrap gap-1", className)}>
       {[...groups].map(([reaction, entries]) => {
         const presentation = REACTION_PRESENTATION[reaction];
-        const reactors = entries.map(({ agentId }) => ({
-          agentId,
-          agent: agents.find(({ id }) => id === agentId),
-        }));
-        const names = reactors.map(({ agent }) => agent?.name ?? DELETED_AGENT_NAME).join(", ");
+        const reactors = entries.map(({ agentId }) => agent(agentId));
+        const names = reactors.map(({ name }) => name).join(", ");
         return (
           <Tooltip key={reaction}>
             <TooltipTrigger
@@ -46,13 +53,8 @@ export function ChannelReactions({ reactions }: { reactions: readonly ChannelMes
             >
               <span aria-hidden>{presentation.emoji}</span>
               <span className="flex gap-0.5">
-                {reactors.slice(0, VISIBLE_REACTORS).map(({ agentId, agent }) => (
-                  <AgentAvatar
-                    key={agentId}
-                    name={agent?.name ?? "?"}
-                    avatar={agent?.avatar}
-                    className="size-3.5"
-                  />
+                {reactors.slice(0, VISIBLE_REACTORS).map((reactor) => (
+                  <AgentAvatar key={reactor.id} agent={reactor} className="size-3.5" />
                 ))}
               </span>
               {reactors.length > VISIBLE_REACTORS && (

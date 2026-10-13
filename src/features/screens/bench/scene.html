@@ -1,0 +1,49 @@
+<!doctype html>
+<title>Toy Box Screen Benchmark</title>
+<body style="margin: 0; background: #111827; color: white">
+  <div style="height: 32px">
+    <button id="increment">Native input</button> <span id="count">0</span>
+  </div>
+  <canvas style="display: block; width: 100%; height: calc(100vh - 32px)"></canvas>
+  <script>
+    const canvas = document.querySelector("canvas"),
+      context = canvas.getContext("2d");
+    const width = innerWidth,
+      height = innerHeight - 32;
+    canvas.width = width * devicePixelRatio;
+    canvas.height = height * devicePixelRatio;
+    context.scale(devicePixelRatio, devicePixelRatio);
+    window.screenBenchmark = { mode: "static", clicks: 0, spinnerSize: 32 / devicePixelRatio };
+    document.querySelector("#increment").onclick = () => {
+      document.querySelector("#count").textContent = ++window.screenBenchmark.clicks;
+    };
+    let previous;
+    function draw(time) {
+      const mode = window.screenBenchmark.mode;
+      requestAnimationFrame(draw);
+      if (mode === "static" && previous === mode) return;
+      previous = mode;
+      context.fillStyle = "#111827";
+      context.fillRect(0, 0, width, height);
+      context.font = "14px monospace";
+      for (let y = 20; y < height + 24; y += 24) {
+        context.fillStyle = "#cbd5e1";
+        context.fillText(
+          "const frame = render(window); // 0123456789 ".repeat(4),
+          8,
+          y - (mode === "motion" ? (time / 12) % 24 : 0),
+        );
+      }
+      if (mode === "spinner") {
+        context.save();
+        context.translate(width / 2, height / 2);
+        context.rotate(time / 200);
+        context.fillStyle = "#22d3ee";
+        const side = window.screenBenchmark.spinnerSize / Math.SQRT2;
+        context.fillRect(-side / 2, -side / 2, side, side);
+        context.restore();
+      }
+    }
+    requestAnimationFrame(draw);
+  </script>
+</body>

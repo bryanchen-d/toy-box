@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight, Wrench, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ToolCall } from "../../../../model";
+import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
 import { RunningIndicator } from "@/shared/ui/running-indicator";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { cn } from "@/shared/utils";
@@ -84,6 +85,13 @@ export function ToolCallCard({
           <div className={cn("pt-2 pb-2 space-y-2", bodyClassName)}>{children}</div>
         </div>
       )}
+
+      {/* Produced images are output, so they stay visible while the details are collapsed. */}
+      {toolCall.result?.attachments?.length ? (
+        <div className="flex flex-wrap gap-1.5 px-3 pt-1 pb-2">
+          <AttachmentGallery attachments={toolCall.result.attachments} variant="filmstrip" />
+        </div>
+      ) : null}
     </div>
   );
 }

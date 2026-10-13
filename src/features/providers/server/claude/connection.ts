@@ -8,14 +8,14 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { AskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import type { ModelConfiguration } from "@providers/model";
-import type { Session, SessionEvent, SessionMessage } from "@sessions/model";
+import type { Session, SessionEvent, SessionMessage, SessionQuestionBase } from "@sessions/model";
 import type { SessionQuestionAnswer } from "@sessions/model/protocol";
 import {
   SessionConnectionUnavailableError,
   type SessionConfiguration,
   type SessionConnection,
 } from "@providers/server/provider";
-import { closeClaudeQuery, startClaudeQuery } from "./client";
+import { claudeSkillPlugins, closeClaudeQuery, startClaudeQuery } from "./client";
 import { encodeInput } from "./messages";
 import { createClaudeTools } from "./tools";
 import { claudeQuestions, createClaudeProjector } from "./projector";
@@ -27,8 +27,10 @@ export class ClaudeConnection implements SessionConnection {
   #native: Query | undefined;
   #input!: ReadableStreamDefaultController<SDKUserMessage>;
   #listeners = new Set<(event: SessionEvent) => void>();
+  // Sends awaiting their native replay: native message id to Toy Box clientId.
   #pendingInputs = new Map<string, string>();
   #questions = new Map<string, (answer: string | undefined) => void>();
+  // Native frames omit effort, so live model changes carry the last one applied.
   #reasoningEffort: ModelConfiguration["reasoningEffort"];
 
   private constructor(
@@ -51,23 +53,25 @@ export class ClaudeConnection implements SessionConnection {
         title: configuration.name,
         model: configuration.model?.name,
         effort: configuration.model?.reasoningEffort as EffortLevel | undefined,
-        // Native idle must include background agents and their completion notifications.
+        // Native idle must include background agents and their completion notifications, and
+        // newer models omit native checklist tools unless explicitly enabled.
         env: {
           ...process.env,
           CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
           CLAUDE_CODE_BG_TASKS_REPORT_RUNNING: "1",
+          CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
         },
         includePartialMessages: true,
         // Newer models omit visible thinking summaries unless explicitly requested.
         thinking: { type: "adaptive", display: "summarized" },
         forwardSubagentText: true,
         skills: "all",
-        plugins: configuration.skillDirectories.map((path) => ({ type: "local", path })),
+        plugins: claudeSkillPlugins(configuration.directory, configuration.skillDirectories),
         systemPrompt: { type: "preset", preset: "claude_code", append: configuration.instructions },
         ...(configuration.disableMemory ? { settings: { autoMemoryEnabled: false } } : {}),
         extraArgs: { "replay-user-messages": null },
-        // Newer models omit native checklist tools unless explicitly enabled.
-        allowedTools: ["TodoWrite", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList"],
+        // Pinned so the owner's native default or auto mode can't bypass Toy Box's canUseTool policy.
+        permissionMode: "default",
         canUseTool: this.#canUseTool(configuration.allowUserQuestions),
         mcpServers: {
           toy_box: createClaudeTools(this.sessionId, configuration.tools),
@@ -103,8 +107,8 @@ export class ClaudeConnection implements SessionConnection {
   async send(message: SessionMessage): Promise<void> {
     if (!this.#native) throw new SessionConnectionUnavailableError("Claude Agent disconnected.");
     const content = encodeInput(message);
-    // "next" folds steering into the active turn; "now" aborts that turn. Claude folds it in as
-    // text only, so an immediate message with images waits for the turn to end ("later").
+    // "next" folds steering into the active turn at its next model step, but as text only, so an
+    // immediate message with images waits for the turn to end ("later") rather than lose them.
     const hasImages = message.role === "user" && Boolean(message.attachments?.length);
     const uuid = crypto.randomUUID();
     this.#pendingInputs.set(uuid, message.clientId);
@@ -163,20 +167,22 @@ export class ClaudeConnection implements SessionConnection {
 
   async #read(native: Query): Promise<void> {
     const project = createClaudeProjector(this.sessionId);
+    let error = "Claude Agent disconnected.";
     try {
       for await (const message of native) {
+        // The projector alone decides what is transcript; replays of sends carry their clientId.
+        let clientId: string | undefined;
+        if (message.type === "user" && message.uuid) {
+          clientId = this.#pendingInputs.get(message.uuid);
+          this.#pendingInputs.delete(message.uuid);
+        }
         for (const projected of project(message)) {
           if (
-            (projected.type === "user_message" || projected.type === "system_message") &&
-            message.type === "user" &&
-            message.uuid
-          ) {
-            const clientId = this.#pendingInputs.get(message.uuid);
-            // Native local-command output and automatic prompts are not owner messages.
-            if (!clientId) continue;
-            this.#pendingInputs.delete(message.uuid);
+            clientId &&
+            (projected.type === "user_message" || projected.type === "system_message")
+          )
             this.#emit({ ...projected, clientId });
-          } else if (projected.type === "model_changed" && !projected.parentToolCallId) {
+          else if (projected.type === "model_changed" && !projected.parentToolCallId) {
             this.#emit({
               ...projected,
               model: { ...projected.model, reasoningEffort: this.#reasoningEffort },
@@ -184,14 +190,13 @@ export class ClaudeConnection implements SessionConnection {
           } else this.#emit(projected);
         }
       }
-      if (this.#native === native)
-        this.#emit({ type: "end", reason: "error", error: "Claude Agent disconnected." });
-    } catch (error) {
-      if (this.#native === native)
-        this.#emit({ type: "end", reason: "error", error: String(error) });
-    } finally {
-      if (this.#native === native) await this.disconnect();
+    } catch (failure) {
+      error = String(failure);
     }
+    // disconnect() clears #native first, so only a native process that ended on its own fails.
+    if (this.#native !== native) return;
+    this.#emit({ type: "end", reason: "error", error });
+    await this.disconnect();
   }
 
   #canUseTool(allowQuestions: boolean): CanUseTool {
@@ -202,32 +207,9 @@ export class ClaudeConnection implements SessionConnection {
           behavior: "deny",
           message: "User questions are unavailable. Continue using your best judgment.",
         };
-      const questions = claudeQuestions(input as unknown as AskUserQuestionInput);
+      const questions = claudeQuestions(toolUseID, input as unknown as AskUserQuestionInput);
       const answers = await Promise.all(
-        questions.map(async (question, index) => {
-          const id = `${toolUseID}:${index}`;
-          const answer = await new Promise<string | undefined>((resolve) => {
-            const finish = (value: string | undefined) => {
-              this.#questions.delete(id);
-              signal.removeEventListener("abort", cancel);
-              resolve(value);
-            };
-            const cancel = () => finish(undefined);
-            this.#questions.set(id, finish);
-            if (signal.aborted) {
-              cancel();
-              return;
-            }
-            signal.addEventListener("abort", cancel, { once: true });
-            this.#emit({ type: "question_requested", requestId: id, toolCallId: id, question });
-          });
-          this.#emit(
-            answer === undefined
-              ? { type: "question_cancelled", toolCallId: id }
-              : { type: "question_resolved", toolCallId: id, answer },
-          );
-          return answer;
-        }),
+        questions.map(({ toolCallId, question }) => this.#ask(toolCallId, question, signal)),
       );
       if (answers.some((answer) => answer === undefined))
         return { behavior: "deny", message: "The user cancelled the question." };
@@ -236,11 +218,37 @@ export class ClaudeConnection implements SessionConnection {
         updatedInput: {
           ...input,
           answers: Object.fromEntries(
-            questions.map((question, index) => [question.question, answers[index]]),
+            questions.map(({ question }, index) => [question.question, answers[index]]),
           ),
         },
       };
     };
+  }
+
+  /** Resolves with the owner's answer, or undefined once the turn stops or disconnects. */
+  async #ask(
+    toolCallId: string,
+    question: SessionQuestionBase,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    const answer = await new Promise<string | undefined>((resolve) => {
+      const finish = (value: string | undefined) => {
+        this.#questions.delete(toolCallId);
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      };
+      const cancel = () => finish(undefined);
+      if (signal.aborted) return cancel();
+      this.#questions.set(toolCallId, finish);
+      signal.addEventListener("abort", cancel, { once: true });
+      this.#emit({ type: "question_requested", requestId: toolCallId, toolCallId, question });
+    });
+    this.#emit(
+      answer === undefined
+        ? { type: "question_cancelled", toolCallId }
+        : { type: "question_resolved", toolCallId, answer },
+    );
+    return answer;
   }
 
   #emit(event: SessionEvent): void {

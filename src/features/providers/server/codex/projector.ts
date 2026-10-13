@@ -14,49 +14,39 @@ import type {
   ThreadItem,
   ThreadNameUpdatedNotification,
   ThreadStartedNotification,
-  ToolRequestUserInputParams,
   Turn,
   TurnCompletedNotification,
   TurnPlanUpdatedNotification,
   TurnStartedNotification,
 } from "./protocol";
-import type { RpcNotification, RpcRequest } from "./protocol/transport";
+import type { RpcNotification } from "./protocol/transport";
 import { decodeInput } from "./messages";
 import { fileChangesDiff } from "./fileChanges";
 
-/** The native collaboration call that creates a visible child execution. */
-export function isCodexSubagentSpawn(
-  item: ThreadItem,
-): item is Extract<ThreadItem, { type: "collabAgentToolCall" }> {
-  return item.type === "collabAgentToolCall" && item.tool === "spawnAgent";
+/** The subagent thread whose first turn completes this activity's agent card. */
+export function subagentThreadId(item: ThreadItem): string | undefined {
+  return item.type === "subAgentActivity" && item.kind === "started"
+    ? item.agentThreadId
+    : undefined;
 }
 
-/** Keep child-thread transcript activity inside its root agent card. */
-export function scopeCodexSubagentEvent(
-  event: SessionEvent,
-  parentToolCallId: string,
-): SessionEvent | undefined {
-  switch (event.type) {
-    case "assistant_message":
-    case "reasoning":
-    case "reasoning_delta":
-    case "tool_start":
-    case "tool_end":
-    case "model_changed":
-      return { ...event, parentToolCallId };
-    default:
-      return undefined;
-  }
-}
-
-export function createCodexProjector(sessionId: string) {
+/** Project one root thread, nesting its subagent threads inside their agent cards. */
+export function createCodexProjector(sessionId: string, threadId: string) {
   const turnsWithInput = new Set<string>();
   const items = new Map<string, "completed" | { policy?: ToolCallProjectionPolicy }>();
+  const subagents = new Map<
+    string,
+    { toolCallId: string; project: (event: RpcNotification) => SessionEvent[] }
+  >();
   let turn: Pick<Turn, "id" | "startedAt"> | undefined;
   let itemIndex = 0;
 
-  return (event: RpcNotification | RpcRequest): SessionEvent[] => {
+  return (event: RpcNotification): SessionEvent[] => {
     const { method, params } = event;
+    const target = params as { threadId?: string; thread?: Pick<Thread, "id"> } | undefined;
+    const eventThread = target?.threadId ?? target?.thread?.id;
+    if (eventThread !== undefined && eventThread !== threadId)
+      return projectSubagent(eventThread, event);
     const events: SessionEvent[] = [];
     switch (method) {
       case "thread/started": {
@@ -127,39 +117,41 @@ export function createCodexProjector(sessionId: string) {
         const name = (params as ThreadNameUpdatedNotification).threadName;
         return name ? [{ type: "session_title_changed", title: name }] : [];
       }
-      case "item/tool/requestUserInput": {
-        if (!("id" in event)) throw new Error("Codex user input request is missing its ID.");
-        const input = params as ToolRequestUserInputParams;
-        for (const question of input.questions) {
-          const toolCallId = `${input.itemId}:${question.id}`;
-          const domainQuestion = {
-            question: question.question,
-            choices: question.options?.map((option) => option.label),
-            allowFreeform: question.isOther || !question.options?.length,
-            blocking: input.isBlocking,
-            secret: question.isSecret,
-          };
-          events.push(
-            {
-              type: "tool_start",
-              toolCallId,
-              toolName: "ask_user",
-              arguments: {},
-              question: domainQuestion,
-            },
-            {
-              type: "question_requested",
-              toolCallId,
-              requestId: codexQuestionId(event.id, question.id),
-              question: domainQuestion,
-            },
-          );
-        }
-        break;
-      }
     }
     return events;
   };
+
+  function projectSubagent(subagentThreadId: string, event: RpcNotification): SessionEvent[] {
+    const subagent = subagents.get(subagentThreadId);
+    if (!subagent) return [];
+    const { toolCallId, project } = subagent;
+    // The card completes with the first turn, or when the thread closes without one.
+    const projected: SessionEvent[] =
+      event.method === "thread/closed" ? [{ type: "end", reason: "idle" }] : project(event);
+    return projected.flatMap((child): SessionEvent[] => {
+      switch (child.type) {
+        case "end":
+          subagents.delete(subagentThreadId);
+          return [
+            {
+              type: "tool_end",
+              toolCallId,
+              success: child.reason !== "error",
+              ...(child.error ? { result: child.error } : {}),
+            },
+          ];
+        case "assistant_message":
+        case "reasoning":
+        case "reasoning_delta":
+        case "tool_start":
+        case "tool_end":
+        case "model_changed":
+          return [{ ...child, parentToolCallId: toolCallId }];
+        default:
+          return [];
+      }
+    });
+  }
 
   function projectItem(
     item: ThreadItem,
@@ -200,7 +192,13 @@ export function createCodexProjector(sessionId: string) {
       return events;
     }
     if (!tool || policy?.kind === "omitted") return [];
+    const subagentThread = subagentThreadId(item);
     if (!previous) {
+      if (subagentThread)
+        subagents.set(subagentThread, {
+          toolCallId: item.id,
+          project: createCodexProjector(sessionId, subagentThread),
+        });
       if (policy?.kind === "translated") events.push(...(policy.projectOnStart ?? []));
       else
         events.push({
@@ -210,8 +208,7 @@ export function createCodexProjector(sessionId: string) {
           arguments: tool.arguments,
         });
     }
-    const defersCompletion = isCodexSubagentSpawn(item) && item.receiverThreadIds.length > 0;
-    if (complete && !defersCompletion) {
+    if (complete && !subagentThread) {
       const result = toolResult(item);
       if (policy?.kind === "translated") events.push(...(policy.projectOnComplete?.(result) ?? []));
       else
@@ -221,6 +218,7 @@ export function createCodexProjector(sessionId: string) {
           success: result.success,
           result: result.result,
           details: result.details,
+          ...(result.attachments ? { attachments: result.attachments } : {}),
         });
     }
     return events;
@@ -240,10 +238,6 @@ export function codexHistoryEvents(thread: Thread): RpcNotification[] {
       params: { threadId: thread.id, threadName: thread.name },
     },
   ];
-}
-
-export function codexQuestionId(rpcId: string | number, questionId: string): string {
-  return `codex:${rpcId}:${questionId}`;
 }
 
 /** Stable root-message addresses even when several steers share one native turn. */
@@ -281,14 +275,18 @@ function itemTool(
         name: `${item.server}/${item.tool}`,
         arguments: recordArguments(item.arguments),
       };
-    case "collabAgentToolCall":
-      return isCodexSubagentSpawn(item)
-        ? { name: "agent", arguments: { prompt: item.prompt ?? "" } }
+    case "subAgentActivity":
+      // Activity names the subagent's task path but not its prompt.
+      return subagentThreadId(item)
+        ? { name: "agent", arguments: { description: item.agentPath.split("/").at(-1) ?? "" } }
         : undefined;
     case "webSearch":
       return { name: "web_search", arguments: { query: item.query } };
     case "imageView":
       return { name: "read", arguments: { path: item.path } };
+    // The prompt arrives only with completion, so it is the result rather than an argument.
+    case "imageGeneration":
+      return { name: "image_generation", arguments: {} };
     default:
       return undefined;
   }
@@ -359,8 +357,20 @@ function toolResult(item: ThreadItem): ToolCompletion {
               .join("\n")
           : item.error?.message,
       };
-    case "collabAgentToolCall":
-      return { success: item.status === "completed" };
+    case "imageGeneration":
+      return item.status === "completed" && item.result
+        ? {
+            success: true,
+            result: item.revisedPrompt ?? "",
+            // The built-in tool always returns PNG data without a MIME type.
+            attachments: [{ base64: item.result, mimeType: "image/png" }],
+          }
+        : {
+            success: false,
+            result: item.failure
+              ? "Image generation usage limit reached."
+              : "Image generation failed.",
+          };
     default:
       return { success: true };
   }

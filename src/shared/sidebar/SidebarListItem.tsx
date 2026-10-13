@@ -13,6 +13,7 @@ export type SidebarListItemProps = Omit<
 > & {
   title: string;
   titleContent?: ReactNode;
+  titleControl?: ReactNode;
   icon?: ReactNode;
   time?: ReactNode;
   badge?: ReactNode;
@@ -28,6 +29,7 @@ export type SidebarListItemProps = Omit<
 export function SidebarListItem({
   title,
   titleContent,
+  titleControl,
   icon,
   time,
   badge,
@@ -54,6 +56,7 @@ export function SidebarListItem({
         {...props}
         title={title}
         titleContent={titleContent}
+        titleControl={titleControl}
         icon={icon}
         time={time}
         badge={badge}
@@ -108,6 +111,7 @@ export function SidebarListItemLayout({
 export function SidebarListItemButton({
   title,
   titleContent,
+  titleControl,
   icon,
   time,
   badge,
@@ -119,28 +123,39 @@ export function SidebarListItemButton({
   isActive: boolean;
 }) {
   return (
-    <button
-      {...props}
-      aria-current={isActive ? "page" : undefined}
-      className={cn("mr-2 min-w-0 flex-1 text-left", buttonClassName)}
-    >
-      <ScrollableFade
-        className={cn("flex items-center gap-1.5 whitespace-nowrap text-sm", titleClassName)}
-      >
-        {icon}
-        <span className="min-h-[1lh] shrink-0">{titleContent ?? title}</span>
-      </ScrollableFade>
-      {(time || badge) && (
-        <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          {time && (
-            <span className="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-foreground/70">
-              {time}
-            </span>
-          )}
-          {badge}
-        </span>
+    <div className="mr-2 grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)]">
+      {titleControl && (
+        <div className="z-10 col-start-1 row-start-1 flex items-center mr-1.5">{titleControl}</div>
       )}
-    </button>
+      <button
+        {...props}
+        aria-current={isActive ? "page" : undefined}
+        className={cn(
+          "col-span-2 col-start-1 row-span-2 row-start-1 grid min-w-0 grid-cols-subgrid grid-rows-subgrid text-left",
+          buttonClassName,
+        )}
+      >
+        <ScrollableFade
+          className={cn(
+            "col-start-2 row-start-1 flex items-center gap-1.5 whitespace-nowrap text-sm",
+            titleClassName,
+          )}
+        >
+          {icon}
+          <span className="min-h-[1lh] shrink-0">{titleContent ?? title}</span>
+        </ScrollableFade>
+        {(time || badge) && (
+          <span className="col-span-2 col-start-1 row-start-2 mt-1 flex min-w-0 items-center gap-1.5">
+            {time && (
+              <span className="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-foreground/70">
+                {time}
+              </span>
+            )}
+            {badge}
+          </span>
+        )}
+      </button>
+    </div>
   );
 }
 

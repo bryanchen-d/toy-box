@@ -1,7 +1,7 @@
 import { replaceEqualDeep } from "@tanstack/react-query";
 import type { AppList } from "@apps/model";
 import type { SessionsState } from "@sessions/model";
-import { selectNonWorkerSessions } from "@sessions/queries";
+import { selectNonWorkerSessions, selectSessionChildren } from "@sessions/queries";
 import type { WorkspaceState } from "@workspace/model/state/reducer";
 import type { WorkspacePane } from "@workspace/model/panes";
 import type { ModelConfiguration, ModelInfo } from "@providers/model";
@@ -29,15 +29,7 @@ export function projectAppWorkspace(
       : hyperSessionIds.has(sessionId)
         ? "hyper"
         : "standard";
-  const childrenByParent = new Map<string, SessionsState["sessions"]>();
-  for (const session of sessions.sessions) {
-    const owner = sessions.ownership[session.id];
-    const parentSessionId = owner?.type === "worker" ? owner.parentSessionId : null;
-    if (!parentSessionId) continue;
-    const children = childrenByParent.get(parentSessionId) ?? [];
-    children.push(session);
-    childrenByParent.set(parentSessionId, children);
-  }
+  const childrenByParent = selectSessionChildren(sessions);
 
   function projectSession(session: SessionsState["sessions"][number]): AppSession {
     return {
@@ -45,7 +37,7 @@ export function projectAppWorkspace(
       status: workspace.sessionStates[session.id]?.status ?? "idle",
       kind: sessionKind(session.id),
       worktree: sessions.worktrees[session.id],
-      children: (childrenByParent.get(session.id) ?? []).map(projectSession),
+      children: (childrenByParent[session.id] ?? []).map(projectSession),
     };
   }
 

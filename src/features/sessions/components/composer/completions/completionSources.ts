@@ -1,24 +1,125 @@
-import type { CompletionSource } from "@/shared/composers/completions/useCompletions";
+import type { ComponentType } from "react";
+import { getPathDirname } from "@files/model/paths";
+import { fileQueries } from "@files/queries";
+import { encodeReference } from "@/shared/references";
+import {
+  wordTrigger,
+  type CompletionItem,
+  type CompletionSource,
+} from "@/shared/composers/completions/useCompletions";
+import type { Session, SessionSkill, SessionsState } from "../../../model";
+import { fileReference, sessionReference } from "../../../model/references";
+import { selectTopLevelSessions, sessionQueries, skillQueries } from "../../../queries";
+import { promptReferenceKinds } from "../../references/PromptReferences";
 
-export const skillCompletionSource = {
-  id: "skill",
-  match(value, caret) {
-    const prefix = value.slice(0, caret);
-    const match = /^\/([^\s/]*)$/.exec(prefix);
-    if (!match) return undefined;
-    const suffix = /^[^\s/]*/.exec(value.slice(caret))![0];
-    return { start: 0, end: caret + suffix.length, query: match[1]! };
-  },
-} satisfies CompletionSource;
+export type PromptCompletionItem = CompletionItem & {
+  icon?: ComponentType<{ className?: string }>;
+  updatedAt?: Date;
+  badge?: string;
+  filePath?: string;
+};
 
-export const fileCompletionSource = {
-  id: "file",
-  match(value, caret) {
-    const prefix = value.slice(0, caret);
-    const match = /(?:^|\s)@([^\s@]*)$/.exec(prefix);
-    if (!match) return undefined;
-    const query = match[1]!;
-    const suffix = /^[^\s@]*/.exec(value.slice(caret))![0];
-    return { start: prefix.length - query.length - 1, end: caret + suffix.length, query };
-  },
-} satisfies CompletionSource;
+/**
+ * Skills, sessions, and files, each projected from its existing catalog query. Inbox composes
+ * before a session exists, so the session ID is optional.
+ */
+export function promptCompletionSources({
+  sessionId,
+  directory,
+  provider,
+  hyperSessionIds,
+}: {
+  sessionId?: string;
+  directory?: string;
+  provider?: string;
+  hyperSessionIds: readonly string[];
+}): CompletionSource<PromptCompletionItem>[] {
+  const sessionType = sessionId && hyperSessionIds.includes(sessionId) ? "hyper" : "standard";
+  return [
+    {
+      id: "skill",
+      trigger: /^\/([^\s/]*)/,
+      empty: "No matching skills.",
+      query: (query) => ({
+        ...skillQueries.list(directory, sessionType, provider),
+        select: (skills: SessionSkill[]) =>
+          skills
+            .filter((skill) =>
+              [skill.name, skill.description].some((text) =>
+                text.toLowerCase().includes(query.toLowerCase()),
+              ),
+            )
+            .map((skill) => ({
+              value: `/${skill.name}`,
+              label: `/${skill.name}`,
+              description: skill.description,
+              badge: directory && skill.type === "global" ? "Global" : undefined,
+              filePath: skill.path,
+            })),
+      }),
+    },
+    {
+      id: "session",
+      trigger: wordTrigger("@"),
+      empty: "No matching sessions.",
+      query: (query) => ({
+        ...sessionQueries.state(),
+        select: (state: SessionsState) =>
+          matchSessions(selectTopLevelSessions(state, hyperSessionIds), query, sessionId).map(
+            (session) => {
+              const reference = sessionReference(session);
+              return {
+                value: encodeReference(reference),
+                label: reference.label,
+                icon: promptReferenceKinds.session.Icon,
+                updatedAt: session.updatedAt,
+              };
+            },
+          ),
+      }),
+    },
+    {
+      id: "file",
+      trigger: wordTrigger("#"),
+      empty: "No matching files.",
+      debounceMs: 150,
+      query: (query) =>
+        directory === undefined
+          ? []
+          : {
+              ...fileQueries.search(directory, query),
+              select: (paths: string[]) =>
+                paths.map((path) => {
+                  const reference = fileReference(path);
+                  const folder = getPathDirname(path);
+                  return {
+                    value: encodeReference(reference),
+                    label: reference.label,
+                    icon: promptReferenceKinds.file.Icon,
+                    detail: folder === "." ? undefined : folder,
+                  };
+                }),
+            },
+    },
+  ];
+}
+
+/** Sessions a prompt can reference by title, newest first, excluding itself and drafts. */
+function matchSessions(
+  sessions: readonly Session[],
+  query: string,
+  currentSessionId?: string,
+): Session[] {
+  const normalized = query.toLowerCase();
+  return sessions
+    .filter(
+      (session) =>
+        session.provider &&
+        session.id !== currentSessionId &&
+        (session.title || session.id).toLowerCase().includes(normalized),
+    )
+    .sort(
+      (left, right) =>
+        right.updatedAt.getTime() - left.updatedAt.getTime() || left.id.localeCompare(right.id),
+    );
+}

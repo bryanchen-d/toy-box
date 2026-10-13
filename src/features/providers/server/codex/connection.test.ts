@@ -56,7 +56,6 @@ function setup(tools: SessionConfiguration["tools"] = []) {
   let beforeStartResponse: (() => void) | undefined;
   let thread = {
     id: "native",
-    historyMode: "paginated",
     model: "model-one",
     reasoningEffort: "low",
     name: null,
@@ -163,27 +162,29 @@ test("a late turn/start response never reactivates a completed Codex turn", asyn
   expect(written.some(({ method }) => method === "turn/steer")).toBe(false);
 });
 
-test("native subagent activity stays nested under one agent call live and after replay", async () => {
+test("subagent activity stays nested under one agent call live and after replay", async () => {
   const { notify, notifyThread, events, readHistory, setThread, setChildThread } = setup();
   const rootTurn = { ...turn, id: "root-turn" };
   const childTurn = { ...turn, id: "child-turn" };
-  const spawn: Extract<ThreadItem, { type: "collabAgentToolCall" }> = {
-    type: "collabAgentToolCall",
+  const started: ThreadItem = {
+    type: "subAgentActivity",
     id: "spawn",
-    tool: "spawnAgent",
+    kind: "started",
+    agentThreadId: "child",
+    agentPath: "/root/inspect",
+  };
+  const finished: ThreadItem = { ...started, id: "spawn-completed", kind: "completed" };
+  const wait: ThreadItem = {
+    type: "collabAgentToolCall",
+    id: "wait",
+    tool: "wait",
     status: "completed",
     senderThreadId: "native",
     receiverThreadIds: ["child"],
-    prompt: "Inspect the reducer",
+    prompt: null,
     model: null,
     reasoningEffort: null,
-    agentsStates: { child: { status: "running", message: null } },
-  };
-  const wait: Extract<ThreadItem, { type: "collabAgentToolCall" }> = {
-    ...spawn,
-    id: "wait",
-    tool: "wait",
-    prompt: null,
+    agentsStates: {},
   };
   const command: Extract<ThreadItem, { type: "commandExecution" }> = {
     type: "commandExecution",
@@ -202,15 +203,21 @@ test("native subagent activity stays nested under one agent call live and after 
   };
   const childReply: ThreadItem = { ...assistantItem, id: "child-reply", text: "CHILD_DONE" };
   const rootReply: ThreadItem = { ...assistantItem, id: "root-reply", text: "ROOT_DONE" };
+  const rootItems = [started, wait, finished, rootReply];
+  const agentCall = (state: ReturnType<typeof sessionState>) =>
+    state.messages
+      .flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : []))
+      .find((toolCall) => toolCall.id === "spawn")!;
+  const rootMessages = (state: ReturnType<typeof sessionState>) =>
+    state.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content);
 
   notify("turn/started", { turn: rootTurn });
-  notify("item/started", {
-    turnId: rootTurn.id,
-    item: { ...spawn, status: "inProgress", receiverThreadIds: [] },
-  });
-  notify("item/completed", { turnId: rootTurn.id, item: spawn });
-  notify("item/started", { turnId: rootTurn.id, item: { ...wait, status: "inProgress" } });
-  notify("item/completed", { turnId: rootTurn.id, item: wait });
+  for (const item of [started, wait]) {
+    notify("item/started", { turnId: rootTurn.id, item });
+    notify("item/completed", { turnId: rootTurn.id, item });
+  }
 
   notifyThread("child", "turn/started", { turn: childTurn });
   notifyThread("child", "item/started", {
@@ -221,11 +228,9 @@ test("native subagent activity stays nested under one agent call live and after 
     notifyThread("child", method, { turnId: childTurn.id, itemId: "thought", delta: "ha" });
 
   const active = sessionState(events);
-  const activeAgent = active.messages
-    .flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : []))
-    .find((toolCall) => toolCall.id === spawn.id)!;
+  const activeAgent = agentCall(active);
   expect(active.status).not.toBe("idle");
-  expect(activeAgent.name).toBe("agent");
+  expect(activeAgent).toMatchObject({ name: "agent", arguments: { description: "inspect" } });
   expect(activeAgent.result).toBeUndefined();
   expect(activeAgent.subagent?.toolCalls).toHaveLength(1);
   expect(activeAgent.subagent?.reasoningContent).toBe("haha");
@@ -236,63 +241,48 @@ test("native subagent activity stays nested under one agent call live and after 
   notifyThread("child", "turn/completed", {
     turn: { ...childTurn, status: "completed", items: [command, childReply] },
   });
-  notify("turn/completed", {
-    turn: { ...rootTurn, status: "completed", items: [spawn, wait, rootReply] },
-  });
+  notify("item/started", { turnId: rootTurn.id, item: finished });
+  notify("item/completed", { turnId: rootTurn.id, item: finished });
+  notify("turn/completed", { turn: { ...rootTurn, status: "completed", items: rootItems } });
 
   const completed = sessionState(events);
-  const completedAgent = completed.messages
-    .flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : []))
-    .find((toolCall) => toolCall.id === spawn.id)!;
+  const completedAgent = agentCall(completed);
   expect(completed.status).toBe("idle");
   expect(completedAgent.result).toMatchObject({ success: true });
   expect(completedAgent.subagent).toMatchObject({
     content: "CHILD_DONE",
     toolCalls: [{ id: command.id, result: { success: true } }],
   });
-  expect(
-    completed.messages
-      .filter((message) => message.role === "assistant")
-      .map((message) => message.content),
-  ).not.toContain("CHILD_DONE");
+  expect(rootMessages(completed)).not.toContain("CHILD_DONE");
   expect(
     events.filter((event) => event.type === "tool_start" && event.toolName === "agent"),
   ).toHaveLength(1);
 
   setThread({
     id: "native",
-    historyMode: "paginated",
     model: "model-one",
     reasoningEffort: "low",
     name: null,
-    turns: [{ ...rootTurn, status: "completed", items: [spawn, wait, rootReply] }],
+    turns: [{ ...rootTurn, status: "completed", items: rootItems }],
   } as Thread);
   setChildThread({
     id: "child",
-    historyMode: "paginated",
     model: "model-one",
     reasoningEffort: "low",
     name: null,
     turns: [{ ...childTurn, status: "completed", items: [userItem, command, childReply] }],
   } as Thread);
   const replayed = replaySessionHistory(await readHistory());
-  const replayedAgent = replayed.messages
-    .flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : []))
-    .find((toolCall) => toolCall.id === spawn.id)!;
-  expect(replayedAgent.result).toEqual(completedAgent.result);
-  expect(replayedAgent.subagent).toMatchObject({
+  expect(agentCall(replayed).arguments).toEqual({ description: "inspect" });
+  expect(agentCall(replayed).result).toEqual(completedAgent.result);
+  expect(agentCall(replayed).subagent).toMatchObject({
     content: "CHILD_DONE",
     toolCalls: [{ id: command.id, result: { success: true } }],
   });
-  expect(
-    replayed.messages
-      .filter((message) => message.role === "assistant")
-      .map((message) => message.content),
-  ).not.toContain("CHILD_DONE");
+  expect(rootMessages(replayed)).not.toContain("CHILD_DONE");
 
   setChildThread({
     id: "child",
-    historyMode: "paginated",
     turns: [
       {
         ...childTurn,
@@ -307,14 +297,19 @@ test("native subagent activity stays nested under one agent call live and after 
       },
     ],
   } as Thread);
-  const failedReplay = replaySessionHistory(await readHistory());
-  const failedAgent = failedReplay.messages
-    .flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : []))
-    .find((toolCall) => toolCall.id === spawn.id)!;
-  expect(failedAgent.result).toMatchObject({ success: false, content: "Child failed" });
+  expect(agentCall(replaySessionHistory(await readHistory())).result).toMatchObject({
+    success: false,
+    content: "Child failed",
+  });
+
+  // A subagent thread with no stored turn still completes its card.
+  setChildThread({ id: "child", turns: [] as Turn[] } as Thread);
+  expect(agentCall(replaySessionHistory(await readHistory())).result).toMatchObject({
+    success: true,
+  });
 });
 
-test("imported local images are restored while missing images retain their file reference", async () => {
+test("imported local images are restored while unavailable images retain their reference", async () => {
   const { readHistory, setThread } = setup();
   const directory = await mkdtemp(join(tmpdir(), "toy-box-media-test-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
@@ -322,7 +317,6 @@ test("imported local images are restored while missing images retain their file 
   await Bun.write(image, "image bytes");
   setThread({
     id: "native",
-    historyMode: "legacy",
     turns: [
       {
         ...turn,
@@ -332,6 +326,7 @@ test("imported local images are restored while missing images retain their file 
             content: [
               { type: "localImage", path: image },
               { type: "localImage", path: join(directory, "missing.png") },
+              { type: "image", fileId: "file-uploaded" },
             ],
           },
         ],
@@ -343,6 +338,7 @@ test("imported local images are restored while missing images retain their file 
     message?.attachments?.map(({ base64 }) => Buffer.from(base64, "base64").toString()),
   ).toEqual(["image bytes"]);
   expect(message?.content).toContain("missing.png");
+  expect(message?.content).toContain("file-uploaded");
 });
 
 test("automatic titles preserve names on imported Codex conversations", async () => {
@@ -424,7 +420,6 @@ test("Codex live text, snapshot resume, and native history preserve message boun
   notify("turn/completed", { turn: completedTurn });
   setThread({
     id: "native",
-    historyMode: "paginated",
     name: "A shared title",
     turns: [completedTurn],
   } as Thread);
@@ -464,7 +459,7 @@ test.each([null, "You've hit your usage limit."])(
     notify("turn/started", { turn });
     notify("item/completed", { turnId: turn.id, item: userItem });
     notify("turn/completed", { turn: failedTurn });
-    setThread({ id: "native", historyMode: "paginated", turns: [failedTurn] } as Thread);
+    setThread({ id: "native", turns: [failedTurn] } as Thread);
     expect(sessionState(events).messages).toEqual(
       replaySessionHistory(await readHistory()).messages,
     );
@@ -542,7 +537,6 @@ test("Codex replays images and system messages entirely from native input", asyn
   const requestInput = (written[0]!.params as { input: UserInput[] }).input;
   setThread({
     id: "native",
-    historyMode: "paginated",
     turns: [{ ...turn, items: [{ ...userItem, content: requestInput }] }],
   } as Thread);
   expect((await readHistory()).find((event) => event.type === "user_message")).toMatchObject({
@@ -560,7 +554,6 @@ test("Codex replays images and system messages entirely from native input", asyn
   ).input;
   setThread({
     id: "native",
-    historyMode: "legacy",
     turns: [{ ...turn, items: [{ ...userItem, clientId: "system", content: systemInput }] }],
   } as Thread);
   expect(await readHistory()).toContainEqual({
@@ -723,7 +716,7 @@ test("native tools return text and images and reject calls outside the Toy Box n
   });
 });
 
-test("rewind chooses the native history contract and rejects a mid-turn steer boundary", async () => {
+test("rewind reverts a turn from its first input and rejects a steered boundary", async () => {
   const { connection, setThread, written } = setup();
   await connection.rewind(itemTimestamp(turn, 0));
   expect(written).toContainEqual(
@@ -734,15 +727,7 @@ test("rewind chooses the native history contract and rejects a mid-turn steer bo
   );
   setThread({
     id: "native",
-    historyMode: "legacy",
     turns: [{ ...turn, items: [userItem, { ...userItem, id: "steer" }] }],
   } as Thread);
   await expect(connection.rewind(itemTimestamp(turn, 1))).rejects.toThrow("start of a turn");
-  await connection.rewind(itemTimestamp(turn, 0));
-  expect(written).toContainEqual(
-    expect.objectContaining({
-      method: "thread/rollback",
-      params: { threadId: "native", numTurns: 1 },
-    }),
-  );
 });

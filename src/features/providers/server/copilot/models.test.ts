@@ -17,7 +17,7 @@ function model(overrides: Partial<ModelCatalogInfo> = {}): ModelCatalogInfo {
 }
 
 describe("model catalog adapter", () => {
-  test("derives total tier windows from billing and capability limits", () => {
+  test("derives tier windows from billing prompt allowances", () => {
     const billing = {
       tokenPrices: {
         maxPromptTokens: 200_000,
@@ -30,7 +30,7 @@ describe("model catalog adapter", () => {
     expect(adapted).toEqual({
       ...model({ billing }),
       supportedContextTiers: [
-        { name: "default", tokenWindow: 328_000 },
+        { name: "default", tokenWindow: 200_000 },
         { name: "long_context", tokenWindow: 500_000 },
       ],
     });

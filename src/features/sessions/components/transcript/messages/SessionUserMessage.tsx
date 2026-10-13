@@ -9,6 +9,7 @@ import type { UserMessage as UserMessageType } from "../../../model";
 import { sessionMutations } from "../../../mutations";
 import { useCurrentSession } from "../../CurrentSessionContext";
 import { UserMessage } from "@/shared/messages/UserMessage";
+import { PromptReferenceMarkdown } from "../../references/PromptReferences";
 
 export function SessionUserMessage({ message }: { message: UserMessageType }) {
   const { sessionId, mode } = useCurrentSession();
@@ -20,7 +21,11 @@ export function SessionUserMessage({ message }: { message: UserMessageType }) {
       <RewindControl sessionId={sessionId} timestamp={message.timestamp} />
     ) : undefined;
 
-  return <UserMessage message={message} extraActions={rewindAction} />;
+  return (
+    <UserMessage message={message} extraActions={rewindAction}>
+      <PromptReferenceMarkdown content={message.content} />
+    </UserMessage>
+  );
 }
 
 function RewindControl({ sessionId, timestamp }: { sessionId: string; timestamp: string }) {

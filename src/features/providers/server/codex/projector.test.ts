@@ -24,7 +24,7 @@ test("native Toy Box tools keep their friendly identity and result live and afte
     durationMs: null,
     contentItems: [{ type: "inputText", text: "Updated" }],
   };
-  const live = createCodexProjector("native-tools");
+  const live = createCodexProjector("native-tools", "native");
   const events = [
     ...live(
       itemEvent(
@@ -34,7 +34,7 @@ test("native Toy Box tools keep their friendly identity and result live and afte
     ),
     ...live(itemEvent(item)),
   ];
-  const replay = createCodexProjector("native-tools")(itemEvent(item));
+  const replay = createCodexProjector("native-tools", "native")(itemEvent(item));
   expect(events.reduce(applySessionEvent, createInitialSessionState())).toEqual(
     replay.reduce(applySessionEvent, createInitialSessionState()),
   );
@@ -43,9 +43,10 @@ test("native Toy Box tools keep their friendly identity and result live and afte
     { type: "tool_end", success: true, result: "Updated" },
   ]);
   expect(
-    createCodexProjector("external-tools")(
-      itemEvent({ ...item, namespace: "another_app" }, "item/started"),
-    ),
+    createCodexProjector(
+      "external-tools",
+      "native",
+    )(itemEvent({ ...item, namespace: "another_app" }, "item/started")),
   ).toMatchObject([{ type: "tool_start", toolName: "another_app/update_session_title" }]);
 });
 
@@ -64,7 +65,7 @@ test.each([
     durationMs: null,
     contentItems: [{ type: "inputText", text: "OK" }],
   };
-  const project = createCodexProjector("file-tools");
+  const project = createCodexProjector("file-tools", "native");
   expect(
     project(
       itemEvent(
@@ -75,9 +76,12 @@ test.each([
   ).toEqual([]);
   const live = project(itemEvent(item));
   expect(live).toEqual([{ type, file: { kind: "session", sessionId: "owner", path: "plan.md" } }]);
-  expect(createCodexProjector("file-tools")(itemEvent(item))).toEqual(live);
+  expect(createCodexProjector("file-tools", "native")(itemEvent(item))).toEqual(live);
   expect(
-    createCodexProjector("file-tools")(itemEvent({ ...item, status: "failed", success: false })),
+    createCodexProjector(
+      "file-tools",
+      "native",
+    )(itemEvent({ ...item, status: "failed", success: false })),
   ).toEqual([]);
 });
 
@@ -132,7 +136,10 @@ test.each<{ actions: CommandAction[]; description: string }>([
   { actions: [], description: "Run pwd" },
 ])("native command actions describe the tool: $description", ({ actions, description }) => {
   expect(
-    createCodexProjector("command-labels")(itemEvent(commandItem(actions), "item/started")),
+    createCodexProjector(
+      "command-labels",
+      "native",
+    )(itemEvent(commandItem(actions), "item/started")),
   ).toMatchObject([{ type: "tool_start", arguments: { description } }]);
 });
 
@@ -140,7 +147,7 @@ test("full commands and output survive live projection and history replay", () =
   const item = commandItem([
     { type: "unknown", command: "node <<'NODE'\nconsole.log('hello');\nNODE" },
   ]);
-  const live = createCodexProjector("command-details");
+  const live = createCodexProjector("command-details", "native");
   const events = [
     ...live(
       itemEvent(
@@ -150,13 +157,69 @@ test("full commands and output survive live projection and history replay", () =
     ),
     ...live(itemEvent(item)),
   ];
-  const replay = createCodexProjector("command-details")(itemEvent(item));
+  const replay = createCodexProjector("command-details", "native")(itemEvent(item));
   const reduce = (events: SessionEvent[]) =>
     events.reduce(applySessionEvent, createInitialSessionState());
   expect(reduce(events)).toEqual(reduce(replay));
   expect(events).toMatchObject([
     { type: "tool_start", toolName: "bash", arguments: { command: item.command } },
     { type: "tool_end", success: true, result: item.aggregatedOutput },
+  ]);
+});
+
+const imageItem: ThreadItem = {
+  type: "imageGeneration",
+  id: "image-1",
+  status: "completed",
+  revisedPrompt: "A red circle on white",
+  result: "aW1hZ2U=",
+  transparentBackground: false,
+  failure: null,
+  savedPath: "/codex/generated_images/native/image-1.png",
+};
+
+test("generated images appear on their tool call live and after history replay", () => {
+  const live = createCodexProjector("native-images", "native");
+  const events = [
+    ...live(
+      itemEvent(
+        { ...imageItem, status: "in_progress", revisedPrompt: null, result: "" },
+        "item/started",
+      ),
+    ),
+    ...live(itemEvent(imageItem)),
+  ];
+  const replay = createCodexProjector("native-images", "native")(itemEvent(imageItem));
+  const reduce = (events: SessionEvent[]) =>
+    events.reduce(applySessionEvent, createInitialSessionState());
+  expect(reduce(events)).toEqual(reduce(replay));
+  expect(events).toEqual([
+    { type: "tool_start", toolCallId: "image-1", toolName: "image_generation", arguments: {} },
+    {
+      type: "tool_end",
+      toolCallId: "image-1",
+      success: true,
+      result: "A red circle on white",
+      attachments: [{ base64: "aW1hZ2U=", mimeType: "image/png" }],
+    },
+  ]);
+});
+
+test("image generation limits fail the tool call without an image", () => {
+  const failure = { type: "usageLimitExceeded" as const, limitId: "images", resetsAt: null };
+  expect(
+    createCodexProjector(
+      "native-images",
+      "native",
+    )(itemEvent({ ...imageItem, status: "failed", revisedPrompt: null, result: "", failure })),
+  ).toEqual([
+    { type: "tool_start", toolCallId: "image-1", toolName: "image_generation", arguments: {} },
+    {
+      type: "tool_end",
+      toolCallId: "image-1",
+      success: false,
+      result: "Image generation usage limit reached.",
+    },
   ]);
 });
 
@@ -177,12 +240,12 @@ test("native additions, deletions, and edits use the shared diff statistics live
     changes: updates,
     status: "completed",
   };
-  const live = createCodexProjector("diff-test");
+  const live = createCodexProjector("diff-test", "native");
   const events = [
     ...live(itemEvent({ ...item, status: "inProgress" }, "item/started")),
     ...live(itemEvent(item)),
   ];
-  const replay = createCodexProjector("diff-test")(itemEvent(item));
+  const replay = createCodexProjector("diff-test", "native")(itemEvent(item));
   const reduce = (events: SessionEvent[]) =>
     events.reduce(applySessionEvent, createInitialSessionState());
   const state = reduce(events);
@@ -197,14 +260,20 @@ test("native additions, deletions, and edits use the shared diff statistics live
     { path: "/tmp/old.txt", diff: { added: 0, removed: 1 } },
     { path: "/tmp/updated.txt", diff: { added: 1, removed: 1 } },
   ]);
-  const failed = createCodexProjector("diff-test")(itemEvent({ ...item, status: "failed" }));
+  const failed = createCodexProjector(
+    "diff-test",
+    "native",
+  )(itemEvent({ ...item, status: "failed" }));
   expect(failed.find((event) => event.type === "tool_end")).toMatchObject({ success: false });
 });
 
 test("native artifact renames leave membership to filesystem observation", () => {
   const sessionId = "artifact-projection";
   const root = sessionArtifactsDirectory(sessionId);
-  const state = createCodexProjector(sessionId)(
+  const state = createCodexProjector(
+    sessionId,
+    "native",
+  )(
     itemEvent({
       type: "fileChange",
       id: "rename",
@@ -226,7 +295,7 @@ test("native artifact renames leave membership to filesystem observation", () =>
 });
 
 test("native plan updates replace and clear shared todos", () => {
-  const project = createCodexProjector("plans");
+  const project = createCodexProjector("plans", "native");
   const initial = project({
     method: "turn/plan/updated",
     params: {
@@ -238,7 +307,7 @@ test("native plan updates replace and clear shared todos", () => {
     },
   }).reduce(applySessionEvent, createInitialSessionState());
   expect(initial.todos?.map((todo) => todo.status)).toEqual(["pending", "in_progress", "done"]);
-  const resumed = createCodexProjector("plans");
+  const resumed = createCodexProjector("plans", "native");
   const next = resumed({
     method: "turn/plan/updated",
     params: { plan: [{ step: "Replacement", status: "completed" }] },

@@ -27,7 +27,7 @@ export function selectWorkspaceSessionActivity(workspace: WorkspaceState, sessio
     waiting: state?.status === "waiting",
     unread: state?.status === "unread",
     since: state?.status === "running" || state?.status === "waiting" ? state.since : undefined,
-    hasDraftPrompt: Boolean(state?.prompt?.text.trim()),
+    hasDraft: Boolean(workspace.drafts[`session:${sessionId}`]?.text.trim()),
   };
 }
 

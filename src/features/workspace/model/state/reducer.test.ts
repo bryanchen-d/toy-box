@@ -10,7 +10,7 @@ import type { WorkspaceEvent } from "@workspace/model/events";
 import { sessionFile } from "@files/model";
 
 const sessionId = "session-a";
-const prompt = { text: "hello", origin: "client-a", updatedAt: 3 };
+const draft = { text: "hello", origin: "client-a", updatedAt: 3 };
 
 describe("workspace session state", () => {
   test("makes running, waiting, unread, and idle mutually exclusive", () => {
@@ -42,7 +42,7 @@ describe("workspace session state", () => {
   test.each(["session.unread", "session.idle", "session.deleted"] as const)(
     "starts a new run after %s",
     (type) => {
-      const ended = transition({ status: "running", since: 1, prompt }, { type, sessionId });
+      const ended = transition({ status: "running", since: 1 }, { type, sessionId });
       expect(transition(ended, { type: "session.running", sessionId, at: 5 })).toMatchObject({
         status: "running",
         since: 5,
@@ -50,21 +50,7 @@ describe("workspace session state", () => {
     },
   );
 
-  test("keeps a composed prompt through runtime transitions", () => {
-    let state = transition(undefined, { type: "session.prompt.drafted", sessionId, prompt });
-    expect(state).toEqual({ status: "idle", prompt });
-
-    state = transition(state, { type: "session.running", sessionId, at: 1 });
-    expect(state).toEqual({ status: "running", since: 1, prompt });
-
-    state = transition(state, { type: "session.unread", sessionId });
-    expect(state).toEqual({ status: "unread", prompt });
-
-    state = transition(state, { type: "session.read", sessionId });
-    expect(state).toEqual({ status: "idle", prompt });
-  });
-
-  test("canonicalizes idle sessions without prompts as missing", () => {
+  test("canonicalizes idle sessions as missing", () => {
     expect(transition(undefined, { type: "session.idle", sessionId })).toBeUndefined();
     expect(
       transition({ status: "running", since: 1 }, { type: "session.idle", sessionId }),
@@ -72,6 +58,58 @@ describe("workspace session state", () => {
     expect(
       transition({ status: "waiting", since: 1 }, { type: "session.idle", sessionId }),
     ).toBeUndefined();
+  });
+});
+
+describe("saved drafts", () => {
+  test("a draft change replaces that composer's draft and ignores an equal echo", () => {
+    const initial = createEmptyWorkspaceState();
+    const drafted = reduceWorkspaceState(initial, {
+      type: "draft.changed",
+      key: "channel:c1",
+      draft,
+    });
+    expect(drafted.drafts).toEqual({ "channel:c1": draft });
+    expect(
+      reduceWorkspaceState(drafted, {
+        type: "draft.changed",
+        key: "channel:c1",
+        draft: { ...draft },
+      }),
+    ).toBe(drafted);
+    const edited = { ...draft, text: "hello again", updatedAt: 4 };
+    expect(
+      reduceWorkspaceState(drafted, { type: "draft.changed", key: "channel:c1", draft: edited })
+        .drafts,
+    ).toEqual({ "channel:c1": edited });
+  });
+
+  test("deleting a session or channel drops only its own draft", () => {
+    const state = {
+      ...createEmptyWorkspaceState(),
+      drafts: { [`session:${sessionId}`]: draft, "channel:c1": draft, inbox: draft },
+    };
+    const withoutSession = reduceWorkspaceState(state, { type: "session.deleted", sessionId });
+    expect(withoutSession.drafts).toEqual({ "channel:c1": draft, inbox: draft });
+    expect(
+      reduceWorkspaceState(withoutSession, { type: "channel.deleted", channelId: "c1" }).drafts,
+    ).toEqual({ inbox: draft });
+  });
+
+  test("a session's run never touches its draft", () => {
+    let state = reduceWorkspaceState(createEmptyWorkspaceState(), {
+      type: "draft.changed",
+      key: `session:${sessionId}`,
+      draft,
+    });
+    for (const event of [
+      { type: "session.running", sessionId, at: 1 },
+      { type: "session.unread", sessionId },
+      { type: "session.read", sessionId },
+      { type: "session.idle", sessionId },
+    ] as const)
+      state = reduceWorkspaceState(state, event);
+    expect(state.drafts).toEqual({ [`session:${sessionId}`]: draft });
   });
 });
 

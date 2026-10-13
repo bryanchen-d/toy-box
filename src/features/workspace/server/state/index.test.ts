@@ -3,6 +3,7 @@ import { subscribeWorkspaceEvents } from "@workspace/server/events";
 import { createTestDatabase } from "@/server/database";
 import { addHyperSession, deleteHyperState } from "./hyperSessions";
 import { deleteSessionState, getSessionState } from "./sessions";
+import { deleteSavedDraft } from "./drafts";
 import type { WorkspaceEvent } from "@workspace/model/events";
 import { sessionFile } from "@files/model";
 import { finishWorker, startWorker } from "@workers/server/registry";
@@ -42,6 +43,7 @@ function capture(sessionId: string): WorkspaceEvent[] {
 
 function cleanup(sessionId: string): void {
   deleteSessionState(sessionId);
+  deleteSavedDraft(`session:${sessionId}`);
   deleteHyperState(sessionId);
 }
 
@@ -105,22 +107,23 @@ describe("workspace state", () => {
     expect(events).toHaveLength(1);
   });
 
-  test("snapshot exposes one canonical session-state map", async () => {
+  test("snapshot exposes a session's draft apart from its activity", async () => {
     const sessionId = `workspace-snapshot-${crypto.randomUUID()}`;
     onTestFinished(() => cleanup(sessionId));
 
     addHyperSession(sessionId);
     applyWorkspaceAction({
-      type: "session.prompt.drafted",
-      sessionId,
-      prompt: { text: "hello", origin: "client-a", updatedAt: 0 },
+      type: "draft.changed",
+      key: `session:${sessionId}`,
+      draft: { text: "hello", origin: "client-a", updatedAt: 0 },
     });
 
     const state = await getWorkspaceState();
-    expect(state.sessionStates[sessionId]).toMatchObject({
-      status: "idle",
-      prompt: { text: "hello", origin: "client-a" },
+    expect(state.drafts[`session:${sessionId}`]).toMatchObject({
+      text: "hello",
+      origin: "client-a",
     });
+    expect(state.sessionStates[sessionId]).toBeUndefined();
     expect(state.hyperSessionIds).toContain(sessionId);
   });
 

@@ -33,10 +33,13 @@ import {
   dispatchWorkspaceAction,
   repairWorkspaceStateQuery,
 } from "@workspace/queries";
-import { isWorkspaceSessionLive, type WorkspaceSessionState } from "@workspace/model/state/reducer";
+import {
+  isWorkspaceSessionLive,
+  type WorkspaceSessionStatus,
+} from "@workspace/model/state/reducer";
 
 interface SessionConfig {
-  workspaceSessionStatus: WorkspaceSessionState["status"];
+  workspaceSessionStatus: WorkspaceSessionStatus;
   mode?: SessionSubscriptionMode;
   /** Whether the owning pane is currently presented by its workspace host. */
   isVisible?: boolean;
@@ -118,6 +121,7 @@ export function useSession(
     todos,
     linkedSessionIds,
     canvases,
+    preview,
     artifacts,
     openedFiles,
     status: baseStatus,
@@ -440,6 +444,7 @@ export function useSession(
     todos,
     linkedSessionIds,
     canvases,
+    preview,
     artifacts,
     openedFiles,
     hasLoadedSessionState,

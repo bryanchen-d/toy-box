@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 
 describe("worker SDK tool", () => {
-  test("spawns a retained child owned by the caller", async () => {
+  test("spawns a retained child owned by the caller without opening it", async () => {
     const tool = workerTools.find((candidate) => candidate.name === "spawn_worker");
     const model = { provider: "copilot", name: "claude-sonnet-4.5" };
 
@@ -40,8 +40,7 @@ describe("worker SDK tool", () => {
       invocation(),
     );
 
-    const parsed = JSON.parse(String(result)) as { sessionId: string; opened: boolean };
-    expect(parsed).toEqual({ sessionId: "toy-box-worker", opened: true });
+    expect(JSON.parse(String(result))).toEqual({ sessionId: "toy-box-worker" });
     expect(spawnWorkerMock).toHaveBeenCalledWith({
       parentSessionId: "toy-box-caller",
       ephemeral: false,
@@ -58,7 +57,6 @@ describe("worker SDK tool", () => {
 
     expect(JSON.parse(String(result))).toEqual({
       sessionId: "toy-box-worker",
-      opened: false,
     });
     expect(spawnWorkerMock.mock.calls[0]?.[0].ephemeral).toBe(true);
   });

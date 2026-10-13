@@ -33,6 +33,7 @@ import {
 import type { SessionSystemMessage } from "@sessions/model";
 import { getStateDatabase } from "@/server/database";
 import { broadcast } from "@workspace/server/events";
+import { deleteSavedDraft } from "@workspace/server/state/drafts";
 import { deleteWorker, spawnWorker } from "@workers/server";
 import { ChannelDatabase, type StoredChannelMessage, type ChannelChange } from "./database";
 import { resolveMessageResources, resolveEventResources } from "./resources";
@@ -161,6 +162,7 @@ export async function deleteChannel(channelId: string): Promise<boolean> {
   const agentIds = await database.deleteChannel(channelId);
   if (!agentIds) return false;
   releaseChannelEvents(channelId);
+  deleteSavedDraft(`channel:${channelId}`);
   broadcast({ type: "channel.deleted", channelId });
   const cleanup = await Promise.allSettled(agentIds.map((id) => deleteWorker(id)));
   const errors = cleanup.flatMap((result, index) =>
@@ -422,8 +424,8 @@ async function resolveAttachmentPaths(sessionId: string, paths: readonly string[
         throw new Error("Use an absolute attachment path when this Session has no workspace.");
       const absolutePath = resolve(directory ?? "", path);
       const file = Bun.file(absolutePath);
-      if (!(await file.exists()) || !file.type.startsWith("image/")) {
-        throw new Error(`Channel attachment is not an image file: ${path}`);
+      if (!(await file.exists()) || !/^(image|video)\//.test(file.type)) {
+        throw new Error(`Channel attachment is not an image or video file: ${path}`);
       }
       return absolutePath;
     }),

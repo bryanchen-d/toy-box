@@ -21,15 +21,20 @@ here. No additional OpenAI npm SDK or Toy Box login is required.
   controller cancels its handlers when interrupted, completed, or disconnected.
 - `projector.ts` exposes one native event-to-SessionEvents function for live notifications
   and history. `codexHistoryEvents` adapts stored turns into `turn/completed` notifications;
-  the projector owns stable timestamps and native-ID deduplication. `messages.ts` handles
+  the projector owns stable timestamps and native-ID deduplication. It projects one root
+  thread and routes each subagent thread started by a `subAgentActivity` record into that
+  record's agent card. The card completes when the subagent finishes its first turn or its
+  thread closes; history replays readable subagent threads and closes the rest. `messages.ts` handles
   skill and image inputs. Native text-element display spans preserve structured system
   messages; native image inputs carry their own bytes. Live and reopened inputs use
   only native history, with no staged attachment files.
+  Native image generation is on by default. Its items become `image_generation` tool calls whose
+  PNG results are attachments; the revised prompt arrives only at completion, so it is the result.
   Failed turns project their `Turn.error.message` through the same `turn/completed` case
   live and during history replay. Retrying `error` notifications are not transcript
   failures; the final `turn/completed` outcome is authoritative.
 - `protocol/index.ts` is the checked-in Apache-2.0 upstream protocol generated against CLI
-  0.153.2. Run `bun src/features/providers/server/codex/protocol/generate.ts` after a deliberate protocol
+  0.161.0. Run `bun src/features/providers/server/codex/protocol/generate.ts` after a deliberate protocol
   upgrade and verify changed methods against the installed CLI.
 
 ## Native constraints
@@ -41,8 +46,8 @@ prose is a separate durable item. The provider owns no Toy Box database tables.
 
 Codex allocates its own thread IDs. Sessions durably binds these to public IDs reserved
 before creation. Always use `Thread.id`; `sessionId` can describe a shared fork family.
-New threads use paginated native history. Imported legacy histories use the legacy
-read/rollback path; paginated histories use full turn pages and thread/revert.
+Threads use Codex's default paginated history, read through full turn pages and
+rewound with thread/revert.
 Conversation rewind only targets the first input of a turn, so steered inputs are
 marked non-rewindable. Deletion uses thread/delete, not archival.
 
@@ -57,4 +62,4 @@ waits until Codex records the successful dynamic tool result, then targets that 
 This ordering is essential to preserve the result in durable history.
 
 Verify real CLI create/resume, deferred tool discovery and invocation, questions, terminal results,
-rename, and deletion alongside protocol tests and the shared reducer/queue fixtures.
+subagents, rename, and deletion alongside protocol tests and the shared reducer/queue fixtures.

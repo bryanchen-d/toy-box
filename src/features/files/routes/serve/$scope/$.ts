@@ -18,10 +18,13 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".mov": "video/quicktime",
+  ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".wasm": "application/wasm",
+  ".webm": "video/webm",
   ".webp": "image/webp",
 };
 
@@ -46,7 +49,24 @@ export async function createServeResponse(
     return new Response(null, { status: 304, headers });
   }
 
-  return new Response(Bun.file(absolutePath), { headers });
+  // Media elements stream and seek by byte range, and Safari won't play video without ranges and a
+  // known length. Bun.serve provides both natively, but the dev server's node:http adapter pipes the
+  // Response and drops them. HTTP lets a server ignore other range forms, so they get the whole file.
+  const range = request.headers.get("Range")?.match(/^bytes=(\d+)-(\d*)$/);
+  if (range) {
+    const start = Number(range[1]);
+    const end = Math.min(range[2] ? Number(range[2]) : size - 1, size - 1);
+    if (start <= end) {
+      return new Response(Bun.file(absolutePath).slice(start, end + 1), {
+        status: 206,
+        headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${size}` },
+      });
+    }
+  }
+
+  return new Response(Bun.file(absolutePath), {
+    headers: { ...headers, "Content-Length": String(size) },
+  });
 }
 
 // Serve raw file bytes for relative resources referenced by rendered files.

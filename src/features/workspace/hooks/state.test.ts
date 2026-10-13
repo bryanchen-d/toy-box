@@ -1,7 +1,11 @@
 import { describe, expect, onTestFinished, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { workspaceQueries } from "@workspace/queries";
-import { createEmptyWorkspaceState, type WorkspaceState } from "@workspace/model/state/reducer";
+import {
+  createEmptyWorkspaceState,
+  type WorkspaceSessionStatus,
+  type WorkspaceState,
+} from "@workspace/model/state/reducer";
 import { selectWorkspaceSessionActivity } from "./state";
 import { sessionFile, workspaceFileId } from "@files/model";
 
@@ -9,7 +13,7 @@ describe("workspace query selectors", () => {
   test("projects one session without notifying it about another", () => {
     const queryClient = createQueryClient();
     seedWorkspace(queryClient, createEmptyWorkspaceState());
-    const status = observe(
+    const status = observe<WorkspaceSessionStatus>(
       queryClient,
       (workspace) => workspace.sessionStates["session-a"]?.status ?? "idle",
     );
@@ -32,43 +36,38 @@ describe("workspace query selectors", () => {
     expect(status.updates()).toBe(1);
   });
 
-  test("status and prompt selectors ignore changes they do not expose", () => {
+  test("status and draft selectors ignore changes they do not expose", () => {
     const queryClient = createQueryClient();
-    const prompt = { text: "draft", origin: "client-a", updatedAt: 1 };
-    const changedPrompt = { text: "changed", origin: "client-a", updatedAt: 2 };
+    const draft = { text: "draft", origin: "client-a", updatedAt: 1 };
+    const changedDraft = { text: "changed", origin: "client-a", updatedAt: 2 };
     seedWorkspace(queryClient, {
       ...createEmptyWorkspaceState(),
-      sessionStates: { "session-a": { status: "idle", prompt } },
+      drafts: { "session:session-a": draft },
     });
-    const status = observe(
+    const status = observe<WorkspaceSessionStatus>(
       queryClient,
       (workspace) => workspace.sessionStates["session-a"]?.status ?? "idle",
     );
-    const selectedPrompt = observe(
+    const selectedDraft = observe(
       queryClient,
-      (workspace) => workspace.sessionStates["session-a"]?.prompt ?? null,
+      (workspace) => workspace.drafts["session:session-a"] ?? null,
     );
 
     updateWorkspace(queryClient, (workspace) => ({
       ...workspace,
-      sessionStates: {
-        "session-a": {
-          status: "idle",
-          prompt: changedPrompt,
-        },
-      },
+      drafts: { "session:session-a": changedDraft },
     }));
     expect(status.updates()).toBe(0);
-    expect(selectedPrompt.updates()).toBe(1);
-    const promptAfterEdit = selectedPrompt.data();
+    expect(selectedDraft.updates()).toBe(1);
+    const draftAfterEdit = selectedDraft.data();
 
     updateWorkspace(queryClient, (workspace) => ({
       ...workspace,
-      sessionStates: { "session-a": { status: "running", since: 1, prompt: changedPrompt } },
+      sessionStates: { "session-a": { status: "running", since: 1 } },
     }));
     expect(status.updates()).toBe(1);
-    expect(selectedPrompt.data()).toBe(promptAfterEdit);
-    expect(selectedPrompt.updates()).toBe(1);
+    expect(selectedDraft.data()).toBe(draftAfterEdit);
+    expect(selectedDraft.updates()).toBe(1);
   });
 
   test("activity begins when a session starts running", () => {
@@ -86,7 +85,7 @@ describe("workspace query selectors", () => {
       waiting: false,
       unread: false,
       since: undefined,
-      hasDraftPrompt: false,
+      hasDraft: false,
     });
     expect(activity.updates()).toBe(0);
 
@@ -99,7 +98,7 @@ describe("workspace query selectors", () => {
       waiting: false,
       unread: false,
       since: 1,
-      hasDraftPrompt: false,
+      hasDraft: false,
     });
     expect(activity.updates()).toBe(1);
 
@@ -112,64 +111,36 @@ describe("workspace query selectors", () => {
       waiting: true,
       unread: false,
       since: 1,
-      hasDraftPrompt: false,
+      hasDraft: false,
     });
     expect(activity.updates()).toBe(2);
   });
 
-  test("projects whether a session has a non-empty draft prompt", () => {
+  test("projects whether a session has a non-empty draft", () => {
     const queryClient = createQueryClient();
     seedWorkspace(queryClient, createEmptyWorkspaceState());
     const activity = observe(queryClient, (workspace) =>
       selectWorkspaceSessionActivity(workspace, "session-a"),
     );
-
-    updateWorkspace(queryClient, (workspace) => ({
+    const draft = (text: string, updatedAt: number) => (workspace: WorkspaceState) => ({
       ...workspace,
-      sessionStates: {
-        "session-a": {
-          status: "idle",
-          prompt: { text: "   ", origin: "client-a", updatedAt: 1 },
-        },
-      },
-    }));
-    expect(activity.data()?.hasDraftPrompt).toBe(false);
+      drafts: { "session:session-a": { text, origin: "client-a", updatedAt } },
+    });
+
+    updateWorkspace(queryClient, draft("   ", 1));
+    expect(activity.data()?.hasDraft).toBe(false);
     expect(activity.updates()).toBe(0);
 
-    updateWorkspace(queryClient, (workspace) => ({
-      ...workspace,
-      sessionStates: {
-        "session-a": {
-          status: "idle",
-          prompt: { text: "Follow up", origin: "client-a", updatedAt: 2 },
-        },
-      },
-    }));
-    expect(activity.data()?.hasDraftPrompt).toBe(true);
+    updateWorkspace(queryClient, draft("Follow up", 2));
+    expect(activity.data()?.hasDraft).toBe(true);
     expect(activity.updates()).toBe(1);
 
-    updateWorkspace(queryClient, (workspace) => ({
-      ...workspace,
-      sessionStates: {
-        "session-a": {
-          status: "idle",
-          prompt: { text: "Changed follow up", origin: "client-a", updatedAt: 3 },
-        },
-      },
-    }));
-    expect(activity.data()?.hasDraftPrompt).toBe(true);
+    updateWorkspace(queryClient, draft("Changed follow up", 3));
+    expect(activity.data()?.hasDraft).toBe(true);
     expect(activity.updates()).toBe(1);
 
-    updateWorkspace(queryClient, (workspace) => ({
-      ...workspace,
-      sessionStates: {
-        "session-a": {
-          status: "idle",
-          prompt: { text: "", origin: "client-a", updatedAt: 4 },
-        },
-      },
-    }));
-    expect(activity.data()?.hasDraftPrompt).toBe(false);
+    updateWorkspace(queryClient, draft("", 4));
+    expect(activity.data()?.hasDraft).toBe(false);
     expect(activity.updates()).toBe(2);
   });
 

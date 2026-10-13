@@ -1,8 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { selectAutomationSessionIds, selectNonWorkerSessions, skillQueries } from "./queries";
+import {
+  selectAutomationSessionIds,
+  selectNonWorkerSessions,
+  selectTopLevelSessions,
+  selectSessionChildren,
+} from "./queries";
 import type { SessionsState } from "./model";
 
 describe("session list projection", () => {
+  test("sidebar roots and composer references exclude every managed surface", () => {
+    const sessions = [
+      "standard",
+      "external",
+      "child",
+      "inbox",
+      "channel",
+      "automation",
+      "hyper",
+    ].map((id) => ({ id, createdAt: new Date(0), updatedAt: new Date(0) }));
+    const state: SessionsState = {
+      sessions,
+      worktrees: {},
+      ownership: {
+        child: { type: "worker", parentSessionId: "standard" },
+        inbox: { type: "worker", parentSessionId: null },
+        channel: { type: "worker", parentSessionId: null },
+        automation: { type: "automation" },
+      },
+    };
+    expect(selectTopLevelSessions(state, ["hyper"])).toEqual(sessions.slice(0, 2));
+  });
+
   test("excludes managed worker sessions while preserving canonical metadata", () => {
     const standard = {
       id: "standard",
@@ -38,15 +66,37 @@ describe("session list projection", () => {
     };
     expect(selectAutomationSessionIds(state)).toEqual(["scheduled"]);
   });
-});
 
-describe("skill query identity", () => {
-  test("shares discovery by working directory and distinguishes host-level discovery", () => {
-    expect(skillQueries.byCwd("/repo")).toEqual(["skills", "/repo", "standard", null]);
-    expect(skillQueries.byCwd("/repo")).toEqual(skillQueries.byCwd("/repo"));
-    expect(skillQueries.byCwd("/other")).not.toEqual(skillQueries.byCwd("/repo"));
-    expect(skillQueries.byCwd()).toEqual(["skills", null, "standard", null]);
-    expect(skillQueries.byCwd("/repo", "hyper")).toEqual(["skills", "/repo", "hyper", null]);
-    expect(skillQueries.byCwd("/repo", "hyper")).not.toEqual(skillQueries.byCwd("/repo"));
+  test("indexes retained children by their immediate parent without exposing unrelated workers", () => {
+    const sessions = [
+      "parent",
+      "child",
+      "file-worker",
+      "grandchild",
+      "app-worker",
+      "channel-worker",
+      "inbox-worker",
+      "automation",
+    ].map((id) => ({ id, createdAt: new Date(0), updatedAt: new Date(0) }));
+    const state: SessionsState = {
+      sessions,
+      worktrees: {},
+      ownership: {
+        child: { type: "worker", parentSessionId: "parent" },
+        "file-worker": { type: "worker", parentSessionId: "parent" },
+        grandchild: { type: "worker", parentSessionId: "child" },
+        "app-worker": { type: "worker", parentSessionId: null },
+        "channel-worker": { type: "worker", parentSessionId: null },
+        "inbox-worker": { type: "worker", parentSessionId: null },
+        automation: { type: "automation" },
+        reserved: { type: "worker", parentSessionId: "parent" },
+      },
+    };
+
+    expect(selectSessionChildren(state)).toEqual({
+      parent: [sessions[1], sessions[2]],
+      child: [sessions[3]],
+    });
+    expect(selectSessionChildren(state).parent?.[0]).toBe(sessions[1]);
   });
 });

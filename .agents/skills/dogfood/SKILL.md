@@ -25,15 +25,25 @@ Run Toy Box dogfooding scenarios after significant changes and report pass/fail 
 3. Run scenario checks:
 
 - Use `playwright-cli --session <name> snapshot` before any `click`/`fill`/`press` actions.
-- Follow all required checks in `references/validation-checklist.md`.
+- When the change followed a plan, run the dogfood scenarios it names and the checklist groups for the areas it touches; otherwise follow all required checks in `references/validation-checklist.md`.
 - Refresh snapshots after key transitions because refs are snapshot-specific.
 
 4. Collect validation evidence:
 
 - Capture snapshots or concrete UI observations before and after key actions.
 - Check browser `console` for regressions.
-- Check browser `network` for expected SSE/stream/WS traffic.
+- Check browser `requests` for expected SSE/stream/WS traffic.
 - Record a pass/fail result for each scenario group.
+
+For native apps, automate with the provider's computer-use tools or playwright-cli.
+Find the actual window with list_screens and present it with set_session_preview;
+use a display for the whole desktop. Verify native pixels in Toy Box, not only a
+URL or Playwright screenshot. Test a second viewer, human control takeover,
+restart reconnect and last-viewer release without quitting the app. Native capture on
+macOS pauses while the host is locked; report that explicitly and resume on unlock.
+Run Screens' `bench/browser.ts` once at fixed dimensions, quality and FPS.
+It checks static traffic, native input latency, scrolling, motion bandwidth and
+slow-viewer isolation. Release input before handing the window to the user.
 
 5. Produce report:
 
@@ -46,7 +56,8 @@ Run Toy Box dogfooding scenarios after significant changes and report pass/fail 
 
 6. Clean up sessions:
 
-- Run `playwright-cli --session <name> session-stop` for specific sessions or `playwright-cli session-stop-all`.
+- Run `playwright-cli --session <name> close` for each test session you created;
+  never stop another user's browser sessions.
 - Keep the dev server running only if user asked for continued manual testing.
 
 ## Use Reference

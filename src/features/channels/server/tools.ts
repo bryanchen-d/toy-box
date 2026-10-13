@@ -81,7 +81,7 @@ const createCurrentChannelMembersTool = defineTool("create_channel_members", {
 
 const postChannelMessageTool = defineTool("post_channel_message", {
   description:
-    "Posts a user-attributed Markdown message with optional image paths to a channel. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents. A message without mentions wakes the lead. Read the channel for exact mentions.",
+    "Posts a user-attributed Markdown message with optional image or video paths to a channel. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents. A message without mentions wakes the lead. Read the channel for exact mentions.",
   parameters: channelIdentitySchema.extend({
     content: conciseChannelMessageSchema,
     attachments: z.array(filePathSchema).optional(),
@@ -99,7 +99,7 @@ const postChannelMessageTool = defineTool("post_channel_message", {
 
 const readChannelForSessionTool = defineTool("read_channel", {
   description:
-    "Reads the channel purpose, tasks, preview URL, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the channel purpose, tasks, URL or screen preview, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: channelIdentitySchema.extend({
     beforeSequence: z.number().int().positive().optional(),
   }),
@@ -135,7 +135,7 @@ const waitForChannelAgentsTool = defineTool("wait_for_channel_agents", {
 
 const readChannelForAgentTool = defineTool("read_channel", {
   description:
-    "Reads the channel purpose, tasks, preview URL, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the channel purpose, tasks, URL or screen preview, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z.object({}),
   handler: async (_args, invocation) => {
     const { readChannelForAgent } = await import("@channels/server");
@@ -159,7 +159,7 @@ const sendLeadMessageParameters = sendChannelMessageParameters.extend({
 
 const sendChannelMessageTool = defineTool("send_channel_message", {
   description:
-    "Publishes a Markdown channel message without ending the turn. Pass screenshot and image paths in attachments. Name-derived @mentions wake the addressed agents. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
+    "Publishes a Markdown channel message without ending the turn. Pass screenshot, image, and video paths in attachments. Name-derived @mentions wake the addressed agents. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
   parameters: sendChannelMessageParameters,
   handler: async (args: z.output<typeof sendLeadMessageParameters>, invocation) => {
     const { sendChannelMessageFromAgent } = await import("@channels/server");
@@ -203,7 +203,7 @@ const setChannelStatusTool = defineTool("set_agent_status", {
 
 const updateChannelTool = defineTool("update_channel", {
   description:
-    "Updates this channel's name, purpose, working directory, tasks, or preview URL. Only the lead can change its working directory; use an existing absolute path, which applies to all agents at their next execution. Rename it when the user changes its title; set the purpose when the user defines or revises what the channel is for. Supply tasks only for initial planning or intentional whole-list replacement, preserving retained IDs and outcomes. Use edit_channel_tasks for progress updates. Preserve root-relative preview URLs returned by Toy Box tools. Share file artifacts instead of using them as previews. Set purpose, directory, or previewUrl to null to clear it.",
+    "Updates this channel's name, purpose, working directory, tasks, or preview. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_channel_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. Share file artifacts instead of using them as previews. Set purpose, directory, or preview to null to clear it.",
   parameters: updateChannelInputSchema,
   handler: async (args, invocation) => {
     const { updateChannelFromLead } = await import("@channels/server");
@@ -398,8 +398,8 @@ function toChannelReadToolResult(
   } satisfies ToolResult;
 }
 
-function channelContextForTool({ name, purpose, directory, tasks, previewUrl }: Channel) {
-  return { name, purpose, directory, tasks, previewUrl };
+function channelContextForTool({ name, purpose, directory, tasks, preview }: Channel) {
+  return { name, purpose, directory, tasks, preview };
 }
 
 function agentForTool(agent: ChannelAgent) {

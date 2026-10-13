@@ -49,6 +49,7 @@ Each guide explains one capability end to end, including adjacent callers and co
 - [`src/features/whiteboard/AGENTS.md`](src/features/whiteboard/AGENTS.md): host-neutral native SVG documents, transient whiteboard state, gestures, history, and presentation
 - [`src/features/files/AGENTS.md`](src/features/files/AGENTS.md): browsable workspace files presented as live, bidirectionally editable surfaces
 - [`src/features/terminal/AGENTS.md`](src/features/terminal/AGENTS.md): reconnectable PTYs with mode-aware scrollback that preserves the visible terminal
+- [`src/features/screens/AGENTS.md`](src/features/screens/AGENTS.md): native window capture, shared preview references, remote input handoff, and remoting benchmarks
 - [`cli/AGENTS.md`](cli/AGENTS.md): one installable binary that assembles the browser app and Nitro server
 - [`tests/AGENTS.md`](tests/AGENTS.md): live runtime and historical replay behavior locked against real SDK fixtures
 
@@ -63,6 +64,7 @@ Great code pursues simplicity by placing a rich domain model at the center, deco
 - Semantic decomposition
   - Decompose the domain into subsystems with independently nameable roles, ownership, and contracts. Each subsystem should expose a coherent capability rather than mirror implementation mechanics.
   - Within each subsystem, give every module and component one semantic responsibility. Create or extract one when it gives a capability a clear owner, removes real repetition, or clarifies composition; inline wrappers that only add indirection.
+  - Grow the system by extension. Before building a capability, look for an existing one in the owning feature, shared modules and components, sibling features, the installed libraries, and the platform, and extend what fits instead of building a parallel version.
   - Within each file, optimize for linear top-to-bottom reading. Establish its role, domain concepts, and common control flow before supporting mechanics and edge cases; comment only to explain a non-obvious role or invariant.
 - Functional architecture
   - Within each boundary, implement domain behavior as a pure, referentially transparent core over immutable values, with explicit inputs, outputs, and transitions.
@@ -77,6 +79,7 @@ For model examples, see [`src/features/providers/server/copilot/projector.ts`](s
 
 ## Definition of Done
 
+- Use the `plan` skill before building when its trigger contract applies; `review` and `dogfood` then check the work against the plan.
 - Use the `review` skill when its trigger contract applies; it is not a blanket requirement for every code change.
 - Run `bun check` and fix any formatting, lint, or typecheck issues.
 - Run `bun test` and fix any failing tests.

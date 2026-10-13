@@ -1,35 +1,113 @@
 import { describe, expect, test } from "bun:test";
-import { fileCompletionSource, skillCompletionSource } from "./completionSources";
+import { fileQueries } from "@files/queries";
+import { matchCompletion } from "@/shared/composers/completions/useCompletions";
+import type { Session } from "../../../model";
+import { skillQueries } from "../../../queries";
+import { promptCompletionSources } from "./completionSources";
+
+const session = (id: string, updated: number, title = "Plan"): Session => ({
+  id,
+  title,
+  createdAt: new Date(0),
+  updatedAt: new Date(updated),
+  provider: { id: "copilot" },
+});
+
+function catalog(source: ReturnType<typeof promptCompletionSources>[number], query: string) {
+  const request = source.query(query);
+  if (Array.isArray(request)) throw new Error("Expected a projection over a catalog query.");
+  return request;
+}
 
 describe("prompt completion sources", () => {
-  test("skills match only at the beginning of a prompt", () => {
-    expect(skillCompletionSource.match("/rev", 4)).toEqual({ start: 0, end: 4, query: "rev" });
-    expect(skillCompletionSource.match("/", 1)).toEqual({ start: 0, end: 1, query: "" });
-    expect(skillCompletionSource.match("/review now", 11)).toBeUndefined();
-    expect(skillCompletionSource.match("see /rev", 8)).toBeUndefined();
-    expect(skillCompletionSource.match("/review later", 4)).toEqual({
+  test("skills complete only at the start of a prompt", () => {
+    const [{ trigger }] = promptCompletionSources({ hyperSessionIds: [] });
+    expect(matchCompletion(trigger, "/rev", 4)).toEqual({ start: 0, end: 4, query: "rev" });
+    expect(matchCompletion(trigger, "/review later", 4)).toEqual({
       start: 0,
       end: 7,
       query: "rev",
     });
+    expect(matchCompletion(trigger, "/review now", 11)).toBeUndefined();
+    expect(matchCompletion(trigger, "see /rev", 8)).toBeUndefined();
   });
 
-  test("files match after whitespace and include path separators", () => {
-    expect(fileCompletionSource.match("compare @src/fea", 16)).toEqual({
-      start: 8,
-      end: 16,
-      query: "src/fea",
+  test("skills come from the catalog for the composer's directory, role, and provider", () => {
+    const [hyper] = promptCompletionSources({
+      sessionId: "hyper",
+      directory: "/project",
+      provider: "codex",
+      hyperSessionIds: ["hyper"],
     });
-    expect(fileCompletionSource.match("@", 1)).toEqual({ start: 0, end: 1, query: "" });
-    expect(fileCompletionSource.match("open @notes.md please", 9)).toEqual({
-      start: 5,
-      end: 14,
-      query: "not",
-    });
+    expect(catalog(hyper!, "").queryKey).toEqual(
+      skillQueries.list("/project", "hyper", "codex").queryKey,
+    );
+    // Inbox composes before a session exists.
+    const [inbox] = promptCompletionSources({ provider: "claude", hyperSessionIds: ["hyper"] });
+    expect(catalog(inbox!, "").queryKey).toEqual(
+      skillQueries.list(undefined, "standard", "claude").queryKey,
+    );
   });
 
-  test("files stop at whitespace and ignore email addresses", () => {
-    expect(fileCompletionSource.match("@notes.md and more", 18)).toBeUndefined();
-    expect(fileCompletionSource.match("mail me@example.com", 19)).toBeUndefined();
+  test("skills match by name or description and mark global skills within a directory", () => {
+    const skills = [
+      { name: "review", description: "Check a diff", type: "global", path: "/r.md" },
+      { name: "deploy", description: "Ship it", type: "project" },
+    ];
+    const [withDirectory] = promptCompletionSources({ directory: "/p", hyperSessionIds: [] });
+    expect(catalog(withDirectory!, "DIFF").select!(skills)).toEqual([
+      {
+        value: "/review",
+        label: "/review",
+        description: "Check a diff",
+        badge: "Global",
+        filePath: "/r.md",
+      },
+    ]);
+    const [withoutDirectory] = promptCompletionSources({ hyperSessionIds: [] });
+    expect(catalog(withoutDirectory!, "ship").select!(skills)).toMatchObject([
+      { value: "/deploy", badge: undefined },
+    ]);
+  });
+
+  test("sessions offer other top-level sessions by title, newest first", () => {
+    const [, sessions] = promptCompletionSources({ sessionId: "self", hyperSessionIds: ["hyper"] });
+    const values = catalog(sessions!, "pLaN").select!({
+      sessions: [
+        session("self", 9),
+        { ...session("draft", 8), provider: undefined },
+        session("worker", 7),
+        session("hyper", 6),
+        session("older", 3),
+        session("tied-b", 5),
+        session("tied-a", 5),
+        session("other", 4, "Other topic"),
+        { ...session("untitled-plan", 2), title: undefined },
+      ],
+      ownership: { worker: { type: "worker", parentSessionId: "self" } },
+      worktrees: {},
+    }).map(({ value }) => value);
+    expect(values).toEqual([
+      "[Plan](session:tied-a)",
+      "[Plan](session:tied-b)",
+      "[Plan](session:older)",
+      "[untitled-plan](session:untitled-plan)",
+    ]);
+  });
+
+  test("files are referenced by their search path, named with their folder beside them", () => {
+    const [, , files] = promptCompletionSources({ directory: "/p", hyperSessionIds: [] });
+    const search = catalog(files!, "plan");
+    expect(search.queryKey).toEqual(fileQueries.search("/p", "plan").queryKey);
+    expect(search.select!(["src/a folder/plan.md", "plan.txt"])).toMatchObject([
+      {
+        value: "[plan.md](file:src/a%20folder/plan.md)",
+        label: "plan.md",
+        detail: "src/a folder",
+      },
+      { value: "[plan.txt](file:plan.txt)", label: "plan.txt", detail: undefined },
+    ]);
+    const [, , noDirectory] = promptCompletionSources({ hyperSessionIds: [] });
+    expect(noDirectory!.query("plan")).toEqual([]);
   });
 });

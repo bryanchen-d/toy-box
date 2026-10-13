@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
-import { Copy } from "lucide-react";
 import { Markdown } from "@/shared/ui/markdown";
-import { Button } from "@/shared/ui/button";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { Separator } from "@/shared/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
 import type { Attachment, AttachmentReference } from "@/shared/attachments/model";
+import { CopyControl } from "./CopyControl";
 
 export function UserMessage({
   message,
@@ -19,6 +17,7 @@ export function UserMessage({
     timestamp?: string;
     attachments?: (Attachment | AttachmentReference)[];
   };
+  /** Actions before Copy, separated from it whenever they render anything. */
   extraActions?: ReactNode;
   /** Replaces the relative timestamp, such as in a timeline already divided by day. */
   time?: ReactNode;
@@ -34,8 +33,12 @@ export function UserMessage({
         </div>
       )}
       <div className="flex min-h-6 items-center gap-1">
-        {extraActions}
-        {extraActions && <Separator orientation="vertical" className="h-4!" />}
+        {extraActions && (
+          <>
+            <span className="peer flex items-center gap-1 empty:hidden">{extraActions}</span>
+            <Separator orientation="vertical" className="h-4! peer-empty:hidden" />
+          </>
+        )}
         <CopyControl content={message.content} />
         {time ??
           (message.timestamp && (
@@ -48,26 +51,5 @@ export function UserMessage({
         </div>
       )}
     </div>
-  );
-}
-
-export function CopyControl({ content }: { content: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Copy message"
-            onClick={() => void navigator.clipboard.writeText(content)}
-          >
-            <Copy aria-hidden />
-          </Button>
-        }
-      />
-      <TooltipContent sideOffset={4}>Copy message</TooltipContent>
-    </Tooltip>
   );
 }

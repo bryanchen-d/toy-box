@@ -1,8 +1,7 @@
-import { Image, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
 import type { Attachment } from "@/shared/attachments/model";
-import { InputGroupAddon, InputGroupButton } from "@/shared/ui/input-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { InputGroupAddon } from "@/shared/ui/input-group";
 import { cn } from "@/shared/utils";
 
 const attachmentPillClassName =
@@ -39,25 +38,5 @@ export function ImageAttachments({
         </span>
       )}
     </InputGroupAddon>
-  );
-}
-
-export function AttachImageButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <InputGroupButton
-            size="icon-xs"
-            aria-label="Attach images"
-            onClick={onClick}
-            suppressHydrationWarning
-          >
-            <Image className="h-4 w-4" />
-          </InputGroupButton>
-        }
-      />
-      <TooltipContent sideOffset={6}>Attach images</TooltipContent>
-    </Tooltip>
   );
 }

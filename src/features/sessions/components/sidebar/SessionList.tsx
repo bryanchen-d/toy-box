@@ -1,8 +1,11 @@
+import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/shared/ui/badge";
 import { SidebarList as AnimatedSidebarList } from "@/shared/sidebar/SidebarList";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useUpdateWorkspaceSetting, useWorkspaceSelector } from "@workspace/hooks/state";
 import type { Session } from "../../model";
+import { selectSessionChildren, sessionQueries } from "../../queries";
 import { SessionListItem } from "./SessionListItem";
 import { groupSessions } from "./sessionGrouping";
 
@@ -42,10 +45,15 @@ export function SessionList({
   worktreeSessionIds,
   emptyMessage,
 }: SessionListProps) {
+  const { data: childrenByParent } = useQuery({
+    ...sessionQueries.state(),
+    select: selectSessionChildren,
+  });
   const pinnedSessionIds = useWorkspaceSelector((workspace) => workspace.settings.pinnedSessionIds);
   const updateSetting = useUpdateWorkspaceSetting();
   const pinnedSessionIdSet = new Set(pinnedSessionIds);
-  const sessionGroups = groupSessions(sessions, pinnedSessionIds, new Date());
+  const [now] = useState(() => new Date());
+  const sessionGroups = groupSessions(sessions, pinnedSessionIds, now);
 
   function handleSessionPinToggle(sessionId: string) {
     updateSetting(
@@ -53,6 +61,33 @@ export function SessionList({
       pinnedSessionIdSet.has(sessionId)
         ? pinnedSessionIds.filter((pinnedSessionId) => pinnedSessionId !== sessionId)
         : [...pinnedSessionIds, sessionId],
+    );
+  }
+
+  function renderSession(session: Session, isChild = false): ReactNode {
+    const children = childrenByParent?.[session.id] ?? [];
+    return (
+      <SessionListItem
+        key={`session:${session.id}`}
+        session={session}
+        onSelect={onSessionSelect}
+        onPinToggle={isChild ? undefined : () => handleSessionPinToggle(session.id)}
+        onRename={() => onSessionRename(session.id)}
+        onBrowseDirectory={onBrowseDirectory}
+        onDelete={() => onSessionDelete(session.id)}
+        isActive={openSessionIds.includes(session.id)}
+        isPinned={!isChild && pinnedSessionIdSet.has(session.id)}
+        isWorktree={worktreeSessionIds.includes(session.id)}
+        childCount={children.length}
+        renderChildren={
+          children.length > 0
+            ? () =>
+                [...children]
+                  .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+                  .map((child) => <li key={child.id}>{renderSession(child, true)}</li>)
+            : undefined
+        }
+      />
     );
   }
 
@@ -78,20 +113,7 @@ export function SessionList({
                 </div>
               </div>
             ) : null,
-            ...group.sessions.map((session) => (
-              <SessionListItem
-                key={`session:${session.id}`}
-                session={session}
-                onSelect={onSessionSelect}
-                onPinToggle={() => handleSessionPinToggle(session.id)}
-                onRename={() => onSessionRename(session.id)}
-                onBrowseDirectory={onBrowseDirectory}
-                onDelete={() => onSessionDelete(session.id)}
-                isActive={openSessionIds.includes(session.id)}
-                isPinned={pinnedSessionIdSet.has(session.id)}
-                isWorktree={worktreeSessionIds.includes(session.id)}
-              />
-            )),
+            ...group.sessions.map((session) => renderSession(session)),
           ])}
     </AnimatedSidebarList>
   );

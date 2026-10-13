@@ -62,7 +62,7 @@ function displayContent(input: UserInput): string | undefined {
     : undefined;
 }
 
-/** Imported CLI conversations can reference local images instead of data URLs. */
+/** Imported conversations can reference local or uploaded images instead of data URLs. */
 export async function hydrateThreadInputs(thread: Thread): Promise<Thread> {
   return {
     ...thread,
@@ -85,22 +85,24 @@ export async function hydrateThreadInputs(thread: Thread): Promise<Thread> {
 }
 
 async function hydrateNativeImage(input: UserInput): Promise<UserInput> {
+  // Uploaded files live with the model provider, not on this machine.
+  if (input.type === "image" && "fileId" in input) return unavailableImage(input.fileId);
   if (input.type !== "localImage") return input;
   const file = Bun.file(input.path);
   try {
     const data = Buffer.from(await file.arrayBuffer()).toString("base64");
     return { type: "image", url: `data:${file.type || "image/png"};base64,${data}` };
   } catch {
-    return {
-      type: "text",
-      text: `[Unavailable image attachment: ${input.path}]`,
-      text_elements: [],
-    };
+    return unavailableImage(input.path);
   }
 }
 
+function unavailableImage(reference: string): UserInput {
+  return { type: "text", text: `[Unavailable image attachment: ${reference}]`, text_elements: [] };
+}
+
 function readImage(input: UserInput): Attachment | undefined {
-  if (input.type !== "image") return undefined;
+  if (input.type !== "image" || !("url" in input)) return undefined;
   const match = /^data:(image\/[^;,]+);base64,([\s\S]+)$/.exec(input.url);
   return match ? { mimeType: match[1]!, base64: match[2]! } : undefined;
 }

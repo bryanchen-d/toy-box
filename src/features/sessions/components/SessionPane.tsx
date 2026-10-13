@@ -5,7 +5,7 @@ import { useWorkspaceSelector } from "@workspace/hooks/state";
 import type { UserMessage } from "../model";
 import { getRecentDirectories } from "../model/recentDirectories";
 import { sessionMutations } from "../mutations";
-import { sessionQueries, skillQueries } from "../queries";
+import { sessionQueries } from "../queries";
 import { useSession } from "../useSession";
 import {
   SessionLocationPicker,
@@ -20,7 +20,7 @@ import { CurrentSessionProvider, type SessionPaneMode } from "./CurrentSessionCo
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
 import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
 import { SessionMessageList } from "./transcript/MessageList";
-import { TranscriptSkeleton } from "./transcript/TranscriptSkeleton";
+import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 
 // Cap the transcript text handed to a voice call so context stays cheap to send.
 const VOICE_CONTEXT_MAX_CHARS = 1000;
@@ -47,9 +47,6 @@ export function SessionPane({
     (workspace) => workspace.sessionStates[sessionId]?.status ?? "idle",
   );
   const defaultUseWorktree = useWorkspaceSelector((workspace) => workspace.settings.useWorktree);
-  const isHyper = useWorkspaceSelector((workspace) =>
-    workspace.hyperSessionIds.includes(sessionId),
-  );
   // In the "compact" variant (the pager) the session surfaces its location picker
   // + message badges in the host's title bar and hides them from the composer; in
   // "normal" (the grid) it keeps them inline. See WorkspacePaneView.
@@ -107,6 +104,7 @@ export function SessionPane({
     todos,
     linkedSessionIds,
     canvases,
+    preview,
     artifacts,
     openedFiles,
     hasLoadedSessionState,
@@ -127,7 +125,6 @@ export function SessionPane({
   // Drafts start with the workspace default. Existing sessions reveal their
   // model only after hydration; if history has none, the default then becomes
   // the next-message fallback instead of flashing before session state loads.
-  const provider = isDraft ? undefined : (sessionModel?.provider ?? session?.provider?.id);
   const displayedModel = isDraft || hasLoadedSessionState ? (sessionModel ?? fallbackModel) : null;
 
   // Update both this session and the workspace-wide default.
@@ -136,15 +133,6 @@ export function SessionPane({
     setDefaultModel(nextModel);
   }
 
-  // Skills follow the effective directory, with no directory resolving host-level skills.
-  const { data: skills } = useQuery({
-    ...skillQueries.list(
-      effectiveDirectory,
-      isHyper ? "hyper" : undefined,
-      displayedModel?.provider ?? provider,
-    ),
-    enabled: !isPassive && !isSessionRecordLoading,
-  });
   useEffect(() => {
     if (mode !== "active") return;
     if (!isDraft && !hasLoadedSessionState) return;
@@ -155,11 +143,13 @@ export function SessionPane({
       canvases,
       artifacts.map(({ path }) => path),
       openedFiles,
+      preview,
     );
   }, [
     artifacts,
     openedFiles,
     canvases,
+    preview,
     hasLoadedSessionState,
     isDraft,
     mode,
@@ -300,10 +290,9 @@ export function SessionPane({
             onModelChange={handleModelChange}
             locationPicker={isCompact ? undefined : locationPickerProps}
             todos={todos}
-            skills={skills}
-            showGlobalSkillBadges={Boolean(effectiveDirectory)}
             sessionDiff={editDiffs}
             artifacts={mode === "active" ? artifacts : []}
+            preview={preview}
             directory={effectiveDirectory}
             queuedMessages={queuedMessages}
             sessionName={session?.title}

@@ -20,8 +20,8 @@ export function startCopilotClient(): Promise<CopilotClient> {
   const promise = (async () => {
     const client = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: resolveCopilotCliPath() }),
-      // TODO: Re-test SDK/CLI idle GC after upgrades. Once an expired session
-      // resumes reliably, use the native timeout and remove registry-owned expiry.
+      // Sessions releases idle connections for every provider; native expiry
+      // would retire sessions the registry still holds.
       sessionIdleTimeoutSeconds: 0,
       // Make a compiled Bun executable behave like the Bun CLI when the SDK
       // uses process.execPath for child JavaScript entrypoints.

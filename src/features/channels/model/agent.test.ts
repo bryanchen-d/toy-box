@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { withoutLeadingMentions } from "./agent";
+import { channelAgentIdentity, DELETED_AGENT_NAME, withoutLeadingMentions } from "./agent";
 
 const agents = [{ name: "Lead" }, { name: "Interface" }, { name: "Engine" }];
 
@@ -22,5 +22,24 @@ describe("without leading mentions", () => {
   test("keeps mentions that name no agent, or that are the whole message", () => {
     expect(withoutLeadingMentions("@engien fix the lift", agents)).toBe("@engien fix the lift");
     expect(withoutLeadingMentions("@engine", agents)).toBe("@engine");
+  });
+});
+
+describe("agent identity", () => {
+  const team = [
+    { id: "lead", name: "Lead" },
+    { id: "engine", name: "Engine" },
+  ];
+
+  test("resolves a current agent to itself", () => {
+    expect(channelAgentIdentity(team, "engine")).toBe(team[1]!);
+  });
+
+  test("resolves a removed agent to a deleted identity that keeps its ID", () => {
+    expect(channelAgentIdentity(team, "critic")).toEqual({
+      id: "critic",
+      name: DELETED_AGENT_NAME,
+      deleted: true,
+    });
   });
 });
