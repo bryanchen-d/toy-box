@@ -223,6 +223,7 @@ describe("SessionStream lifecycle", () => {
     stream.finish();
 
     expect((await collectStreamEvents(events)).map((event) => event.type)).toEqual([
+      "status",
       "message_queued",
       "end",
     ]);
@@ -255,7 +256,7 @@ describe("SessionStream lifecycle", () => {
     stream.finish();
 
     const events = await collectStreamEvents(subscription);
-    expect(events.map((event) => event.type)).toEqual(["end"]);
+    expect(events.map((event) => event.type)).toEqual(["status", "end"]);
     expect(cacheSnapshot).toHaveBeenCalledTimes(1);
     expect(cacheSnapshot).toHaveBeenCalledWith(
       sessionId,
@@ -299,7 +300,7 @@ describe("SessionStream lifecycle", () => {
     emit({ type: "end", reason: "error", error });
 
     const emitted = await collectStreamEvents(events);
-    expect(emitted.map((event) => event.type)).toEqual(["end"]);
+    expect(emitted.map((event) => event.type)).toEqual(["status", "end"]);
     expect(emitted.at(-1)).toMatchObject({
       type: "end",
       reason: "error",
@@ -382,7 +383,7 @@ describe("SessionStream lifecycle", () => {
     await ImportedSessionStream.remove("session-remove-semantics");
 
     const emittedEvents = await collectStreamEvents(events);
-    expect(emittedEvents.map((event) => event.type)).toEqual(["message_queued", "end"]);
+    expect(emittedEvents.map((event) => event.type)).toEqual(["status", "message_queued", "end"]);
     expect(emittedEvents.at(-1)).toMatchObject({ type: "end", reason: "idle" });
     expect(stream.getSessionState().queuedMessages).toEqual([]);
     expect(ImportedSessionStream.isRunning("session-remove-semantics")).toBe(false);
@@ -474,6 +475,8 @@ describe("SessionStream question answers", () => {
 
     emit({ type: "status", status: "reasoning" });
     expect(getWorkspaceSessionState(sessionId)?.status).toBe("waiting");
+    emit({ type: "status", status: "background" });
+    expect(getWorkspaceSessionState(sessionId)?.status).toBe("waiting");
 
     expect(
       await stream.answerQuestion({
@@ -555,7 +558,10 @@ describe("SessionStream abort", () => {
     await expect(stream.abort()).rejects.toThrow("abort exploded");
 
     expect(calls).toEqual(["abort"]);
-    expect((await collectStreamEvents(events)).map((event) => event.type)).toEqual(["end"]);
+    expect((await collectStreamEvents(events)).map((event) => event.type)).toEqual([
+      "status",
+      "end",
+    ]);
     expect(SessionStream.isRunning("session-abort-failure")).toBe(false);
   });
 
@@ -586,6 +592,41 @@ describe("SessionStream abort", () => {
 });
 
 describe("SessionStream queued messages", () => {
+  test.each(["before", "after"] as const)(
+    "dispatches messages queued %s background readiness without completing the runtime",
+    async (when) => {
+      const sessionId = `session-background-${when}`;
+      cleanUpStreamAfterTest(sessionId);
+      onTestFinished(() => deleteSessionState(sessionId));
+      const send = mock(async (_message: SessionMessage) => {});
+      const { session, emit } = makeControllableSession({ send });
+      const stream = SessionStream.getOrCreate(sessionId, session);
+      await stream.deliver(userMessage("First", "first"));
+      if (when === "before") await stream.deliver(userMessage("Next", "next"));
+      emit({ type: "status", status: "background" });
+      if (when === "after") await stream.deliver(userMessage("Next", "next"));
+      emit({ type: "status", status: "background" });
+      emit({ type: "end", reason: "idle" });
+      await settle();
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(SessionStream.isRunning(sessionId)).toBe(true);
+
+      emit({ type: "status", status: "thinking" });
+      expect(getWorkspaceSessionState(sessionId)?.status).toBe("running");
+      emit({ type: "user_message", content: "Next", clientId: "next" });
+      emit({ type: "status", status: "background" });
+      emit({ type: "status", status: "background" });
+      expect(getWorkspaceSessionState(sessionId)?.status).toBe("background");
+      expect(stream.getSessionState().queuedMessages).toEqual([]);
+      expect((await stream.waitForCompletion(0)).status).toBe("timed_out");
+      expect(SessionStream.isRunning(sessionId)).toBe(true);
+      expect(send).toHaveBeenCalledTimes(2);
+
+      emit({ type: "end", reason: "idle" });
+      expect(SessionStream.isRunning(sessionId)).toBe(false);
+    },
+  );
+
   test("an immediate message queues normally while another queued message is being sent", async () => {
     const sessionId = "session-provider-busy-submission";
     cleanUpStreamAfterTest(sessionId);
@@ -959,9 +1000,12 @@ describe("SessionStream queued messages", () => {
 
     const drained = await collectStreamEvents(events);
     expect(drained.map((event) => event.type)).toEqual([
+      "status",
       "message_queued",
       "user_message",
+      "message_queued",
       "message_status_changed",
+      "status",
       "end",
     ]);
     expect(drained.at(-1)).toMatchObject({ type: "end", reason: "error" });
@@ -1008,6 +1052,7 @@ describe("SessionStream model selection", () => {
       reasoningEffort: "high",
       contextTier: "future_tier",
     });
+    expect(await nextStreamEvent(events)).toMatchObject({ type: "status", status: "thinking" });
     expect(await nextStreamEvent(events)).toEqual(
       expect.objectContaining({
         type: "model_changed",
@@ -1042,6 +1087,7 @@ describe("streamSession", () => {
     const iterator = (await importedStreamSession({
       sessionId: "session-reconnect",
     }))!;
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     let receivedCanonicalInput = false;
     const firstEvent = iterator.next().then((result) => {
       receivedCanonicalInput = true;
@@ -1083,6 +1129,7 @@ describe("streamSession", () => {
         content: "Queue this client prompt",
       },
     }))!;
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     const first = await iterator.next();
     await iterator.return?.(undefined);
 
@@ -1129,6 +1176,7 @@ describe("streamSession", () => {
       message: userMessage("Distinct follow-up", "distinct-message"),
       location: {},
     }))!;
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     expect(await iterator.next()).toMatchObject({
       done: false,
       value: {
@@ -1173,6 +1221,7 @@ describe("streamSession", () => {
       message: userMessage("Start this client prompt"),
       location: {},
     }))!;
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     const firstEvent = iterator.next();
     emit({ type: "user_message", content: "Start this client prompt" });
     const first = await firstEvent;
@@ -1217,6 +1266,7 @@ describe("streamSession", () => {
       },
       location: {},
     }))!;
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     const firstEvent = iterator.next();
     emit({ type: "user_message", content: "", attachments: [attachment] });
     const first = await firstEvent;
@@ -1283,6 +1333,7 @@ describe("streamSession", () => {
       expect.objectContaining({ role: "user", content: "Follow-up after finish" }),
     );
     expect(events).toEqual([
+      expect.objectContaining({ type: "status", status: "thinking" }),
       expect.objectContaining({
         type: "user_message",
         content: "Follow-up after finish",
@@ -1361,6 +1412,7 @@ describe("streamSession", () => {
     }
 
     expect(events).toEqual([
+      expect.objectContaining({ type: "status", status: "thinking" }),
       expect.objectContaining({
         type: "user_message",
         content: "What is France's capital?",
@@ -1404,6 +1456,7 @@ describe("streamSession", () => {
       message: userMessage("doomed prompt"),
     }))!;
 
+    expect(await nextStreamEvent(iterator)).toMatchObject({ type: "status", status: "thinking" });
     const first = await iterator.next();
     expect(first.value).toMatchObject({ type: "end", reason: "error" });
     await expect(iterator.next()).resolves.toEqual({
@@ -1875,7 +1928,9 @@ describe("single-flight stream acquisition", () => {
 
     releaseResume();
     await background;
-    const clientResult = await clientNext;
+    expect((await clientNext).value).toMatchObject({ type: "status", status: "thinking" });
+    const clientIterator = (await clientSubscription)!;
+    const clientResult = await clientIterator.next();
 
     // The connected joiner immediately sees its shared queue update; the
     // background input remains provider-authoritative.
@@ -1889,7 +1944,6 @@ describe("single-flight stream acquisition", () => {
         }),
       },
     });
-    const clientIterator = (await clientSubscription)!;
     await clientIterator.return?.(undefined);
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect(sendMock).toHaveBeenCalledWith(

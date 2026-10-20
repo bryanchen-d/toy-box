@@ -13,6 +13,7 @@ type SidebarSessionItemProps = Omit<SidebarListItemProps, "status"> & {
   activity: {
     running: boolean;
     waiting: boolean;
+    background: boolean;
     unread: boolean;
     hasDraft: boolean;
   };
@@ -42,7 +43,7 @@ export function SidebarSessionItem({
   ...props
 }: SidebarSessionItemProps) {
   const preview = useSessionPreview(isActive || previewDisabled || disabled);
-  const justFinished = useJustFinished(activity.running || activity.waiting);
+  const justFinished = useJustFinished(activity.running || activity.waiting || activity.background);
   const status = getSessionListItemStatus(title, activity, isActive, justFinished);
 
   function handleClick(event: MouseEvent<HTMLButtonElement>) {
@@ -118,7 +119,7 @@ function useJustFinished(live: boolean): boolean {
 
 function getSessionListItemStatus(
   title: string,
-  { running, waiting, unread, hasDraft }: SidebarSessionItemProps["activity"],
+  { running, waiting, background, unread, hasDraft }: SidebarSessionItemProps["activity"],
   isActive: boolean,
   justFinished: boolean,
 ): SidebarStatus | undefined {
@@ -131,6 +132,13 @@ function getSessionListItemStatus(
   }
   if (running) {
     return { kind: "running", ariaLabel: `${title} is running`, tooltip: "Session is running" };
+  }
+  if (background) {
+    return {
+      kind: "background",
+      ariaLabel: `${title} has background tasks running`,
+      tooltip: "Background tasks running",
+    };
   }
   if (unread && !isActive) {
     return justFinished

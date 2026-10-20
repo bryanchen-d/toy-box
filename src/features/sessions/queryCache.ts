@@ -109,6 +109,7 @@ export function applyWorkspaceEventToSessionQueries(
       return;
     case "session.running":
     case "session.waiting":
+    case "session.background":
     case "session.unread":
       refetchIfOutsideCatalog(queryClient, event.sessionId);
       return;

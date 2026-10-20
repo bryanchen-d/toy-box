@@ -1,7 +1,7 @@
 // Providers adapt native histories and live activity to Sessions' domain model.
 // Sessions supplies host policy and resources, and owns queues and completion.
 
-import type { ModelConfiguration, ModelInfo } from "@providers/model";
+import type { ModelConfiguration, ModelInfo, ProviderSubscription } from "@providers/model";
 import type { SessionEvent, SessionMessage, Session, SessionSkill } from "@sessions/model";
 import type { SessionQuestionAnswer } from "@sessions/model/protocol";
 import type { Tool } from "@sessions/server/tools/definition";
@@ -38,6 +38,8 @@ export interface SessionProvider {
   readonly id: string;
   readonly name: string;
   listModels(): Promise<ModelInfo[]>;
+  /** Read the signed-in account's subscription; an account using an API key has none. */
+  readSubscription(): Promise<ProviderSubscription | undefined>;
   listSkills(
     directory: string | undefined,
     skillDirectories: readonly string[],

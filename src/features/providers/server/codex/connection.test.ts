@@ -27,6 +27,7 @@ const turn: Turn = {
   items: [],
   status: "inProgress",
   error: null,
+  rootTurnId: null,
 };
 const userItem: ThreadItem = {
   type: "userMessage",
@@ -172,6 +173,8 @@ test("subagent activity stays nested under one agent call live and after replay"
     kind: "started",
     agentThreadId: "child",
     agentPath: "/root/inspect",
+    model: "model-one",
+    reasoningEffort: "low",
   };
   const finished: ThreadItem = { ...started, id: "spawn-completed", kind: "completed" };
   const wait: ThreadItem = {
@@ -226,6 +229,15 @@ test("subagent activity stays nested under one agent call live and after replay"
   });
   for (const method of ["item/reasoning/summaryTextDelta", "item/reasoning/textDelta"])
     notifyThread("child", method, { turnId: childTurn.id, itemId: "thought", delta: "ha" });
+  notifyThread("child", "item/commandExecution/outputDelta", {
+    turnId: childTurn.id,
+    itemId: command.id,
+    delta: "/tm",
+  });
+  notifyThread("child", "thread/tokenUsage/updated", {
+    turnId: childTurn.id,
+    tokenUsage: { last: { totalTokens: 9_000 }, modelContextWindow: 258_400 },
+  });
 
   const active = sessionState(events);
   const activeAgent = agentCall(active);
@@ -233,8 +245,11 @@ test("subagent activity stays nested under one agent call live and after replay"
   expect(activeAgent).toMatchObject({ name: "agent", arguments: { description: "inspect" } });
   expect(activeAgent.result).toBeUndefined();
   expect(activeAgent.subagent?.toolCalls).toHaveLength(1);
+  expect(activeAgent.subagent?.toolCalls?.[0]?.output).toBe("/tm");
   expect(activeAgent.subagent?.reasoningContent).toBe("haha");
   expect(active.reasoningContent).toBe("");
+  // A subagent's context is its own; the parent's meter reflects only the parent.
+  expect(active.contextUsage).toBeUndefined();
 
   notifyThread("child", "item/completed", { turnId: childTurn.id, item: command });
   notifyThread("child", "item/completed", { turnId: childTurn.id, item: childReply });

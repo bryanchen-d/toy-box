@@ -630,6 +630,13 @@ describe("projector", () => {
             data: { content: "Ownership returned to parent." },
           }),
           toolExecutionStart("view", "sub-1", { path: "a.ts" }, {}, { agentId: nativeAgentId }),
+          toolExecutionStart("bash", "sub-2", { command: "pwd" }, {}, { agentId: nativeAgentId }),
+          sdkEvent({
+            type: "tool.shell_output",
+            agentId: nativeAgentId,
+            ephemeral: true,
+            data: { toolCallId: "sub-2", sequence: 0, text: "/tmp\n" },
+          }),
         ].flatMap(project),
       );
 
@@ -642,7 +649,10 @@ describe("projector", () => {
             subagent: {
               model: { name: "claude-haiku-4.5" },
               content: "Ownership returned to parent.",
-              toolCalls: [{ id: "sub-1", name: "read" }],
+              toolCalls: [
+                { id: "sub-1", name: "read" },
+                { id: "sub-2", output: "/tmp\n" },
+              ],
             },
           },
         ],
@@ -822,14 +832,14 @@ describe("projector", () => {
       ).toEqual([]);
     });
 
-    test("edit normalizes the replace_string_in_file alias and filePath argument for artifacts", () => {
+    test("edit normalizes the str_replace alias for artifacts", () => {
       const context = createStreamingContext();
       const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
 
       expect(
         projectSdkEvent(
-          toolExecutionStart("replace_string_in_file", "tool-edit-alias", {
-            filePath: artifactPath,
+          toolExecutionStart("str_replace", "tool-edit-alias", {
+            path: artifactPath,
           }),
           context,
         ),
@@ -882,7 +892,7 @@ describe("projector", () => {
       const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
 
       expectOmittedToolLifecycle(context, {
-        toolName: "read_file",
+        toolName: "view",
         toolCallId: "tool-read-artifact",
         argumentsRecord: { path: artifactPath },
         completionResultContent: "# Report",
@@ -901,7 +911,7 @@ describe("projector", () => {
 
       expect(
         projectSdkEvent(
-          toolExecutionStart("read_file", "tool-read-session-state", {
+          toolExecutionStart("view", "tool-read-session-state", {
             path: "~/.toy-box/sessions/toy-box-session/report.md",
           }),
           context,
@@ -939,7 +949,7 @@ describe("projector", () => {
 
       expect(
         projectSdkEvent(
-          toolExecutionStart("read_file", "tool-read-visible", { path: "/tmp/report.md" }),
+          toolExecutionStart("view", "tool-read-visible", { path: "/tmp/report.md" }),
           context,
         ),
       ).toEqual([
@@ -1359,6 +1369,18 @@ describe("projector", () => {
   });
 
   describe("streaming: deltas", () => {
+    test("appends live shell output to its running command", () => {
+      const shellOutput = sdkEvent({
+        type: "tool.shell_output",
+        ephemeral: true,
+        data: { toolCallId: "call-bash", sequence: 0, text: "12 pass\n" },
+      });
+
+      expect(projectSdkEvent(shellOutput, createStreamingContext())).toEqual([
+        { type: "tool_output_delta", toolCallId: "call-bash", content: "12 pass\n" },
+      ]);
+    });
+
     test("reasoning-only completions do not separate a streamed preview from its final message", () => {
       const history = [
         sdkEvent({
@@ -1659,7 +1681,7 @@ describe("projector", () => {
       ).toEqual([{ type: "reasoning_delta", content: "Hmm" }]);
     });
 
-    test("drops transient subagent text and reasoning deltas", () => {
+    test("drops transient subagent text deltas", () => {
       const context = createStreamingContext();
 
       expect(
@@ -1672,23 +1694,86 @@ describe("projector", () => {
           context,
         ),
       ).toEqual([]);
+    });
 
+    test("subagent reasoning previews each turn beneath its agent call and converges with history", () => {
+      const agentId = "native-agent-1";
+      const parentToolCallId = "call-agent-1";
+      const reasoningDelta = (deltaContent: string) =>
+        sdkEvent({ type: "assistant.reasoning_delta", agentId, data: { deltaContent } });
+      const turnStart = sdkEvent({ type: "assistant.turn_start", agentId, data: {} });
+      const reply = (reasoningText: string) =>
+        sdkEvent({
+          type: "assistant.message",
+          agentId,
+          data: { content: "", reasoningText, toolRequests: [{ toolCallId: "t", name: "view" }] },
+        });
+      const subagentReasoning = (events: SdkSessionEvent[]) => {
+        const project = createStreamingContext();
+        const state = replaySessionHistory(
+          [
+            toolExecutionStart("task", parentToolCallId, { description: "Inspect" }),
+            subagentStarted(agentId, parentToolCallId),
+            ...events,
+          ].flatMap(project),
+        );
+        expect(state.reasoningContent).toBe("");
+        const [message] = state.messages;
+        return message?.role === "assistant"
+          ? message.toolCalls?.[0]?.subagent?.reasoningContent
+          : undefined;
+      };
+
+      expect(subagentReasoning([turnStart, reasoningDelta("Read"), reasoningDelta("ing")])).toBe(
+        "Reading",
+      );
       expect(
-        projectSdkEvent(
-          sdkEvent({
-            type: "assistant.reasoning_delta",
-            agentId: "native-agent-1",
-            data: { deltaContent: "Subagent reasoning" },
-          }),
-          context,
-        ),
-      ).toEqual([]);
+        subagentReasoning([
+          turnStart,
+          reasoningDelta("Read"),
+          reply("Reading the file"),
+          turnStart,
+          reasoningDelta("Check"),
+        ]),
+      ).toBe("Check");
+
+      // Deltas are ephemeral, so history keeps only the reply's durable reasoning.
+      const live = [turnStart, reasoningDelta("Read"), reply("Reading the file")];
+      const history = live.filter((event) => event.type !== "assistant.reasoning_delta");
+      expect(subagentReasoning(live)).toBe("Reading the file");
+      expect(subagentReasoning(history)).toBe("Reading the file");
     });
   });
 
   describe("streaming: session events", () => {
+    test("reports only the root agent's context usage", () => {
+      const context = createStreamingContext();
+      const usageInfo = (agentId?: string) =>
+        sdkEvent({
+          type: "session.usage_info",
+          ...(agentId ? { agentId } : {}),
+          ephemeral: true,
+          data: { currentTokens: 41_000, tokenLimit: 200_000, messagesLength: 12 },
+        });
+
+      expect(projectSdkEvent(usageInfo(), context)).toEqual([
+        { type: "context_usage_changed", usage: { tokens: 41_000, tokenWindow: 200_000 } },
+      ]);
+      expect(projectSdkEvent(usageInfo("native-agent-9"), context)).toEqual([]);
+    });
+
     test("drops subagent status events so they do not mutate root status", () => {
       const context = createStreamingContext();
+
+      expect(projectSdkEvent(sdkEvent({ type: "assistant.idle", data: {} }), context)).toEqual([
+        { type: "status", status: "background" },
+      ]);
+      expect(
+        projectSdkEvent(
+          sdkEvent({ type: "assistant.idle", agentId: "call-agent-1", data: {} }),
+          context,
+        ),
+      ).toEqual([]);
 
       expect(
         projectSdkEvent(sdkEvent({ type: "assistant.turn_start", data: {} }), context),

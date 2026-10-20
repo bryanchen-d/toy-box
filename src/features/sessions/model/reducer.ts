@@ -54,6 +54,7 @@ export function createInitialSessionState(initial: Partial<SessionState> = {}): 
     status: initial.status ?? "idle",
     reasoningContent: initial.reasoningContent ?? "",
     model: initial.model,
+    ...(initial.contextUsage ? { contextUsage: { ...initial.contextUsage } } : {}),
     ...(initial.lastSeenEventId !== undefined ? { lastSeenEventId: initial.lastSeenEventId } : {}),
   };
 }
@@ -214,22 +215,36 @@ function applySessionEventCore(state: SessionState, event: SessionEvent): void {
         details: event.details,
         ...(event.attachments ? { attachments: event.attachments } : {}),
       };
+      // The result replaces live output, matching a call rebuilt from history.
+      const complete = ({ output: _output, ...toolCall }: ToolCall): ToolCall => ({
+        ...toolCall,
+        result,
+      });
 
       if (event.parentToolCallId) {
         // Complete a child tool call nested under its agent call.
-        updateSubagentToolCall(state, event.parentToolCallId, event.toolCallId, (toolCall) => ({
-          ...toolCall,
-          result,
-        }));
+        updateSubagentToolCall(state, event.parentToolCallId, event.toolCallId, complete);
         return;
       }
 
       // Deferred completions can arrive after a message boundary, so search
       // the transcript rather than assuming the call is on the last message.
-      updateToolCall(state, event.toolCallId, (toolCall) => ({
-        ...toolCall,
-        result,
-      }));
+      updateToolCall(state, event.toolCallId, complete);
+      return;
+    }
+
+    case "tool_output_delta": {
+      // Only the newest output is visible while a tool runs. A background shell keeps writing
+      // after its call completes, but the result is final.
+      const append = (toolCall: ToolCall): ToolCall =>
+        toolCall.result
+          ? toolCall
+          : { ...toolCall, output: ((toolCall.output ?? "") + event.content).slice(-8_192) };
+      if (event.parentToolCallId) {
+        updateSubagentToolCall(state, event.parentToolCallId, event.toolCallId, append);
+        return;
+      }
+      updateToolCall(state, event.toolCallId, append);
       return;
     }
 
@@ -277,6 +292,11 @@ function applySessionEventCore(state: SessionState, event: SessionEvent): void {
 
     case "todos_patch": {
       state.todos = applyTodoPatches(state.todos, event.patches);
+      return;
+    }
+
+    case "context_usage_changed": {
+      state.contextUsage = event.usage;
       return;
     }
 
@@ -693,8 +713,6 @@ function setQueuedMessageStatus(
 }
 
 function removeQueuedMessage(state: SessionState, clientId: string): void {
-  if (state.queuedMessages.length === 0) return;
-
   const index = state.queuedMessages.findIndex((message) => message.clientId === clientId);
   if (index === -1) return;
   state.queuedMessages = [

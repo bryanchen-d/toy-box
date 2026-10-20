@@ -1,4 +1,4 @@
-import { Children, type ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
@@ -25,8 +25,14 @@ export function SidebarList({
   rootClassName?: string;
 }) {
   // Children.map carries each feature-owned key onto the motion list entry.
-  const entries = Children.map(Children.toArray(children), (child) => (
-    <m.li {...listEntryMotion}>{child}</m.li>
+  // Entries measure only when membership or order changes, so list renders for
+  // selection or status don't force a layout read of every row.
+  const items = Children.toArray(children);
+  const order = items.map((child) => (isValidElement(child) ? child.key : null)).join();
+  const entries = Children.map(items, (child) => (
+    <m.li {...listEntryMotion} layoutDependency={order}>
+      {child}
+    </m.li>
   ));
 
   return (

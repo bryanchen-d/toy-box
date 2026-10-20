@@ -84,6 +84,7 @@ test("native lifecycle events end live turns", () => {
   connection.onEvent((event) => events.push(event));
 
   emit({ type: "assistant.turn_end", data: { turnId: "1" } } as SdkEvent);
+  emit({ type: "assistant.idle", data: {} } as SdkEvent);
   emit({ type: "session.idle", data: {} } as SdkEvent);
   emit({
     type: "session.error",
@@ -92,6 +93,7 @@ test("native lifecycle events end live turns", () => {
   emit({ type: "abort", data: {} } as SdkEvent);
 
   expect(events).toEqual([
+    { type: "status", status: "background" },
     { type: "end", reason: "idle" },
     { type: "end", reason: "error", error: "Native model history is incompatible." },
     { type: "end", reason: "error" },

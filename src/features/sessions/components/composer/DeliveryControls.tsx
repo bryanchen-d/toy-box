@@ -48,21 +48,21 @@ export function RunControls({ draft, onSend }: { draft: ComposerDraft; onSend: (
 /** Sends the draft to its session; while a turn runs, queues it unless sent now. */
 export function SendControls({
   draft,
-  isStreaming,
+  isBusy,
   onSendNow,
 }: {
   draft: ComposerDraft;
-  isStreaming: boolean;
+  isBusy: boolean;
   onSendNow: () => void;
 }) {
   return (
     <div className="flex">
       <ComposerSendButton
         draft={draft}
-        label={isStreaming ? "Queue message" : "Send message"}
-        className={isStreaming ? "rounded-e-none" : undefined}
+        label={isBusy ? "Queue message" : "Send message"}
+        className={isBusy ? "rounded-e-none" : undefined}
       />
-      {isStreaming && (
+      {isBusy && (
         <DeliveryOptions label="Message delivery options" disabled={!draft.canSubmit}>
           <DropdownMenuItem onClick={() => draft.submit()}>
             <ArrowUp />

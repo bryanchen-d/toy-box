@@ -34,7 +34,7 @@ here. No additional OpenAI npm SDK or Toy Box login is required.
   live and during history replay. Retrying `error` notifications are not transcript
   failures; the final `turn/completed` outcome is authoritative.
 - `protocol/index.ts` is the checked-in Apache-2.0 upstream protocol generated against CLI
-  0.161.0. Run `bun src/features/providers/server/codex/protocol/generate.ts` after a deliberate protocol
+  0.163.0. Run `bun src/features/providers/server/codex/protocol/generate.ts` after a deliberate protocol
   upgrade and verify changed methods against the installed CLI.
 
 ## Native constraints
@@ -42,7 +42,9 @@ here. No additional OpenAI npm SDK or Toy Box login is required.
 Codex's public history API omits questions, answers, and `update_plan` checklists.
 They flow through shared SessionEvents live but are absent when rebuilding from
 native history. Underlying tool calls remain in Codex's model context; plan-mode
-prose is a separate durable item. The provider owns no Toy Box database tables.
+prose is a separate durable item. History keeps at most 64 KiB of each command's output
+(its beginning and end), so reopened sessions show that excerpt of larger live results.
+The provider owns no Toy Box database tables.
 
 Codex allocates its own thread IDs. Sessions durably binds these to public IDs reserved
 before creation. Always use `Thread.id`; `sessionId` can describe a shared fork family.
@@ -54,8 +56,15 @@ marked non-rewindable. Deletion uses thread/delete, not archival.
 User-input requests can contain several questions, allow secrets, and be nonblocking.
 Answers are collected into one native response. Resolving, interrupting, or disconnecting
 cancels remaining questions. Unknown native requests receive an explicit RPC error.
+Asynchronous questions are ordinary agent messages, rendered as their text and answered
+by the next message. Unattended sessions disable both question tools.
 Toy Box's trusted-owner policy supplies native approval/sandbox configuration; a new
 approval flow belongs in the Sessions contract before exposing additional policies.
+
+Every thread opts into V2 subagents, which emit the activity records agent cards follow,
+including on models whose catalog defaults to V1. Instant interrupts stay off: a steer
+that preempts a streaming reply drops that reply from history after the live transcript
+showed it, so steering waits for the current reply to finish.
 
 Successful terminal tools reject subsequent host calls in their turn. Interruption
 waits until Codex records the successful dynamic tool result, then targets that native turn.

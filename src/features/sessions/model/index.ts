@@ -72,7 +72,13 @@ export type TodoItemPatch =
   | { type: "update_all"; status: TodoStatus }
   | { type: "delete"; id: string };
 
-export type SessionStatus = "idle" | "thinking" | "compacting" | "reasoning" | "responding";
+export type SessionStatus =
+  | "idle"
+  | "thinking"
+  | "compacting"
+  | "reasoning"
+  | "responding"
+  | "background";
 
 /** The observable result of waiting for a session's current execution. */
 export type SessionCompletion = {
@@ -103,11 +109,19 @@ export type SessionArtifact = {
   updatedAt: number;
 };
 
+/** How much of the model's context window the conversation occupies, as the provider reports it. */
+export type ContextUsage = {
+  tokens: number;
+  tokenWindow: number;
+};
+
 /** Canonical reduced state for a session at any point in time. */
 export type SessionState = {
   messages: Message[];
   queuedMessages: Array<SessionMessage & { status: "queued" | "submitting" | "submitted" }>;
   model?: ModelConfiguration;
+  /** Reported while the provider runs; native histories do not retain it. */
+  contextUsage?: ContextUsage;
   todos: TodoItem[];
   linkedSessionIds: string[];
   canvases: SessionCanvas[];
@@ -189,6 +203,8 @@ export type ToolCall = {
   id: string;
   name: string;
   arguments: { [key: string]: JSONType };
+  /** The running tool's most recent output; its result replaces it. */
+  output?: string;
   result?: {
     content: string;
     success: boolean;
@@ -242,6 +258,9 @@ export type SessionEvent = (
       details?: string;
       attachments?: Attachment[];
     }
+  // Live output appended to a running tool call.
+  | { type: "tool_output_delta"; toolCallId: string; parentToolCallId?: string; content: string }
+  | { type: "context_usage_changed"; usage: ContextUsage }
   | {
       type: "question_requested";
       toolCallId: string;

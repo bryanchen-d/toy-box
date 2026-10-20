@@ -36,6 +36,18 @@ function requestQuestion(toolCallId: string, question: SessionQuestionBase): Ses
 }
 
 describe("session reducer", () => {
+  test("background status is idempotent, preserves queued input, and is not terminal", () => {
+    const state = reduceEvents([
+      { type: "delta", content: "Done" },
+      { type: "message_queued", message: { role: "user", clientId: "next", content: "Next" } },
+      { type: "status", status: "background" },
+    ]);
+    expect(applySessionEvent(state, { type: "status", status: "background" })).toEqual(state);
+    expect(state.status).toBe("background");
+    expect(state.queuedMessages).toHaveLength(1);
+    expect(replaySessionHistory([{ type: "status", status: "background" }]).status).toBe("idle");
+  });
+
   test("creates one normalized state shape", () => {
     const messages = [{ role: "user" as const, content: "hello" }];
     const state = createInitialSessionState({ messages, lastSeenEventId: 4 });
@@ -54,6 +66,16 @@ describe("session reducer", () => {
       lastSeenEventId: 4,
     });
     expect(state.messages).not.toBe(messages);
+  });
+
+  test("context usage keeps its latest report through completion and snapshot seeding", () => {
+    const state = reduceEvents([
+      { type: "context_usage_changed", usage: { tokens: 18_500, tokenWindow: 200_000 } },
+      { type: "end", reason: "idle" },
+    ]);
+
+    expect(state.contextUsage).toEqual({ tokens: 18_500, tokenWindow: 200_000 });
+    expect(createInitialSessionState(state).contextUsage).toEqual(state.contextUsage);
   });
 
   describe("messages and streaming", () => {
@@ -307,6 +329,49 @@ describe("session reducer", () => {
 
       expect(state.messages).toEqual([]);
       expect(state.status).toBe("thinking");
+    });
+
+    test("live output previews a running call until its result replaces it", () => {
+      const start: SessionEvent = {
+        type: "tool_start",
+        toolCallId: "bash-1",
+        toolName: "bash",
+        arguments: { command: "make" },
+      };
+      const end: SessionEvent = {
+        type: "tool_end",
+        toolCallId: "bash-1",
+        success: true,
+        result: "built",
+      };
+      const running = reduceEvents([
+        start,
+        { type: "tool_output_delta", toolCallId: "bash-1", content: "compiling\nlin" },
+        { type: "tool_output_delta", toolCallId: "bash-1", content: "king\n" },
+      ]);
+      expect(assistantAt(running, 0).toolCalls?.[0]?.output).toBe("compiling\nlinking\n");
+
+      const ended = reduceEvents(
+        [end, { type: "tool_output_delta", toolCallId: "bash-1", content: "late\n" }],
+        running,
+      );
+      expect(ended.messages).toEqual(reduceEvents([start, end]).messages);
+    });
+
+    test("live output stays within 8 KiB and keeps its newest text", () => {
+      const lines = Array.from({ length: 2_000 }, (_, index) => `line ${index}\n`);
+      const state = reduceEvents([
+        { type: "tool_start", toolCallId: "bash-1", toolName: "bash", arguments: {} },
+        ...lines.map((content): SessionEvent => ({
+          type: "tool_output_delta",
+          toolCallId: "bash-1",
+          content,
+        })),
+      ]);
+
+      const output = assistantAt(state, 0).toolCalls?.[0]?.output ?? "";
+      expect(output.length).toBeLessThanOrEqual(8_192);
+      expect(output).toEndWith("line 1999\n");
     });
 
     test("late subagent events replace only the committed parent branch", () => {

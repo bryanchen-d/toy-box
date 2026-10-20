@@ -32,6 +32,7 @@ export function ToolCallCard({
   const isExpandable = children !== undefined && children !== null;
   const hasResult = toolCall.result !== undefined;
   const isSuccess = toolCall.result?.success === true;
+  const liveOutput = isActive ? toolCall.output?.trimEnd() : undefined;
   const BaseIcon = Icon ?? Wrench;
 
   // Type icon always visible on the left
@@ -85,6 +86,13 @@ export function ToolCallCard({
           <div className={cn("pt-2 pb-2 space-y-2", bodyClassName)}>{children}</div>
         </div>
       )}
+
+      {/* Running output stays visible while the details are collapsed, newest lines in view. */}
+      {liveOutput ? (
+        <pre className="mx-3 mb-2 flex max-h-24 flex-col-reverse overflow-hidden rounded bg-secondary-background p-2 font-mono text-xs whitespace-pre-wrap break-words text-muted-foreground">
+          {liveOutput}
+        </pre>
+      ) : null}
 
       {/* Produced images are output, so they stay visible while the details are collapsed. */}
       {toolCall.result?.attachments?.length ? (

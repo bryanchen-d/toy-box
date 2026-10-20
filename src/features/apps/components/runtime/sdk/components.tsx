@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useSelector } from "@tanstack/react-store";
-import { Circle, CircleHelp, Loader2, PanelTop, Sparkles } from "lucide-react";
+import { Circle, CircleHelp, Layers, Loader2, PanelTop, Sparkles } from "lucide-react";
 import { ModelConfigurationPicker } from "@providers/components/ModelPicker";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -98,6 +98,7 @@ export function AppSessionStatus({
 }: ComponentProps<typeof AppSdk.AppSessionStatus>) {
   const running = status === "running";
   const waiting = status === "waiting";
+  const background = status === "background";
   const finished = status === "unread";
   return (
     <Badge
@@ -121,10 +122,20 @@ export function AppSessionStatus({
         <CircleHelp aria-hidden="true" className="size-3" />
       ) : finished ? (
         <Sparkles aria-hidden="true" className="size-3" />
+      ) : background ? (
+        <Layers aria-hidden="true" className="size-3" />
       ) : (
         <Circle aria-hidden="true" className="size-2.5" />
       )}
-      {running ? "Running" : waiting ? "Waiting" : finished ? "Finished" : "Idle"}
+      {running
+        ? "Running"
+        : waiting
+          ? "Waiting"
+          : finished
+            ? "Finished"
+            : background
+              ? "Background"
+              : "Idle"}
     </Badge>
   );
 }

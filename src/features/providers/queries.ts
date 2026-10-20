@@ -1,5 +1,10 @@
 import { mutationOptions, queryOptions } from "@tanstack/react-query";
-import { getProviderCatalog, getProviderVersions, updateProvider } from "./server/functions";
+import {
+  getProviderCatalog,
+  getProviderSubscription,
+  getProviderVersions,
+  updateProvider,
+} from "./server/functions";
 
 export type ProviderUpdateResult = Awaited<ReturnType<typeof updateProvider>>;
 
@@ -17,6 +22,15 @@ export const providerQueries = {
     queryOptions({
       queryKey: [...providerQueries.all(), "versions"],
       queryFn: getProviderVersions,
+    }),
+
+  // Each read asks the provider's CLI, so a subscription refreshes at most once a minute.
+  subscription: (providerId: string) =>
+    queryOptions({
+      queryKey: [...providerQueries.all(), "subscription", providerId],
+      queryFn: () => getProviderSubscription({ data: providerId }),
+      staleTime: 60_000,
+      retry: false,
     }),
 };
 

@@ -8,12 +8,14 @@ import {
 } from "@sessions/server/toolProjection";
 import type {
   AgentMessageDeltaNotification,
+  CommandExecutionOutputDeltaNotification,
   ItemCompletedNotification,
   ReasoningTextDeltaNotification,
   Thread,
   ThreadItem,
   ThreadNameUpdatedNotification,
   ThreadStartedNotification,
+  ThreadTokenUsageUpdatedNotification,
   Turn,
   TurnCompletedNotification,
   TurnPlanUpdatedNotification,
@@ -93,6 +95,23 @@ export function createCodexProjector(sessionId: string, threadId: string) {
       }
       case "item/reasoning/summaryPartAdded":
         return [{ type: "reasoning_delta", content: "\n\n" }];
+      case "item/commandExecution/outputDelta": {
+        const { delta, itemId } = params as CommandExecutionOutputDeltaNotification;
+        return delta ? [{ type: "tool_output_delta", toolCallId: itemId, content: delta }] : [];
+      }
+      case "thread/tokenUsage/updated": {
+        // Codex counts the last request's total tokens as the context in use.
+        const { last, modelContextWindow } = (params as ThreadTokenUsageUpdatedNotification)
+          .tokenUsage;
+        return modelContextWindow
+          ? [
+              {
+                type: "context_usage_changed",
+                usage: { tokens: last.totalTokens, tokenWindow: modelContextWindow },
+              },
+            ]
+          : [];
+      }
       case "turn/plan/updated":
         events.push({
           type: "todos_patch",
@@ -144,6 +163,7 @@ export function createCodexProjector(sessionId: string, threadId: string) {
         case "reasoning":
         case "reasoning_delta":
         case "tool_start":
+        case "tool_output_delta":
         case "tool_end":
         case "model_changed":
           return [{ ...child, parentToolCallId: toolCallId }];

@@ -37,6 +37,12 @@ and apps compose sessions rather than introducing another transcript or executio
   Screens owns host-addressed capture/control state independently of sessions;
   only the reference is replayed. Agents list and present screens for people;
   app automation uses provider computer-use tools or playwright-cli.
+- `ToolCall.output` previews a running tool. `tool_output_delta` appends to it, the reducer keeps
+  its most recent 8 KiB, and the result replaces it, so a live call converges with the same call
+  rebuilt from history. Output after the result, such as a background shell's, is dropped.
+- `SessionState.contextUsage` is the provider-reported context occupancy behind the composer's
+  meter, which appears once the window is half full. Native histories omit it, so snapshot
+  rebuilds keep the last reported value while the server runs; a rewind's refresh clears it.
 - `constants.ts` contains stable persisted identity and path conventions.
 
 `Message` is one canonical transcript entry. `SessionMessage` is an identified user or system
@@ -113,7 +119,7 @@ is a draft, before subscribing to its first turn.
 The public ID and mounted workspace pane remain stable.
 
 `useSession.ts` owns one mounted session's browser lifecycle. It reads snapshots and subscribes
-while visible, reduces ordered events, batches text deltas to animation frames, and
+while visible, reduces ordered events, batches text and tool output deltas to animation frames, and
 exposes delivery and control operations. The long-lived async event stream deliberately remains
 explicit instead of being disguised as a mutation. Ending a browser subscription never stops
 server work; abort is a separate operation.

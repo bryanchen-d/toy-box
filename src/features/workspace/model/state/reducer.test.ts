@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createEmptyWorkspaceState,
+  isWorkspaceSessionLive,
   reduceWorkspaceSessionState,
   reduceWorkspaceState,
   type WorkspaceSessionEvent,
@@ -36,6 +37,14 @@ describe("workspace session state", () => {
     expect(state).toEqual({ status: "waiting", since: 1 });
 
     state = transition(state, { type: "session.running", sessionId, at: 4 });
+    expect(state).toEqual({ status: "running", since: 1 });
+
+    state = transition(state, { type: "session.background", sessionId, at: 5 });
+    expect(state).toEqual({ status: "background", since: 1 });
+    expect(transition(state, { type: "session.background", sessionId, at: 6 })).toBe(state);
+    expect(isWorkspaceSessionLive(state?.status)).toBe(true);
+
+    state = transition(state, { type: "session.running", sessionId, at: 7 });
     expect(state).toEqual({ status: "running", since: 1 });
   });
 

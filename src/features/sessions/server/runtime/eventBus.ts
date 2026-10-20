@@ -59,8 +59,6 @@ export function createSessionEventBus(capacity: number): SessionEventBus {
   }
 
   function publishToSubscriber(subscriber: SessionSubscriber, event: SessionEvent): void {
-    if (subscriber.disconnected) return;
-
     if (subscriber.resumePendingRead) {
       const resumePendingRead = subscriber.resumePendingRead;
       subscriber.resumePendingRead = undefined;
@@ -101,10 +99,8 @@ export function createSessionEventBus(capacity: number): SessionEventBus {
     let finished = false;
 
     function finish(): IteratorResult<SessionEvent> {
-      if (!finished) {
-        finished = true;
-        disconnectSubscriber(subscriber);
-      }
+      finished = true;
+      disconnectSubscriber(subscriber);
       return { done: true, value: undefined };
     }
 

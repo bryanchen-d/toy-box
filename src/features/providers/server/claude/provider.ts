@@ -1,5 +1,7 @@
 import { deleteSession, getSessionInfo, listSessions } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
+import type { ProviderSubscription } from "@providers/model";
 import type { SessionProvider } from "@providers/server/provider";
 import { ClaudeConnection } from "./connection";
 import { claudeSkillPlugins, closeClaudeQuery, startClaudeQuery, stopClaude } from "./client";
@@ -16,6 +18,18 @@ export const claudeProvider: SessionProvider = {
       return (await native.supportedModels())
         .filter((model) => model.value !== "default")
         .map(toModelInfo);
+    } finally {
+      await closeClaudeQuery(native);
+    }
+  },
+  async readSubscription() {
+    const native = startClaudeQuery({ persistSession: false, cwd: homedir() });
+    try {
+      return toSubscription(
+        await native.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+          skipBehaviors: true,
+        }),
+      );
     } finally {
       await closeClaudeQuery(native);
     }
@@ -55,7 +69,7 @@ export const claudeProvider: SessionProvider = {
   },
   create: (sessionId, configuration) => ClaudeConnection.open({ id: sessionId }, configuration),
   async resume(session, configuration) {
-    // Workaround (Claude CLI 2.1.296; listed in providers/AGENTS.md): resume never restores
+    // Workaround (Claude CLI 2.1.302; listed in providers/AGENTS.md): resume never restores
     // reasoning effort and restores the model only when the CLI recognizes it. Reopen with the
     // last reply's model and effort from history; remove once the CLI restores both itself.
     const model =
@@ -78,3 +92,37 @@ export const claudeProvider: SessionProvider = {
   delete: deleteSession,
   stop: stopClaude,
 };
+
+/** Claude plans meter a 5-hour window and weekly windows, some per model. */
+export function toSubscription({
+  subscription_type: plan,
+  rate_limits: windows,
+}: SDKControlGetUsageResponse): ProviderSubscription | undefined {
+  if (!plan) return undefined;
+  const limit = (
+    name: string,
+    window: { utilization: number | null; resets_at: string | null } | null | undefined,
+  ) =>
+    window?.utilization == null
+      ? []
+      : [
+          {
+            name,
+            usedPercent: window.utilization,
+            ...(window.resets_at ? { resetsAt: Date.parse(window.resets_at) } : {}),
+          },
+        ];
+  return {
+    plan,
+    limits: [
+      ...limit("5-hour", windows?.five_hour),
+      ...limit("Weekly", windows?.seven_day),
+      ...limit("Weekly Opus", windows?.seven_day_opus),
+      ...limit("Weekly Sonnet", windows?.seven_day_sonnet),
+      // Newer per-model weekly windows name their own models.
+      ...(windows?.model_scoped ?? []).flatMap((window) =>
+        limit(`Weekly ${window.display_name}`, window),
+      ),
+    ],
+  };
+}

@@ -47,6 +47,14 @@ export type ProviderCatalog = {
   models: ModelInfo[];
 };
 
+/** The signed-in account's subscription: its plan and how much of each of its limits is used. */
+export type ProviderSubscription = {
+  /** The plan's native name, such as `pro`, `max`, or `enterprise`. */
+  plan: string;
+  /** Each limit renews on its own schedule, at `resetsAt` epoch milliseconds. */
+  limits: { name: string; usedPercent: number; resetsAt?: number }[];
+};
+
 type ModelCatalogInfo = ModelOptionInfo & { id: string; provider: string };
 /** Native model names are unique only within their provider. */
 export function modelCatalogKey(model: { id: string; provider: string }): string {

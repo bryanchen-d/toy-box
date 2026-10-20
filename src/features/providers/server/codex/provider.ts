@@ -2,12 +2,19 @@ import type { JsonValue, ModelListResponse, ThreadListResponse } from "./protoco
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
+import type { ProviderSubscription } from "@providers/model";
 import type { SessionSkill } from "@sessions/model";
 import { startCodexClient, stopCodexClient } from "./protocol/transport";
 import { CodexConnection } from "./connection";
 import { readThreadHistory } from "./history";
 import { codexHistoryEvents, createCodexProjector, subagentThreadId } from "./projector";
-import type { Model, Thread, ThreadStartParams } from "./protocol";
+import type {
+  GetAccountRateLimitsResponse,
+  Model,
+  RateLimitSnapshot,
+  Thread,
+  ThreadStartParams,
+} from "./protocol";
 
 export const codexProvider: SessionProvider = {
   id: "codex",
@@ -36,6 +43,12 @@ export const codexProvider: SessionProvider = {
         ),
         defaultReasoningEffort: model.defaultReasoningEffort,
       }));
+  },
+  async readSubscription() {
+    const rpc = await startCodexClient();
+    return toSubscription(
+      await rpc.request("account/rateLimits/read", { excludeResetCreditDetails: true }),
+    );
   },
   listSkills,
   async readHistory({ id, provider }) {
@@ -168,6 +181,44 @@ export const codexProvider: SessionProvider = {
   stop: stopCodexClient,
 };
 
+/** Codex plans meter rolling windows, some per model; credits are a separate balance. */
+export function toSubscription({
+  rateLimits,
+  rateLimitsByLimitId,
+}: GetAccountRateLimitsResponse): ProviderSubscription | undefined {
+  if (!rateLimits.planType) return undefined;
+  // `rateLimits` mirrors the main bucket; every other bucket meters the model it names.
+  const modelBuckets = Object.entries(rateLimitsByLimitId ?? {}).filter(
+    ([limitId]) => limitId !== rateLimits.limitId,
+  );
+  return {
+    plan: rateLimits.planType,
+    limits: [
+      ...windowLimits(rateLimits),
+      ...modelBuckets.flatMap(([limitId, bucket]) =>
+        bucket ? windowLimits(bucket, bucket.limitName ?? limitId) : [],
+      ),
+    ],
+  };
+}
+
+function windowLimits({ primary, secondary }: RateLimitSnapshot, model?: string) {
+  return [primary, secondary]
+    .filter((window) => window !== null)
+    .map((window) => ({
+      name: [windowName(window.windowDurationMins), model].filter(Boolean).join(" "),
+      usedPercent: window.usedPercent,
+      ...(window.resetsAt ? { resetsAt: window.resetsAt * 1000 } : {}),
+    }));
+}
+
+function windowName(minutes: number | null): string {
+  if (!minutes) return "Usage";
+  if (minutes === 7 * 24 * 60) return "Weekly";
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}-day`;
+  return `${Math.round(minutes / 60)}-hour`;
+}
+
 function nativeConfiguration(
   configuration: SessionConfiguration,
   skills: readonly SessionSkill[],
@@ -189,7 +240,14 @@ function nativeConfiguration(
       ),
     ].join("\n\n"),
     config: {
+      // Only interactive sessions may ask. The tool switch also removes asynchronous
+      // questions; the feature adds blocking questions to the default mode.
+      "tools.experimental_request_user_input.enabled": configuration.allowUserQuestions,
       "features.default_mode_request_user_input": configuration.allowUserQuestions,
+      // Agent cards follow V2 subagent activity, so models that default to V1 opt in.
+      "features.multi_agent_v2": true,
+      // A preempted reply never reaches history, so steering waits for the reply to finish.
+      "features.instant_interrupt": false,
       // Recent CLIs leave the checklist tool disabled unless the host opts in.
       "tools.update_plan.enabled": true,
       ...(configuration.model?.reasoningEffort

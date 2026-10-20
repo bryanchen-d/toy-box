@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { adaptModelCatalog, type ModelCatalogInfo } from "@providers/server/copilot/models";
+import type { ModelInfo } from "@github/copilot-sdk";
+import { toModelInfo } from "./models";
 
-function model(overrides: Partial<ModelCatalogInfo> = {}): ModelCatalogInfo {
+function model(overrides: Partial<ModelInfo> = {}): ModelInfo {
   return {
     id: "grok-4.6",
     name: "Grok 4.6",
@@ -12,6 +13,8 @@ function model(overrides: Partial<ModelCatalogInfo> = {}): ModelCatalogInfo {
         max_prompt_tokens: 372_000,
       },
     },
+    supportedReasoningEfforts: ["low", "high"],
+    defaultReasoningEffort: "high",
     ...overrides,
   };
 }
@@ -25,10 +28,12 @@ describe("model catalog adapter", () => {
       },
     };
 
-    const [adapted] = adaptModelCatalog([model({ billing })]);
-
-    expect(adapted).toEqual({
-      ...model({ billing }),
+    expect(toModelInfo(model({ billing }))).toEqual({
+      id: "grok-4.6",
+      name: "Grok 4.6",
+      provider: "copilot",
+      supportedReasoningEfforts: ["low", "high"],
+      defaultReasoningEffort: "high",
       supportedContextTiers: [
         { name: "default", tokenWindow: 200_000 },
         { name: "long_context", tokenWindow: 500_000 },
@@ -37,35 +42,8 @@ describe("model catalog adapter", () => {
   });
 
   test("leaves models without long-context metadata tierless", () => {
-    const source = model();
-    const [adapted] = adaptModelCatalog([source]);
+    const billing = { tokenPrices: { maxPromptTokens: 272_000 } };
 
-    expect(adapted).toBe(source);
-  });
-
-  test("preserves pre-adapted tiers unchanged", () => {
-    const source = model({
-      supportedContextTiers: [
-        { name: "default", tokenWindow: 264_000 },
-        { name: "future_tier", tokenWindow: 2_000_000 },
-      ],
-    });
-    const [adapted] = adaptModelCatalog([source]);
-
-    expect(adapted).toBe(source);
-  });
-
-  test("keeps the first entry for each model ID", () => {
-    const grok = model();
-    const gpt = model({ id: "gpt-5.5", name: "GPT-5.5" });
-
-    const adapted = adaptModelCatalog([
-      grok,
-      gpt,
-      model({ name: "Grok 4.6 (repeated)" }),
-      model({ id: "gpt-5.5", name: "GPT-5.5 (repeated)" }),
-    ]);
-
-    expect(adapted).toEqual([grok, gpt]);
+    expect(toModelInfo(model({ billing })).supportedContextTiers).toBeUndefined();
   });
 });

@@ -2,6 +2,22 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SessionMessageList } from "../MessageList";
 
+test("a live background session displays a static background status instead of responding", () => {
+  const markup = renderToStaticMarkup(
+    <SessionMessageList
+      messages={[{ role: "assistant", content: "Done" }]}
+      isStreaming
+      isWaiting={false}
+      status="background"
+      reasoningContent=""
+      scrollToBottomRef={{ current: null }}
+    />,
+  );
+  expect(markup).toContain("Background tasks running");
+  expect(markup).toContain("lucide-layers");
+  expect(markup).not.toContain("Responding");
+});
+
 test.each(["", "Partial answer"])(
   "renders an error card alongside assistant content %j",
   (content) => {

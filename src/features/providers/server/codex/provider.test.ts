@@ -6,7 +6,64 @@ import { z } from "zod";
 import { defineTool } from "@sessions/server/tools/definition";
 import type { SessionConfiguration, SessionConnection } from "@providers/server/provider";
 import * as transport from "./protocol/transport";
-import { codexProvider } from "./provider";
+import { codexProvider, toSubscription } from "./provider";
+import type { GetAccountRateLimitsResponse, RateLimitSnapshot } from "./protocol";
+
+const rateLimits: RateLimitSnapshot = {
+  limitId: "codex",
+  limitName: null,
+  normalModelSlug: null,
+  primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1_792_210_200 },
+  secondary: { usedPercent: 12, windowDurationMins: 10_080, resetsAt: 1_792_684_926 },
+  credits: { hasCredits: true, unlimited: false, balance: "34965.6" },
+  individualLimit: null,
+  spendControlReached: false,
+  planType: "pro",
+  rateLimitReachedType: null,
+};
+const response = (
+  rateLimitsByLimitId: GetAccountRateLimitsResponse["rateLimitsByLimitId"],
+  main = rateLimits,
+): GetAccountRateLimitsResponse => ({
+  ordinaryUsageAllowed: true,
+  rateLimits: main,
+  rateLimitsByLimitId,
+  rateLimitResetCredits: null,
+  accountId: null,
+  rateLimitUpsell: null,
+});
+
+test("a subscription names its plan and each window it meters, then each model's", () => {
+  const spark: RateLimitSnapshot = {
+    ...rateLimits,
+    limitId: "codex_spark",
+    limitName: "GPT-5.3-Codex-Spark",
+    primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: 1_792_210_200 },
+    secondary: null,
+  };
+
+  expect(toSubscription(response({ codex: rateLimits, codex_spark: spark }))).toEqual({
+    plan: "pro",
+    limits: [
+      { name: "5-hour", usedPercent: 40, resetsAt: 1_792_210_200_000 },
+      { name: "Weekly", usedPercent: 12, resetsAt: 1_792_684_926_000 },
+      { name: "5-hour GPT-5.3-Codex-Spark", usedPercent: 30, resetsAt: 1_792_210_200_000 },
+    ],
+  });
+  expect(
+    toSubscription(
+      response(null, {
+        ...rateLimits,
+        primary: { usedPercent: 0, windowDurationMins: null, resetsAt: null },
+        secondary: null,
+      }),
+    ),
+  ).toEqual({ plan: "pro", limits: [{ name: "Usage", usedPercent: 0 }] });
+});
+
+test("an account without a plan has no subscription", () => {
+  expect(toSubscription(response(null, { ...rateLimits, planType: null }))).toBeUndefined();
+});
 
 test("catalog metadata retains the native repository display fields", async () => {
   const rpc = new transport.CodexTransport((line) => {
@@ -206,7 +263,10 @@ test("resumed threads apply the current workspace, model, and session skills", a
   for (const { params } of requests) {
     expect(params.config).toMatchObject({
       "tools.update_plan.enabled": true,
+      "tools.experimental_request_user_input.enabled": true,
       "features.default_mode_request_user_input": true,
+      "features.multi_agent_v2": true,
+      "features.instant_interrupt": false,
     });
     expect(params.developerInstructions).toContain(`Read ${join(root, "SKILL.md")}`);
   }
@@ -218,6 +278,7 @@ test("resumed threads apply the current workspace, model, and session skills", a
   expect(
     written.filter(({ method }) => method === "thread/start").at(-1)?.params.config,
   ).toMatchObject({
+    "tools.experimental_request_user_input.enabled": false,
     "features.default_mode_request_user_input": false,
   });
 });

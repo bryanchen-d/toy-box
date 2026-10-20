@@ -79,7 +79,7 @@ export function useSession(
   // ---------------------------------------------------------------------------
   // Events reduce into immutable states in this ref. The latest state is
   // published to React immediately for discrete events or once per frame for
-  // rapid text deltas.
+  // rapid text and tool output deltas.
   const [publishedSession, setPublishedSession] = useState(() =>
     createInitialSessionState(
       session?.artifactPath
@@ -127,6 +127,7 @@ export function useSession(
     status: baseStatus,
     reasoningContent,
     model,
+    contextUsage,
   } = publishedSession;
 
   // During connection handshake we still want a spinner even if no events arrived yet.
@@ -138,7 +139,11 @@ export function useSession(
   const applyEvent = (event: SessionEvent) => {
     sessionRef.current = applySessionEvent(sessionRef.current, event);
 
-    if (event.type === "delta" || event.type === "reasoning_delta") {
+    if (
+      event.type === "delta" ||
+      event.type === "reasoning_delta" ||
+      event.type === "tool_output_delta"
+    ) {
       scheduleStatePublish();
     } else {
       publishState();
@@ -238,7 +243,7 @@ export function useSession(
     setIsStreaming(false);
   };
 
-  const abortMutation = useMutation({
+  const { mutate: abort } = useMutation({
     ...sessionMutations.abortSession(sessionId),
     onMutate: () => {
       endSubscription();
@@ -248,7 +253,7 @@ export function useSession(
   });
 
   const stop = () => {
-    if (abortControllerRef.current) abortMutation.mutate();
+    if (abortControllerRef.current) abort();
   };
 
   // ---------------------------------------------------------------------------
@@ -256,7 +261,7 @@ export function useSession(
   // ---------------------------------------------------------------------------
   /** Optimistically show a follow-up prompt and deliver it to the server;
    *  rolls the local queue back if the server rejects it. */
-  const followUpMutation = useMutation({
+  const { mutate: deliverFollowUp } = useMutation({
     ...sessionMutations.deliverMessage(sessionId),
     onMutate: (message) => {
       applyEvent({
@@ -309,7 +314,7 @@ export function useSession(
     // Server running state owns the send-vs-queue distinction. The controller
     // also closes the same-tick gap before that shared state reaches React.
     if (isSessionLive || abortControllerRef.current) {
-      followUpMutation.mutate(message);
+      deliverFollowUp(message);
       return;
     }
 
@@ -441,6 +446,7 @@ export function useSession(
     status,
     reasoningContent,
     model,
+    contextUsage,
     todos,
     linkedSessionIds,
     canvases,

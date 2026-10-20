@@ -67,10 +67,10 @@ function commitDraft(key: DraftKey, text: string, origin: string): void {
 
 export function setSessionStatus(
   sessionId: string,
-  status: "running" | "waiting" | "idle" | "unread",
+  status: "running" | "waiting" | "background" | "idle" | "unread",
 ): void {
   commitSessionEvent(
-    status === "running" || status === "waiting"
+    status === "running" || status === "waiting" || status === "background"
       ? { type: `session.${status}`, sessionId, at: Date.now() }
       : { type: `session.${status}`, sessionId },
   );

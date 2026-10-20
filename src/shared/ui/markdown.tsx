@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
+import { code } from "@streamdown/code";
 import { Lexer, type Token } from "marked";
 import { parseEntities } from "parse-entities";
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from "streamdown";
 import { cn } from "@/shared/utils";
+
+/** Highlights fenced code. Streamdown shares plugins through context, so one module-level
+ *  object keeps streamed updates from re-rendering every code element in unchanged blocks. */
+export const codePlugins = { code } satisfies StreamdownProps["plugins"];
 
 type MarkdownProps = StreamdownProps & {
   /** Preserve authored newlines inside text blocks, not whitespace between Markdown blocks. */

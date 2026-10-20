@@ -17,15 +17,19 @@ the workspace consumes the same provider-owned catalog and configuration.
   Its `setEnabled` operation is used by Settings. Claude starts disabled. Sidebar filters are local
   UI state and never change provider enablement.
 - `components/ModelPicker.tsx` owns the controlled model and configuration pickers.
-- `components/ProviderSettings.tsx` owns enablement and CLI updates in Settings. Version reads
+- `components/ProviderSettings.tsx` owns enablement, CLI updates, and subscriptions in Settings. Version reads
   share one query for all installed providers while Settings is open, outside catalog loading. Disabled
-  providers still show their version but cannot be updated.
+  providers still show their version but cannot be updated. Each enabled provider reads its account's
+  subscription through its own query, at most once a minute, so a slow or failed read affects only
+  its own row. The plan's name sits beside the version; one Usage toggle reveals every limit.
   `server/cli.ts` owns installation checks through `Bun.which(providerId)` and the shared `--version`
   and `update` commands. Updates compare versions before and after; unchanged does not prove an installation
   is current (some installers require manual updates). Restart Toy Box to use updated runtimes.
 - `server/provider.ts` defines `SessionProvider`, `SessionConnection`, and the configuration
   supplied by Sessions. Connections expose the provider reference used by `Session.provider`;
   history and resume receive the relevant identity fields from the same `Session` type.
+  `readSubscription` maps the signed-in account's native plan and limits to a
+  `ProviderSubscription`; an account using an API key has none.
   Native SDK and protocol types stay inside their implementations.
 - `server/index.ts` registers the providers, aggregates their available catalogs,
   isolates discovery failures, and stops their shared processes on server shutdown.
@@ -55,9 +59,11 @@ any other Session configuration. Providers receive no Agent-specific protocol or
 
 All providers project into Sessions' `SessionEvent` and use its shared reducer. This model
 dependency does not give providers ownership of `SessionState`.
-`delta` and `reasoning_delta` carry incremental text. `assistant_message` supplies complete message
-text, and `reasoning` replaces the current reasoning text. Native block assembly belongs in each
-projector; canonical text never mixes incremental and cumulative semantics.
+`delta`, `reasoning_delta`, and `tool_output_delta` carry incremental text. `assistant_message`
+supplies complete message text, and `reasoning` replaces the current reasoning text. Native block
+assembly belongs in each projector; canonical text never mixes incremental and cumulative semantics.
+`context_usage_changed` reports the root conversation's context occupancy against its model's window;
+subagent usage is not the parent's and is dropped.
 A provider's `end` notification ends native work; the session runtime drains its queue
 before publishing completion. Disconnecting a browser never disconnects the provider.
 
@@ -73,17 +79,18 @@ check the list whenever a provider is upgraded:
 
 - Claude resume (`server/claude/provider.ts`): the CLI never restores reasoning effort, and it
   restores the model only when it recognizes it, falling back to its default otherwise (seen with
-  CLI 2.1.296). Resume starts with the model and effort of the last reply in history instead. A
+  CLI 2.1.302). Resume starts with the model and effort of the last reply in history instead. A
   session with no successful reply still starts on the CLI default. Remove once the CLI restores
   both itself.
 - Claude transcript directory (`server/claude/history.ts`): `getSessionInfo()` reads `cwd` only
-  from a transcript's first 64 KB, so a large first message hides it (seen with SDK 0.3.296).
+  from a transcript's first 64 KB, so a large first message hides it (seen with SDK 0.3.302).
   `readDirectory` reads the first transcript entry that records one instead. Remove once the SDK
   finds it itself.
 - Copilot computer use (`server/copilot/computerUse.ts`): headless SDK servers load no built-in
-  plugins, so sessions cannot request computer use (seen through CLI 1.0.97-1). Respect the user's
-  opt-in by registering that runtime version's bundled stdio server. Remove when the SDK exposes
-  activation or headless honors the setting.
+  plugins, so sessions cannot request computer use (seen through CLI 1.0.100-1). Respect the
+  user's opt-in by registering that runtime version's bundled stdio server. Remove when the SDK
+  exposes activation or headless honors the setting.
 - Copilot generated images (`server/copilot/generatedImages.ts`): `image_generation` returns images
-  without saving them and has no output path (seen with CLI 1.0.97-1). A post-tool hook saves them
-  and reports the path so agents can attach them. Remove when Copilot writes them to disk itself.
+  without saving them and has no output path (seen through CLI 1.0.100-1). A post-tool hook saves
+  them and reports the path so agents can attach them. Remove when Copilot writes them to disk
+  itself.

@@ -70,6 +70,9 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
   // The main thread's current native message and its committed text.
   let assistantId: string | undefined;
   let assistantText = "";
+  // The main thread's context, as its latest request sent it or compaction left it, and the model
+  // whose context window each turn's result reports.
+  let mainContext: { model: string; tokens: number } | undefined;
 
   return (message) => {
     const parentToolCallId =
@@ -111,19 +114,36 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
               },
             ];
           }
+          case "compact_boundary": {
+            const tokens = message.compact_metadata.post_tokens;
+            if (mainContext && tokens !== undefined) mainContext = { ...mainContext, tokens };
+            return [];
+          }
           default:
             return [];
         }
-      case "result":
+      case "result": {
+        const tokenWindow = mainContext && message.modelUsage?.[mainContext.model]?.contextWindow;
+        const usage: SessionEvent[] =
+          mainContext && tokenWindow
+            ? [
+                {
+                  type: "context_usage_changed",
+                  usage: { tokens: mainContext.tokens, tokenWindow },
+                },
+              ]
+            : [];
         return message.is_error && !message.terminal_reason?.startsWith("aborted_")
           ? [
+              ...usage,
               {
                 type: "end",
                 reason: "error",
                 error: message.subtype === "success" ? message.result : message.errors.join("\n"),
               },
             ]
-          : [];
+          : usage;
+      }
       case "stream_event": {
         const event = message.event;
         if (event.type === "message_start" && !parentToolCallId) {
@@ -144,6 +164,16 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
         // The CLI authors API errors and notices as `<synthetic>` model messages. They are neither
         // model output nor a model change; a turn that fails reports its error in its result.
         if (message.message.model === "<synthetic>") return [];
+        const usage = message.message.usage;
+        if (!parentToolCallId && usage)
+          mainContext = {
+            model: message.message.model,
+            tokens:
+              usage.input_tokens +
+              (usage.cache_read_input_tokens ?? 0) +
+              (usage.cache_creation_input_tokens ?? 0) +
+              usage.output_tokens,
+          };
         const events = modelChanged(
           {
             provider: "claude",
@@ -219,7 +249,7 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
   ): SessionEvent[] {
     if (nativeName === "ToolSearch") return [];
     const name = toolName(nativeName);
-    const arguments_ = toolArguments(nativeName, args);
+    const arguments_ = toolArguments(nativeName, args, parentToolCallId);
     const policy = resolveToolCallPolicy(name, arguments_, { sessionId });
     if (policy?.kind === "omitted") return [];
     calls.set(id, { name: nativeName, arguments: args, parentToolCallId, policy });
@@ -298,15 +328,16 @@ function toolName(name: string): string {
     : (TOOL_NAMES[name] ?? name);
 }
 
-function toolArguments(name: string, args: Arguments): Arguments {
+function toolArguments(name: string, args: Arguments, parentToolCallId?: string): Arguments {
   if (name === "Read" || name === "Edit" || name === "Write")
     return { ...args, path: args.file_path };
   if (name === "Agent")
     return {
       ...args,
       agent_type: args.subagent_type ?? "general-purpose",
-      // Agents run in the background unless the call opts out.
-      mode: args.run_in_background === false ? "sync" : "background",
+      // Unless the call says otherwise, the main thread's agents run in the background and a
+      // subagent's own agents in the foreground.
+      mode: (args.run_in_background ?? !parentToolCallId) ? "background" : "sync",
     };
   return args;
 }

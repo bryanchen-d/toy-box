@@ -1,4 +1,4 @@
-// Generated from codex-cli 0.161.0 (experimental app-server schema).
+// Generated from codex-cli 0.163.0 (experimental app-server schema).
 // OpenAI Codex, Apache-2.0: https://github.com/openai/codex
 // Regenerate using ./generate.ts. Do not edit wire types by hand.
 /* oxlint-disable typescript/no-redundant-type-constituents -- Upstream unions list known variants beside open fallbacks. */
@@ -243,6 +243,130 @@ export type WorkspaceRouting = {
  */
 export type AccountRoutingOverride = "NO_CONSTRAINT" | "us" | "us_cr";
 
+/**
+ * Usage-read capabilities of the requesting client, never inferred from its experiment arm.
+ */
+export type GetAccountRateLimitsParams = {
+  /**
+   * The client supports automatic Luna Reserve fallback. For eligible ChatGPT CLI users,
+   * allow the backend to record experiment exposure after ordinary usage is blocked.
+   */
+  supportsLunaReserve?: boolean;
+  /**
+   * Skip the separate reset-credit detail lookup for background usage polls. The usage
+   * response still includes the available count; omitted/false preserves detailed reads.
+   */
+  excludeResetCreditDetails?: boolean;
+};
+
+export type GetAccountRateLimitsResponse = {
+  /**
+   * Backend permission for ordinary included usage, validated against the active account.
+   * Null means unavailable; clients must not infer recovery from percentages or reset times.
+   */
+  ordinaryUsageAllowed: boolean | null;
+  /**
+   * Backward-compatible single-bucket view; mirrors the historical payload.
+   */
+  rateLimits: RateLimitSnapshot;
+  /**
+   * Multi-bucket view keyed by metered `limit_id` (for example, `codex`).
+   */
+  rateLimitsByLimitId: { [key in string]?: RateLimitSnapshot } | null;
+  rateLimitResetCredits: RateLimitResetCreditsSummary | null;
+  /**
+   * Account associated with this usage snapshot, when supplied by the backend.
+   */
+  accountId: string | null;
+  /**
+   * Optional backend-owned banner from the same usage read. Its nested keys retain the
+   * backend's snake_case contract; an absent banner leaves the client's existing UI unchanged.
+   */
+  rateLimitUpsell: JsonValue | null;
+};
+
+export type RateLimitResetCreditsSummary = {
+  availableCount: bigint;
+  /**
+   * Detail rows for available reset credits, when the backend provides them.
+   *
+   * `null` means only `availableCount` is known, while an empty array means details were fetched
+   * and no available credits were returned. The backend may cap this list, so its length can be
+   * less than `availableCount`.
+   */
+  credits: Array<RateLimitResetCredit> | null;
+};
+
+export type RateLimitResetCredit = {
+  /**
+   * Opaque backend identifier for this reset credit.
+   */
+  id: string;
+  resetType: RateLimitResetType;
+  status: RateLimitResetCreditStatus;
+  /**
+   * Unix timestamp in seconds when the credit was granted.
+   */
+  grantedAt: number;
+  /**
+   * Unix timestamp in seconds when the credit expires, or `null` if it does not expire.
+   */
+  expiresAt: number | null;
+  /**
+   * Backend-provided display title for this credit, or `null` when unavailable.
+   */
+  title: string | null;
+  /**
+   * Backend-provided display description for this credit, or `null` when unavailable.
+   */
+  description: string | null;
+};
+
+export type RateLimitResetCreditStatus = "available" | "redeeming" | "redeemed" | "unknown";
+
+export type RateLimitResetType = "codexRateLimits" | "unknown";
+
+export type RateLimitSnapshot = {
+  limitId: string | null;
+  limitName: string | null;
+  /**
+   * Normal model whose display name and reasoning options describe this quota alias.
+   */
+  normalModelSlug: string | null;
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
+  credits: CreditsSnapshot | null;
+  individualLimit: SpendControlLimitSnapshot | null;
+  /**
+   * Backend-reported spend-control state. `None` is unavailable, not a sparse-update recovery.
+   */
+  spendControlReached: boolean | null;
+  planType: PlanType | null;
+  rateLimitReachedType: RateLimitReachedType | null;
+};
+
+export type CreditsSnapshot = { hasCredits: boolean; unlimited: boolean; balance: string | null };
+
+export type RateLimitReachedType =
+  | "rate_limit_reached"
+  | "workspace_owner_credits_depleted"
+  | "workspace_member_credits_depleted"
+  | "workspace_owner_usage_limit_reached"
+  | "workspace_member_usage_limit_reached";
+
+export type RateLimitWindow = {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+};
+
+export type SpendControlLimitSnapshot = {
+  limit: string;
+  used: string;
+  remainingPercent: number;
+  resetsAt: number;
+};
+
 export type SkillsListParams = {
   /**
    * When empty, defaults to the current session working directory.
@@ -273,7 +397,7 @@ export type SkillMetadata = {
   shortDescription?: string;
   interface?: SkillInterface;
   dependencies?: SkillDependencies;
-  path: AbsolutePathBuf;
+  path: LegacyAppPathString;
   scope: SkillScope;
   enabled: boolean;
   /**
@@ -281,6 +405,30 @@ export type SkillMetadata = {
    */
   pluginId: string | null;
 };
+
+/**
+ * A UTF-8 path for preserving raw path compatibility at the app-server API
+ * boundary while Codex migrates to [`PathUri`].
+ *
+ * Supports storing arbitrary strings read from the API and converting to and
+ * from [`PathUri`] using an explicitly selected native path convention.
+ *
+ * When converting from [`PathUri`], "native" refers to the supplied
+ * [`PathConvention`], which may be foreign to the operating system running
+ * this process. The inner string is private so path-producing code must use a
+ * path conversion method instead of bypassing the intended conversion
+ * boundary. Non-UTF-8 paths are converted to UTF-8 lossily because this API
+ * value is serialized as a JSON string.
+ *
+ * Deserialization and [`Self::from_string`] accept any UTF-8 string without
+ * interpreting or validating it. Use [`Self::from_string`] when a caller
+ * already owns legacy app-server path text and needs to preserve its wire
+ * spelling; use [`Self::from_path`], [`Self::from_abs_path`], or
+ * [`Self::from_path_uri`] when converting an actual path value. Relative
+ * path text remains valid until an operation such as [`Self::to_path_uri`]
+ * requires an absolute path.
+ */
+export type LegacyAppPathString = string;
 
 export type SkillDependencies = { tools: Array<SkillToolDependency> };
 
@@ -321,6 +469,12 @@ export type ThreadListParams = {
    * Optional page size; defaults to a reasonable server-side value.
    */
   limit?: number | null;
+  /**
+   * Thread IDs to exclude before applying the result limit. Up to 100
+   * entries; invalid IDs or a larger list are rejected, never truncated.
+   * Send the same exclusions on each page. Omitted, null, or empty means no exclusions.
+   */
+  excludedThreadIds?: Array<string> | null;
   /**
    * Optional sort key; defaults to created_at.
    */
@@ -404,6 +558,11 @@ export type ThreadSourceKind =
 
 export type ThreadListResponse = {
   data: Array<Thread>;
+  /**
+   * Local receipts for eligible threads on this page, keyed by thread ID.
+   * Null means durable read state is unavailable; an absent key means that row is ineligible.
+   */
+  readStates: { [key in string]?: ThreadReadState } | null;
   /**
    * Opaque cursor to pass to the next call to continue after the last item.
    * if None, there are no more items to return.
@@ -603,30 +762,6 @@ export type ThreadEnvironment = {
 };
 
 /**
- * A UTF-8 path for preserving raw path compatibility at the app-server API
- * boundary while Codex migrates to [`PathUri`].
- *
- * Supports storing arbitrary strings read from the API and converting to and
- * from [`PathUri`] using an explicitly selected native path convention.
- *
- * When converting from [`PathUri`], "native" refers to the supplied
- * [`PathConvention`], which may be foreign to the operating system running
- * this process. The inner string is private so path-producing code must use a
- * path conversion method instead of bypassing the intended conversion
- * boundary. Non-UTF-8 paths are converted to UTF-8 lossily because this API
- * value is serialized as a JSON string.
- *
- * Deserialization and [`Self::from_string`] accept any UTF-8 string without
- * interpreting or validating it. Use [`Self::from_string`] when a caller
- * already owns legacy app-server path text and needs to preserve its wire
- * spelling; use [`Self::from_path`], [`Self::from_abs_path`], or
- * [`Self::from_path_uri`] when converting an actual path value. Relative
- * path text remains valid until an operation such as [`Self::to_path_uri`]
- * requires an absolute path.
- */
-export type LegacyAppPathString = string;
-
-/**
  * Extra app-server data for a thread.
  */
 export type ThreadExtra = Record<string, never>;
@@ -671,6 +806,12 @@ export type Turn = {
    * Identifier for this turn. Codex-generated turn IDs are UUIDv7.
    */
   id: string;
+  /**
+   * ID of the first turn in the chain of work that led to this turn.
+   * Pass this as `rootTurnId` when starting work on behalf of this turn.
+   * May be null in older history or a `review/start` response.
+   */
+  rootTurnId: string | null;
   /**
    * Thread items currently included in this turn payload.
    */
@@ -845,6 +986,14 @@ export type ThreadItem =
     }
   | {
       type: "subAgentActivity";
+      /**
+       * Resolved model at sub-agent creation; absent from older records and other activities.
+       */
+      model: string | null;
+      /**
+       * Resolved reasoning effort at sub-agent creation, when known.
+       */
+      reasoningEffort: ReasoningEffort | null;
       id: string;
       kind: SubAgentActivityKind;
       agentThreadId: string;
@@ -889,12 +1038,12 @@ export type ImageGenerationFailure = {
 };
 
 /**
- * Classifies an assistant message as interim commentary or final answer text.
+ * Classifies assistant text as commentary, a partial answer, or a terminal answer.
  *
  * Providers do not emit this consistently, so callers must treat `None` as
  * "phase unknown" and keep compatibility behavior for legacy models.
  */
-export type MessagePhase = "commentary" | "final_answer";
+export type MessagePhase = "commentary" | "partial_answer" | "final_answer";
 
 /**
  * Display item emitted by the interruptible `clock.sleep` tool.
@@ -1100,6 +1249,10 @@ export type MisalignmentErrorDetails = {
    * Instruction to submit as the next turn's user input if continuation is confirmed.
    */
   steer: MisalignmentSteer | null;
+  /**
+   * Opaque server-issued block target. Presence alone does not enable target-based continuation.
+   */
+  reviewTarget?: string | null;
 };
 
 export type MisalignmentSteer = { message: string };
@@ -1107,6 +1260,14 @@ export type MisalignmentSteer = { message: string };
 export type TurnItemsView = "notLoaded" | "summary" | "full";
 
 export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress";
+
+/**
+ * The first unread position in a durable local thread. A null position means read.
+ * The opaque revision guards edits against activity or marks the caller has not seen.
+ */
+export type ThreadReadState = { firstUnread: ThreadUnreadPosition | null; revision: string };
+
+export type ThreadUnreadPosition = { type: "threadStart" } | { type: "turn"; turnId: string };
 
 export type ThreadStartParams = {
   model?: string | null;
@@ -1430,8 +1591,11 @@ export type ThreadResumeParams = {
 };
 
 export type ResponseItem =
+  | { type: "additional_tools"; id?: ResponseItemId; role: string; tools: unknown[] }
   | {
       type: "message";
+      encrypted_content?: string;
+      status?: string;
       id?: ResponseItemId;
       role: string;
       content: Array<ContentItem>;
@@ -1456,6 +1620,7 @@ export type ResponseItem =
     }
   | {
       type: "local_shell_call";
+      encrypted_content?: string;
       /**
        * Legacy id field retained for compatibility with older payloads.
        */
@@ -1470,6 +1635,8 @@ export type ResponseItem =
     }
   | {
       type: "function_call";
+      encrypted_content?: string;
+      status?: string;
       id?: ResponseItemId;
       name: string;
       namespace?: string;
@@ -1480,6 +1647,7 @@ export type ResponseItem =
     }
   | {
       type: "tool_search_call";
+      encrypted_content?: string;
       id?: ResponseItemId;
       call_id: string | null;
       status?: string;
@@ -1498,6 +1666,7 @@ export type ResponseItem =
     }
   | {
       type: "custom_tool_call";
+      encrypted_content?: string;
       id?: ResponseItemId;
       status?: string;
       call_id: string;
@@ -1525,6 +1694,7 @@ export type ResponseItem =
     }
   | {
       type: "web_search_call";
+      encrypted_content?: string;
       id?: ResponseItemId;
       status?: string;
       action?: LegacyWebSearchAction;
@@ -1532,6 +1702,7 @@ export type ResponseItem =
     }
   | {
       type: "image_generation_call";
+      encrypted_content?: string;
       id?: ResponseItemId;
       status: string;
       revised_prompt?: string;
@@ -1567,7 +1738,7 @@ export type ContentItem =
   | { type: "input_text"; text: string }
   | ({ type: "input_image"; detail?: ImageDetail } & ({ image_url: string } | { file_id: string }))
   | { type: "input_audio"; audio_url: string }
-  | { type: "output_text"; text: string };
+  | { type: "output_text"; text: string; annotations?: unknown[]; logprobs?: unknown[] };
 
 /**
  * Internal Responses API passthrough metadata copied into underlying chat messages.
@@ -1721,7 +1892,13 @@ export type ThreadReadParams = {
   includeTurns?: boolean;
 };
 
-export type ThreadReadResponse = { thread: Thread };
+export type ThreadReadResponse = {
+  thread: Thread;
+  /**
+   * Local receipt. Null means this thread's durable read state is unavailable.
+   */
+  readState: ThreadReadState | null;
+};
 
 export type ThreadTurnsListParams = {
   threadId: string;
@@ -1822,6 +1999,23 @@ export type TurnStartParams = {
    * Ignored when this request steers an already-active turn.
    */
   turnTrigger?: string | null;
+  /**
+   * ID of the turn that caused this new turn to start.
+   *
+   * Set this when starting work on behalf of another turn, such as delegated
+   * work in a different thread. Leave unset for work started directly by the
+   * user. Ignored when this request adds input to an active turn.
+   */
+  parentTurnId?: string | null;
+  /**
+   * ID of the first turn in the chain of work that led to this new turn.
+   *
+   * When setting `parentTurnId`, set this to the parent turn's `rootTurnId`
+   * when known. This keeps descendant work attributed to the original turn.
+   * If omitted, the new turn becomes its own root. Ignored when this request
+   * adds input to an active turn.
+   */
+  rootTurnId?: string | null;
   toolOutput?: TurnToolOutput | null;
   /**
    * Optional metadata to enrich Codex's ResponsesAPI turn metadata.
@@ -1938,6 +2132,10 @@ export type TurnToolOutput = {
   name: string;
   namespace: string | null;
   output: FunctionCallOutputBody;
+  /**
+   * Requests retention of this output in the thread's model history.
+   */
+  retain?: boolean;
 };
 
 export type TurnStartResponse = { turn: Turn };
@@ -2073,6 +2271,34 @@ export type ReasoningTextDeltaNotification = {
   contentIndex: number;
 };
 
+export type CommandExecutionOutputDeltaNotification = {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  delta: string;
+};
+
+export type ThreadTokenUsageUpdatedNotification = {
+  threadId: string;
+  turnId: string;
+  tokenUsage: ThreadTokenUsage;
+};
+
+export type ThreadTokenUsage = {
+  total: TokenUsageBreakdown;
+  last: TokenUsageBreakdown;
+  modelContextWindow: number | null;
+};
+
+export type TokenUsageBreakdown = {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+};
+
 export type ServerRequestResolvedNotification = { threadId: string; requestId: RequestId };
 
 export type RequestId = string | number;
@@ -2083,6 +2309,10 @@ export type CodexMethods = {
   initialize: { params: InitializeParams; result: InitializeResponse };
   "model/list": { params: ModelListParams; result: ModelListResponse };
   "account/read": { params: GetAccountParams; result: GetAccountResponse };
+  "account/rateLimits/read": {
+    params: GetAccountRateLimitsParams;
+    result: GetAccountRateLimitsResponse;
+  };
   "skills/list": { params: SkillsListParams; result: SkillsListResponse };
   "thread/list": { params: ThreadListParams; result: ThreadListResponse };
   "thread/start": { params: ThreadStartParams; result: ThreadStartResponse };

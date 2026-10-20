@@ -1,6 +1,13 @@
+## 📅 v0.3.1 (10/20/26)
+
+- The session composer now shows a context meter when the context window is >50% used
+- Session providers now display your plan and usage in the settings dialog
+- Sessions/channel members now have the notion of "backgrounded"
+
 ## 📅 v0.3.0 (10/13/26)
 
-- Added support for screen sharing
+- Added support for desktop/screen sharing
+- Copilot and Codex sessions/channels now support image generation (Claude doesn't)
 - You can now @mention sessions from a session
 - Child sessions now appear in the sidebar
 - The channel checklist now displays associated diffs and artifacts for items

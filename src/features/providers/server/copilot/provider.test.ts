@@ -2,7 +2,7 @@ import { beforeEach, expect, mock, onTestFinished, spyOn, test } from "bun:test"
 import type { CopilotClient } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
 import * as client from "./client";
-import { copilotProvider } from "./provider";
+import { copilotProvider, toSubscription } from "./provider";
 import * as computerUse from "./computerUse";
 import { saveGeneratedImages } from "./generatedImages";
 
@@ -11,6 +11,31 @@ beforeEach(() => {
     "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" },
   });
   onTestFinished(() => servers.mockRestore());
+});
+
+test("a subscription meters premium requests only when its plan limits them", () => {
+  const premium = {
+    isUnlimitedEntitlement: false,
+    entitlementRequests: 300,
+    usedRequests: 75,
+    usageAllowedWithExhaustedQuota: false,
+    remainingPercentage: 75,
+    overage: 0,
+    overageAllowedWithExhaustedQuota: false,
+    resetDate: "2026-11-01T00:00:00.000Z",
+  };
+
+  expect(toSubscription("individual", { premium_interactions: premium })).toEqual({
+    plan: "individual",
+    limits: [
+      { name: "Premium requests", usedPercent: 25, resetsAt: Date.parse(premium.resetDate) },
+    ],
+  });
+  expect(
+    toSubscription("enterprise", {
+      premium_interactions: { ...premium, isUnlimitedEntitlement: true },
+    }),
+  ).toEqual({ plan: "enterprise", limits: [] });
 });
 
 test("catalog metadata retains the native repository display fields", async () => {
@@ -184,4 +209,16 @@ test("read-only history preserves attachments and projector state across native 
     max: 1000,
     cursor: "next",
   });
+});
+
+test("history is current through the trailing-flush window of its native modified time", async () => {
+  const start = spyOn(client, "startCopilotClient").mockResolvedValue({
+    getSessionMetadata: async (sessionId: string) =>
+      sessionId === "native" ? { modifiedTime: new Date(10_000) } : undefined,
+  } as unknown as CopilotClient);
+  onTestFinished(() => start.mockRestore());
+
+  expect(await copilotProvider.isHistoryCurrent("native", 8_000)).toBe(true);
+  expect(await copilotProvider.isHistoryCurrent("native", 7_999)).toBe(false);
+  expect(await copilotProvider.isHistoryCurrent("missing", 10_000)).toBe(false);
 });

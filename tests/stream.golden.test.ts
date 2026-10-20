@@ -6,7 +6,6 @@ import type { SessionEvent, SessionState } from "@sessions/model";
 import { loadSessionFixture } from "./helpers";
 import * as realSessionRegistry from "@sessions/server/state/registry";
 import * as realBroadcast from "@workspace/server/events";
-import * as realWorkspaceState from "@workspace/server/state";
 
 // Golden replay of the full stream lifetime: real v1 CLI events from the
 // fixture drive a SessionStream through two turns — explicit start, fixture
@@ -25,7 +24,6 @@ const sideEffects: string[] = [];
 const workspaceEventListeners = new Set<(event: WorkspaceEvent) => void>();
 const realSessionRegistryExports = { ...realSessionRegistry };
 const realBroadcastExports = { ...realBroadcast };
-const realWorkspaceStateExports = { ...realWorkspaceState };
 const unused = () => {
   throw new Error("not used in stream golden replay");
 };
@@ -65,6 +63,15 @@ mock.module("@workspace/server/events", () => ({
     if (event.type === "session.upserted" && event.session.title !== undefined) {
       sideEffects.push(`title:${event.session.id}:${event.session.title}`);
     }
+    if (
+      event.type === "session.running" ||
+      event.type === "session.waiting" ||
+      event.type === "session.background" ||
+      event.type === "session.idle" ||
+      event.type === "session.unread"
+    ) {
+      sideEffects.push(`${event.type.slice("session.".length)}:${event.sessionId}`);
+    }
     emitMockWorkspaceEvent(event);
   },
   subscribeWorkspaceEvents: (listener: (event: WorkspaceEvent) => void) => {
@@ -74,19 +81,10 @@ mock.module("@workspace/server/events", () => ({
     };
   },
 }));
-mock.module("@workspace/server/state", () => ({
-  ...realWorkspaceStateExports,
-  setSessionStatus: (sessionId: string, status: "running" | "idle" | "unread") => {
-    sideEffects.push(`${status}:${sessionId}`);
-    emitMockWorkspaceEvent({ type: `session.${status}`, sessionId, at: Date.now() });
-  },
-  clearDraftPrompt: () => {},
-}));
 
 afterAll(() => {
   mock.module("@sessions/server/state/registry", () => realSessionRegistryExports);
   mock.module("@workspace/server/events", () => realBroadcastExports);
-  mock.module("@workspace/server/state", () => realWorkspaceStateExports);
 });
 
 beforeEach(() => {

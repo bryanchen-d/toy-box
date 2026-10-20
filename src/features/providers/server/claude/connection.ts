@@ -68,7 +68,12 @@ export class ClaudeConnection implements SessionConnection {
         skills: "all",
         plugins: claudeSkillPlugins(configuration.directory, configuration.skillDirectories),
         systemPrompt: { type: "preset", preset: "claude_code", append: configuration.instructions },
-        ...(configuration.disableMemory ? { settings: { autoMemoryEnabled: false } } : {}),
+        // History reads across compactions, so long conversations compact as they do with Codex and
+        // Copilot, whatever the owner's Claude setting.
+        settings: {
+          autoCompactEnabled: true,
+          ...(configuration.disableMemory ? { autoMemoryEnabled: false } : {}),
+        },
         extraArgs: { "replay-user-messages": null },
         // Pinned so the owner's native default or auto mode can't bypass Toy Box's canUseTool policy.
         permissionMode: "default",

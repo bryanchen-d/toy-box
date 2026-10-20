@@ -1,4 +1,3 @@
-import { code } from "@streamdown/code";
 import {
   Box,
   Boxes,
@@ -12,7 +11,7 @@ import {
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
-import { Markdown } from "@/shared/ui/markdown";
+import { codePlugins, Markdown } from "@/shared/ui/markdown";
 import { HTML_SANDBOX_PERMISSIONS, injectBaseHref } from "@/shared/embeddedHtml";
 import { cn } from "@/shared/utils";
 import type {
@@ -82,7 +81,7 @@ export function ExhibitCard({
           </div>
           {exhibit.description && (
             <Markdown
-              plugins={{ code }}
+              plugins={codePlugins}
               className="mt-1.5 space-y-1 text-[10.5px] leading-relaxed text-muted-foreground"
             >
               {exhibit.description}

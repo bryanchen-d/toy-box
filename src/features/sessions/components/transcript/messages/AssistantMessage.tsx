@@ -1,5 +1,4 @@
-import { Markdown } from "@/shared/ui/markdown";
-import { code } from "@streamdown/code";
+import { codePlugins, Markdown } from "@/shared/ui/markdown";
 import { TriangleAlert } from "lucide-react";
 import type { AssistantMessage as AssistantMessageType, ToolCall } from "../../../model";
 import { transcriptLinkComponents, transcriptRehypePlugins } from "./TranscriptFileLink";
@@ -12,10 +11,12 @@ import { ToolCallMessage } from "./tools/ToolCallMessage";
 export function AssistantMessage({
   message,
   isStreaming,
+  isBusy = isStreaming,
   isLast,
 }: {
   message: AssistantMessageType;
   isStreaming: boolean;
+  isBusy?: boolean;
   isLast: boolean;
 }) {
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
@@ -32,8 +33,8 @@ export function AssistantMessage({
           {message.content ? (
             <Markdown
               mode="streaming"
-              isAnimating={isLast && isStreaming}
-              plugins={{ code }}
+              isAnimating={isLast && isBusy}
+              plugins={codePlugins}
               components={transcriptLinkComponents}
               rehypePlugins={transcriptRehypePlugins}
               className="text-sm"

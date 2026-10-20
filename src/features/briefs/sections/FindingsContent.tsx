@@ -1,7 +1,6 @@
-import { code } from "@streamdown/code";
 import { ChevronRight, FileCode2, Lightbulb, PanelRightOpen } from "lucide-react";
 import { cn } from "@/shared/utils";
-import { InlineMarkdown, Markdown } from "@/shared/ui/markdown";
+import { codePlugins, InlineMarkdown, Markdown } from "@/shared/ui/markdown";
 import {
   entityLinks,
   type FindingsSection,
@@ -79,7 +78,7 @@ export function FindingsContent({
                         Why it matters
                       </div>
                       <Markdown
-                        plugins={{ code }}
+                        plugins={codePlugins}
                         className="mt-0.5 space-y-1 text-[10.5px] leading-relaxed text-foreground/85"
                       >
                         {finding.whyItMatters}

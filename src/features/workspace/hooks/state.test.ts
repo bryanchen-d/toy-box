@@ -83,6 +83,7 @@ describe("workspace query selectors", () => {
     expect(activity.data()).toEqual({
       running: false,
       waiting: false,
+      background: false,
       unread: false,
       since: undefined,
       hasDraft: false,
@@ -96,6 +97,7 @@ describe("workspace query selectors", () => {
     expect(activity.data()).toEqual({
       running: true,
       waiting: false,
+      background: false,
       unread: false,
       since: 1,
       hasDraft: false,
@@ -109,11 +111,26 @@ describe("workspace query selectors", () => {
     expect(activity.data()).toEqual({
       running: false,
       waiting: true,
+      background: false,
       unread: false,
       since: 1,
       hasDraft: false,
     });
     expect(activity.updates()).toBe(2);
+
+    updateWorkspace(queryClient, (workspace) => ({
+      ...workspace,
+      sessionStates: { "session-a": { status: "background", since: 1 } },
+    }));
+    expect(activity.data()).toEqual({
+      running: false,
+      waiting: false,
+      background: true,
+      unread: false,
+      since: 1,
+      hasDraft: false,
+    });
+    expect(activity.updates()).toBe(3);
   });
 
   test("projects whether a session has a non-empty draft", () => {

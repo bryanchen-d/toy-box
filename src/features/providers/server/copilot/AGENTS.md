@@ -7,8 +7,12 @@ Sessions alone owns its registry, execution lease, queue, and lifetime.
 
 `projector.ts` translates SDK events, tool aliases, SQL todos, background subagents,
 questions, and native canvas activity. `provider.readHistory()` uses that same projector.
+Root `assistant.idle` projects the nonterminal `background` status; only `session.idle`
+ends execution after background agents and attached shell commands have finished.
 Reasoning-only assistant messages with neither text nor tool requests are not transcript
 boundaries; they can arrive between another message's streamed text and completion.
+Subagent reasoning streams beneath its agent call and resets at each child turn; the reply's
+durable `reasoningText` replaces that ephemeral preview, so history converges with live state.
 `attachments.ts`, `modelConfiguration.ts`, and `models.ts`
 keep native data shapes outside the Sessions model. Shared Toy Box tool effects live
 in Sessions' `toolProjection.ts`; Copilot-specific completion rules stay here.
@@ -40,9 +44,9 @@ the matching CLI version's cached computer-use binary as a stdio MCP server.
 If that optional binary is missing, it warns and starts without computer use.
 This supplies the provider's tools; Screens itself only lists human-viewable screens.
 
-Session discovery and workspace context use `listSessions()` and `getSessionMetadata()`;
-history pages through `rpc.sessions.readPersistedEvents()` without acquiring a connection. Do not parse native history files for metadata. The provider
-checks the history file's modification time only to validate cached snapshots.
+Session discovery, workspace context, and snapshot freshness use `listSessions()` and
+`getSessionMetadata()`; history pages through `rpc.sessions.readPersistedEvents()` without
+acquiring a connection. Do not read native history files directly.
 
 Preserve the recorded live/history fixtures under `tests/fixtures`. Changes to native
 projection must produce the same canonical reducer state live and after reopen.

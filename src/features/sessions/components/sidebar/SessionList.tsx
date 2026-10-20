@@ -71,10 +71,10 @@ export function SessionList({
         key={`session:${session.id}`}
         session={session}
         onSelect={onSessionSelect}
-        onPinToggle={isChild ? undefined : () => handleSessionPinToggle(session.id)}
-        onRename={() => onSessionRename(session.id)}
+        onPinToggle={isChild ? undefined : handleSessionPinToggle}
+        onRename={onSessionRename}
         onBrowseDirectory={onBrowseDirectory}
-        onDelete={() => onSessionDelete(session.id)}
+        onDelete={onSessionDelete}
         isActive={openSessionIds.includes(session.id)}
         isPinned={!isChild && pinnedSessionIdSet.has(session.id)}
         isWorktree={worktreeSessionIds.includes(session.id)}

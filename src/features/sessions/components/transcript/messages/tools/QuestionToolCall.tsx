@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { code } from "@streamdown/code";
 import { CircleHelp } from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import { InlineMarkdown, Markdown } from "@/shared/ui/markdown";
+import { codePlugins, InlineMarkdown, Markdown } from "@/shared/ui/markdown";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/utils";
 import { waitingOutlineClassName } from "@/shared/ui/running-indicator";
@@ -25,7 +24,7 @@ export function QuestionToolCall({ question }: { question: SessionQuestion }) {
         <CircleHelp className="size-4" aria-hidden />
         <span>Question</span>
       </div>
-      <Markdown plugins={{ code }}>{question.question}</Markdown>
+      <Markdown plugins={codePlugins}>{question.question}</Markdown>
 
       {question.state === "answered" ? (
         <div className="mt-3 border-t pt-3">

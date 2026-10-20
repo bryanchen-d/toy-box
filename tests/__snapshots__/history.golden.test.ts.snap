@@ -206,6 +206,13 @@ Context: Changes include SDK blob attachments, semantic Attachment type, semanti
               "name": "claude-haiku-4.5",
               "provider": "copilot",
             },
+            "reasoningContent": 
+"I need to:
+1. First, understand what uncommitted changes exist in the repo
+2. Look at the tests that were added or updated
+3. Compare the test coverage against the changed behavior
+4. Identify important missing tests, brittle tests, or over…"
+,
             "toolCalls": [
               {
                 "arguments": {
@@ -338,6 +345,7 @@ Evaluate the overall design decisions:
               "name": "claude-opus-4.8",
               "provider": "copilot",
             },
+            "reasoningContent": "I'm starting by examining the uncommitted changes in the repository to understand what design decisions are being made.",
             "toolCalls": [
               {
                 "arguments": {

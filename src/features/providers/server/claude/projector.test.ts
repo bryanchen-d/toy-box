@@ -78,6 +78,80 @@ test("turn results do not finish a session before native idle", () => {
   ).toEqual([{ type: "end", reason: "idle" }]);
 });
 
+test("turn results report the main thread's latest request against its model's context window", () => {
+  const project = createClaudeProjector("test");
+  const reply = (model: string, input_tokens: number, parent_tool_use_id: string | null = null) =>
+    native({
+      type: "assistant",
+      message: {
+        id: `${model}-${input_tokens}`,
+        model,
+        content: [],
+        usage: {
+          input_tokens,
+          cache_read_input_tokens: 20_000,
+          cache_creation_input_tokens: 1_000,
+          output_tokens: 500,
+        },
+      },
+      parent_tool_use_id,
+    });
+  for (const message of [
+    reply("claude-sonnet-5", 2_000),
+    reply("claude-sonnet-5", 4_000),
+    reply("claude-haiku-5-5", 90_000, "agent-1"),
+  ])
+    project(message);
+
+  expect(
+    project(
+      native({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        modelUsage: {
+          "claude-haiku-5-5": { contextWindow: 200_000 },
+          "claude-sonnet-5": { contextWindow: 1_000_000 },
+        },
+      }),
+    ),
+  ).toEqual([{ type: "context_usage_changed", usage: { tokens: 25_500, tokenWindow: 1_000_000 } }]);
+});
+
+test("compaction leaves the context a turn's result reports at its compacted size", () => {
+  const project = createClaudeProjector("test");
+  project(
+    native({
+      type: "assistant",
+      message: {
+        id: "reply",
+        model: "claude-sonnet-5",
+        content: [],
+        usage: { input_tokens: 18_000, output_tokens: 255 },
+      },
+      parent_tool_use_id: null,
+    }),
+  );
+  project(
+    native({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 18_255, post_tokens: 1_787 },
+    }),
+  );
+
+  expect(
+    project(
+      native({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        modelUsage: { "claude-sonnet-5": { contextWindow: 1_000_000 } },
+      }),
+    ),
+  ).toEqual([{ type: "context_usage_changed", usage: { tokens: 1_787, tokenWindow: 1_000_000 } }]);
+});
+
 test("a turn that ends in an API error fails with it once, live and in history", () => {
   const limit = "You've hit your session limit · resets 11:50am (America/Los_Angeles)";
   const failure = synthetic(limit, "rate_limit");
@@ -364,7 +438,7 @@ test("background history retains the launch result and nested child activity", (
   const root = state.messages.find((message) => message.role === "assistant");
   expect(root?.toolCalls?.[0]).toMatchObject({
     name: "agent",
-    // Native agents run in the background unless the call opts out.
+    // The main thread's agents run in the background unless the call says otherwise.
     arguments: { agent_type: "Explore", mode: "background" },
     result: { success: true, content: "Launched" },
     subagent: {
@@ -373,6 +447,68 @@ test("background history retains the launch result and nested child activity", (
     },
   });
   expect(state.messages).toHaveLength(1);
+});
+
+test("agents default to the background from the main thread and the foreground from a subagent", () => {
+  const agent = (id: string, input: object, parent: string | null = null) =>
+    assistant([{ type: "tool_use", id, name: "Agent", input }], id, parent);
+  const state = replay([
+    agent("main", {}),
+    agent("main-sync", { run_in_background: false }),
+    agent("nested", {}, "main"),
+    agent("nested-background", { run_in_background: true }, "main"),
+  ]);
+  const [main, mainSync] = state.messages.flatMap((message) =>
+    message.role === "assistant" ? (message.toolCalls ?? []) : [],
+  );
+  expect(
+    [main, mainSync, ...(main?.subagent?.toolCalls ?? [])].map((call) => call?.arguments.mode),
+  ).toEqual(["background", "sync", "sync", "background"]);
+});
+
+test("a fork's history drops the context it inherited, as the live stream does", () => {
+  const call = {
+    type: "tool_use",
+    id: "fork",
+    name: "Agent",
+    input: { subagent_type: "fork", prompt: "Recall the word" },
+  };
+  const fork = assistant([call]);
+  const launched = native({
+    type: "user",
+    parent_tool_use_id: null,
+    message: { content: [{ type: "tool_result", tool_use_id: "fork", content: "Launched" }] },
+    tool_use_result: { status: "async_launched" },
+  });
+  const output = assistant([{ type: "text", text: "ZEBRA" }], "fork-reply", "fork");
+  const started = native({
+    type: "system",
+    subtype: "task_started",
+    tool_use_id: "fork",
+    is_backgrounded: true,
+  });
+  // A fork's transcript opens with the parent message that forked it and the fork's directive.
+  const inherited = [
+    assistant([{ type: "text", text: "Forking now." }, call], "reply", "fork"),
+    native({
+      type: "user",
+      parent_tool_use_id: "fork",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "fork", content: "Fork started" },
+          { type: "text", text: "<fork-boilerplate>Recall the word</fork-boilerplate>" },
+        ],
+      },
+    }),
+  ];
+  const subagent = (state: ReturnType<typeof replay>) =>
+    state.messages.find((message) => message.role === "assistant")?.toolCalls?.[0]?.subagent;
+  const live = subagent(replay([fork, started, launched, output]));
+  const history = subagent(replay(asLiveStream([fork, launched], [[...inherited, output]])));
+
+  expect(history).toEqual(live);
+  expect(history).toMatchObject({ content: "ZEBRA" });
+  expect(history?.toolCalls).toBeUndefined();
 });
 
 test.each(["completed", "failed", "stopped"] as const)(

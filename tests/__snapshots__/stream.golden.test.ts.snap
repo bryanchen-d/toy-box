@@ -5,6 +5,11 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
   "received": [
     {
       "eventId": 0,
+      "status": "thinking",
+      "type": "status",
+    },
+    {
+      "eventId": 1,
       "model": {
         "name": "gpt-5.5",
         "provider": "copilot",
@@ -20,26 +25,26 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
           2168,
         ],
       },
-      "eventId": 1,
+      "eventId": 2,
       "toolCallId": "call_M1QBw3fDmRrrXoYP9bt4edOd",
       "toolName": "read",
       "type": "tool_start",
     },
     {
       "details": undefined,
-      "eventId": 2,
+      "eventId": 3,
       "result": "Path does not exist",
       "success": false,
       "toolCallId": "call_M1QBw3fDmRrrXoYP9bt4edOd",
       "type": "tool_end",
     },
     {
-      "eventId": 3,
+      "eventId": 4,
       "status": "compacting",
       "type": "status",
     },
     {
-      "eventId": 4,
+      "eventId": 5,
       "status": "thinking",
       "type": "status",
     },
@@ -47,18 +52,18 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
       "attachments": undefined,
       "clientId": "client-1",
       "content": "What’s your thoughts on this change now? Maybe kick off a code review and a half dozen sub agents to go review different aspects of this change and see how they feel about itne2e",
-      "eventId": 5,
+      "eventId": 6,
       "timestamp": "2026-06-11T02:19:11.607Z",
       "type": "user_message",
     },
     {
-      "eventId": 6,
+      "eventId": 7,
       "status": "thinking",
       "type": "status",
     },
     {
       "content": "My quick take: the shape is much cleaner now, but I’ll get independent reviews on the main risk areas before making a stronger call.",
-      "eventId": 7,
+      "eventId": 8,
       "messageId": "572c6c64-a4a2-495b-aa4c-535d1cc4abdc",
       "type": "assistant_message",
     },
@@ -66,7 +71,7 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
       "arguments": {
         "intent": "Launching reviews",
       },
-      "eventId": 8,
+      "eventId": 9,
       "toolCallId": "call_RxF3q3DxvPVDWX1mvsjqs9iq",
       "toolName": "report_intent",
       "type": "tool_start",
@@ -79,7 +84,7 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
         "name": "full-diff-review",
         "prompt": "You are reviewing the current uncommitted changes in /Users/lostintangent/Desktop/toy-box. Do not modify files. Focus only on high-signal correctness, security, regression, type-safety, and maintainability issues. Ignore formatting/style un…",
       },
-      "eventId": 9,
+      "eventId": 10,
       "toolCallId": "call_ZVrK5S62TXjHNZC1IpjTc4bM",
       "toolName": "agent",
       "type": "tool_start",
@@ -97,7 +102,7 @@ Intended behavior:
 - Client/UI…"
 ,
       },
-      "eventId": 10,
+      "eventId": 11,
       "toolCallId": "call_6Jaw3UuYJyWaSJPruwIeJOql",
       "toolName": "agent",
       "type": "tool_start",
@@ -115,7 +120,7 @@ Intended behavior:
 - SessionEvent shapes remain unchanged/protocol-like: tool_start uses toolCallId/toolName; t…"
 ,
       },
-      "eventId": 11,
+      "eventId": 12,
       "toolCallId": "call_FEzfqGxQde7PZN4D2gB4MjYF",
       "toolName": "agent",
       "type": "tool_start",
@@ -133,7 +138,7 @@ Intended behavior:
 - Patch tool start args are not parsed into FileDiff[]; raw apply_patch text displays whil…"
 ,
       },
-      "eventId": 12,
+      "eventId": 13,
       "toolCallId": "call_ke5vKoctnsDXbmKPSj1cQ0xI",
       "toolName": "agent",
       "type": "tool_start",
@@ -151,7 +156,7 @@ Focus areas:
 - Active stream state vs persisted history reconstruction a…"
 ,
       },
-      "eventId": 13,
+      "eventId": 14,
       "toolCallId": "call_7CE08h3s8nNulW1GHoiNsWeu",
       "toolName": "agent",
       "type": "tool_start",
@@ -168,7 +173,7 @@ Focus areas:
 Context: Changes include SDK blob attachments, semantic Attachment type, semantic ToolCall i…"
 ,
       },
-      "eventId": 14,
+      "eventId": 15,
       "toolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "toolName": "agent",
       "type": "tool_start",
@@ -186,13 +191,13 @@ Evaluate the overall design decisions:
 - Se…"
 ,
       },
-      "eventId": 15,
+      "eventId": 16,
       "toolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "toolName": "agent",
       "type": "tool_start",
     },
     {
-      "eventId": 16,
+      "eventId": 17,
       "model": {
         "name": "gpt-5.5",
         "provider": "copilot",
@@ -202,14 +207,14 @@ Evaluate the overall design decisions:
     },
     {
       "details": "Launching reviews",
-      "eventId": 17,
+      "eventId": 18,
       "result": "Intent logged",
       "success": true,
       "toolCallId": "call_RxF3q3DxvPVDWX1mvsjqs9iq",
       "type": "tool_end",
     },
     {
-      "eventId": 18,
+      "eventId": 19,
       "model": {
         "name": "claude-opus-4.8",
         "provider": "copilot",
@@ -218,7 +223,7 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
-      "eventId": 19,
+      "eventId": 20,
       "model": {
         "name": "claude-haiku-4.5",
         "provider": "copilot",
@@ -227,7 +232,7 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
-      "eventId": 20,
+      "eventId": 21,
       "model": {
         "name": "claude-haiku-4.5",
         "provider": "copilot",
@@ -236,7 +241,7 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
-      "eventId": 21,
+      "eventId": 22,
       "model": {
         "name": "claude-haiku-4.5",
         "provider": "copilot",
@@ -245,7 +250,7 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
-      "eventId": 22,
+      "eventId": 23,
       "model": {
         "name": "claude-haiku-4.5",
         "provider": "copilot",
@@ -254,7 +259,7 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
-      "eventId": 23,
+      "eventId": 24,
       "model": {
         "name": "claude-haiku-4.5",
         "provider": "copilot",
@@ -263,8 +268,20 @@ Evaluate the overall design decisions:
       "type": "model_changed",
     },
     {
+      "content": 
+"I need to:
+1. First, understand what uncommitted changes exist in the repo
+2. Look at the tests that were added or updated
+3. Compare the test coverage against the changed behavior
+4. Identify important missing tests, brittle tests, or over…"
+,
+      "eventId": 25,
+      "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
+      "type": "reasoning",
+    },
+    {
       "content": "",
-      "eventId": 24,
+      "eventId": 26,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "type": "assistant_message",
     },
@@ -273,7 +290,7 @@ Evaluate the overall design decisions:
         "command": "cd /Users/lostintangent/Desktop/toy-box && git status",
         "description": "Check git status to see uncommitted changes",
       },
-      "eventId": 25,
+      "eventId": 27,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "toolCallId": "toolu_bdrk_01Bc16CL9HSZ6uwrBHBTraGR",
       "toolName": "bash",
@@ -284,7 +301,7 @@ Evaluate the overall design decisions:
         "command": "cd /Users/lostintangent/Desktop/toy-box && git diff --name-only",
         "description": "List modified files",
       },
-      "eventId": 26,
+      "eventId": 28,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "toolCallId": "toolu_bdrk_01WYvdnAft499BoKhWbhRnnF",
       "toolName": "bash",
@@ -295,7 +312,7 @@ Evaluate the overall design decisions:
         "command": "cd /Users/lostintangent/Desktop/toy-box && git status --porcelain",
         "description": "Get full status with untracked files",
       },
-      "eventId": 27,
+      "eventId": 29,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "toolCallId": "toolu_bdrk_01CpyvLNVaTKQDdQt31piuC6",
       "toolName": "bash",
@@ -310,7 +327,7 @@ Changes not staged for commit:
 	modified:   src/components/session/SessionView.tsx
 	modif…"
 ,
-      "eventId": 28,
+      "eventId": 30,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "result": 
 "On branch main
@@ -333,7 +350,7 @@ src/components/session/messages/AssistantMessage.tsx
 src/components/session/messages/tools/AgentToolCall.tsx
 src…"
 ,
-      "eventId": 29,
+      "eventId": 31,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "result": 
 "src/components/session/SessionView.tsx
@@ -355,7 +372,7 @@ src…"
  M src/components/session/messages/AssistantMessage.tsx
  M src/components/session/messages/tools/AgentTo…"
 ,
-      "eventId": 30,
+      "eventId": 32,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "result": 
 "M src/components/session/SessionView.tsx
@@ -369,8 +386,14 @@ src…"
       "type": "tool_end",
     },
     {
+      "content": "I'm starting by examining the uncommitted changes in the repository to understand what design decisions are being made.",
+      "eventId": 33,
+      "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
+      "type": "reasoning",
+    },
+    {
       "content": "I'll start by examining the uncommitted changes to understand the design context.",
-      "eventId": 31,
+      "eventId": 34,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "type": "assistant_message",
     },
@@ -378,7 +401,7 @@ src…"
       "arguments": {
         "intent": "Examining uncommitted changes",
       },
-      "eventId": 32,
+      "eventId": 35,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "toolCallId": "toolu_01U7w1ymeBtK62owAFb7pxSA",
       "toolName": "report_intent",
@@ -389,7 +412,7 @@ src…"
         "command": "cd /Users/lostintangent/Desktop/toy-box && git --no-pager status && echo "===DIFFSTAT===" && git --no-pager diff --stat",
         "description": "Show git status and diff stat",
       },
-      "eventId": 33,
+      "eventId": 36,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "toolCallId": "toolu_01AaNM5wZ1QXPthiuEr4vzZW",
       "toolName": "bash",
@@ -397,7 +420,7 @@ src…"
     },
     {
       "details": "Examining uncommitted changes",
-      "eventId": 34,
+      "eventId": 37,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "result": "Intent logged",
       "success": true,
@@ -413,7 +436,7 @@ Changes not staged for commit:
 	modified:   src/components/session/SessionView.tsx
 	modif…"
 ,
-      "eventId": 35,
+      "eventId": 38,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "result": 
 "On branch main
@@ -431,7 +454,7 @@ Changes not staged for commit:
       "arguments": {
         "path": "/Users/lostintangent/Desktop/toy-box/src/functions/sdk/sessionState.test.ts",
       },
-      "eventId": 36,
+      "eventId": 39,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "toolCallId": "toolu_bdrk_01DuKi1hYw5i5feiz5KeWwaC",
       "toolName": "read",
@@ -444,7 +467,7 @@ diff --git a/Users/lostintangent/Desktop/toy-box/src/functions/sdk/sessionState.
 index 0000000..0000000 100644
 --- a/Users/lostintangent/Desktop/toy-box/sr…"
 ,
-      "eventId": 37,
+      "eventId": 40,
       "parentToolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "result": 
 "1. import { describe, expect, test } from "bun:test";
@@ -462,7 +485,7 @@ index 0000000..0000000 100644
         "command": "cd /Users/lostintangent/Desktop/toy-box && git --no-pager diff src/types.ts",
         "description": "Show diff of types.ts",
       },
-      "eventId": 38,
+      "eventId": 41,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "toolCallId": "toolu_01TorsDVgPrQe3waDFEWnQvD",
       "toolName": "bash",
@@ -479,7 +502,7 @@ index 375b1b8..9db9a3a 100644
  
  export…"
 ,
-      "eventId": 39,
+      "eventId": 42,
       "parentToolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "result": 
 "diff --git a/src/types.ts b/src/types.ts
@@ -496,54 +519,63 @@ index 375b1b8..9db9a3a 100644
       "type": "tool_end",
     },
     {
-      "eventId": 40,
+      "eventId": 43,
       "success": true,
       "toolCallId": "call_usVTJ9nbQ4JEHxemVMpSWjl8",
       "type": "tool_end",
     },
     {
-      "eventId": 41,
+      "eventId": 44,
       "success": true,
       "toolCallId": "call_ke5vKoctnsDXbmKPSj1cQ0xI",
       "type": "tool_end",
     },
     {
-      "eventId": 42,
+      "eventId": 45,
       "success": true,
       "toolCallId": "call_FEzfqGxQde7PZN4D2gB4MjYF",
       "type": "tool_end",
     },
     {
-      "eventId": 43,
+      "eventId": 46,
       "success": true,
       "toolCallId": "call_6Jaw3UuYJyWaSJPruwIeJOql",
       "type": "tool_end",
     },
     {
-      "eventId": 44,
+      "eventId": 47,
       "success": true,
       "toolCallId": "call_aIs3ubnSXyt6yavyLbThBQZk",
       "type": "tool_end",
     },
     {
-      "eventId": 45,
+      "eventId": 48,
       "success": true,
       "toolCallId": "call_7CE08h3s8nNulW1GHoiNsWeu",
       "type": "tool_end",
     },
     {
-      "eventId": 46,
+      "eventId": 49,
       "success": true,
       "toolCallId": "call_ZVrK5S62TXjHNZC1IpjTc4bM",
       "type": "tool_end",
     },
     {
       "content": "Wrapping up.",
-      "eventId": 47,
+      "eventId": 50,
       "type": "delta",
     },
     {
-      "eventId": 48,
+      "eventId": 51,
+      "message": {
+        "clientId": "queued-1",
+        "content": "now fix the findings",
+        "role": "user",
+      },
+      "type": "message_queued",
+    },
+    {
+      "eventId": 52,
       "message": {
         "clientId": "queued-1",
         "content": "now fix the findings",
@@ -553,13 +585,18 @@ index 375b1b8..9db9a3a 100644
     },
     {
       "clientId": "queued-1",
-      "eventId": 49,
+      "eventId": 53,
       "status": "submitting",
       "type": "message_status_changed",
     },
     {
+      "eventId": 54,
+      "status": "thinking",
+      "type": "status",
+    },
+    {
       "clientId": "queued-1",
-      "eventId": 50,
+      "eventId": 55,
       "status": "submitted",
       "type": "message_status_changed",
     },
@@ -567,29 +604,28 @@ index 375b1b8..9db9a3a 100644
       "attachments": undefined,
       "clientId": "queued-1",
       "content": "now fix the findings",
-      "eventId": 51,
+      "eventId": 56,
       "timestamp": undefined,
       "type": "user_message",
     },
     {
-      "eventId": 52,
+      "eventId": 57,
       "status": "thinking",
       "type": "status",
     },
     {
       "content": "On it.",
-      "eventId": 53,
+      "eventId": 58,
       "type": "delta",
     },
     {
-      "eventId": 54,
+      "eventId": 59,
       "reason": "idle",
       "type": "end",
     },
     "<<SUBSCRIPTION-DONE>>",
   ],
   "sideEffects": [
-    "running:golden-stream",
     "running:golden-stream",
     "--- pre-finish ---",
     "idle:golden-stream",
@@ -602,7 +638,7 @@ exports[`stream golden replay two-turn lifetime: fixture replay, queue drain, an
 {
   "artifacts": [],
   "canvases": [],
-  "lastSeenEventId": 54,
+  "lastSeenEventId": 59,
   "linkedSessionIds": [],
   "messages": [
     {
@@ -806,6 +842,13 @@ Context: Changes include SDK blob attachments, semantic Attachment type, semanti
               "name": "claude-haiku-4.5",
               "provider": "copilot",
             },
+            "reasoningContent": 
+"I need to:
+1. First, understand what uncommitted changes exist in the repo
+2. Look at the tests that were added or updated
+3. Compare the test coverage against the changed behavior
+4. Identify important missing tests, brittle tests, or over…"
+,
             "toolCalls": [
               {
                 "arguments": {
@@ -938,6 +981,7 @@ Evaluate the overall design decisions:
               "name": "claude-opus-4.8",
               "provider": "copilot",
             },
+            "reasoningContent": "I'm starting by examining the uncommitted changes in the repository to understand what design decisions are being made.",
             "toolCalls": [
               {
                 "arguments": {

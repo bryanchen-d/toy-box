@@ -10,6 +10,7 @@ import {
   hasCachedSnapshot,
   isCachedSnapshotFresh,
   loadSessionSnapshot,
+  refreshSessionSnapshot,
   retainSessionSnapshots,
 } from "@sessions/server/state/snapshots";
 
@@ -127,6 +128,22 @@ describe.serial("snapshot cache", () => {
 
     expect(await getCachedSnapshot(sessionId)).toBeUndefined();
     expect(hasCachedSnapshot(sessionId)).toBe(false);
+  });
+
+  test("history rebuilds keep the last reported context usage until an explicit refresh", async () => {
+    spyOn(providers, "isHistoryCurrent").mockResolvedValue(false);
+    const sessionId = "snapshot-cache-test-context-usage";
+    onTestFinished(() => {
+      mock.restore();
+      evictCachedSnapshot(sessionId);
+    });
+    const contextUsage = { tokens: 41_000, tokenWindow: 258_400 };
+    cacheSnapshot(sessionId, { ...snapshot(sessionId), contextUsage });
+
+    await withProviderHistory(async () => {
+      expect((await loadSessionSnapshot(sessionId)).contextUsage).toEqual(contextUsage);
+      expect((await refreshSessionSnapshot(sessionId)).contextUsage).toBeUndefined();
+    });
   });
 
   test("retaining warms a cold session and keeps its slot through rotation", async () => {

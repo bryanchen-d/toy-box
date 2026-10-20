@@ -31,18 +31,11 @@ type ToolArguments = ToolCall["arguments"];
 
 // Normalize tool name aliases to canonical names so the UI only needs one name per tool.
 const TOOL_NAME_ALIASES: Record<string, string> = {
-  run_in_terminal: "bash",
-  execute_command: "bash",
-  read_file: "read",
   view: "read",
-  file_search: "glob",
-  grep_search: "grep",
-  search: "grep",
   rg: "grep",
-  replace_string_in_file: "edit",
+  str_replace: "edit",
   apply_patch: "patch",
   web_fetch: "fetch",
-  fetch_webpage: "fetch",
   task: "agent",
 };
 
@@ -132,15 +125,21 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
         },
       ];
     case "assistant.message": {
-      // Reasoning-only messages can arrive between another message's deltas and completion.
-      if (!event.data.content && !event.data.toolRequests?.length) return [];
       const parentToolCallId = resolveParentToolCallId(
         event.agentId,
         event.data.parentToolCallId,
         state,
       );
       if (event.agentId && !parentToolCallId) return [];
+      // Subagent reasoning stays on its agent call, so durable text replaces the live preview.
+      const reasoning: SessionEvent[] =
+        parentToolCallId && event.data.reasoningText
+          ? [{ type: "reasoning", content: event.data.reasoningText, parentToolCallId }]
+          : [];
+      // Reasoning-only messages can arrive between another message's deltas and completion.
+      if (!event.data.content && !event.data.toolRequests?.length) return reasoning;
       return [
+        ...reasoning,
         {
           type: "assistant_message",
           ...(parentToolCallId ? { parentToolCallId } : {}),
@@ -157,11 +156,11 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
       return content ? [{ type: "delta", content, ...(messageId ? { messageId } : {}) }] : [];
     }
     case "assistant.reasoning_delta": {
-      // Like text deltas, transient subagent reasoning is omitted. Committed
-      // replies and child tools carry their parent tool-call identity.
-      if (event.agentId) return [];
       const content = event.data.deltaContent;
-      return content ? [{ type: "reasoning_delta", content }] : [];
+      if (!content) return [];
+      if (!event.agentId) return [{ type: "reasoning_delta", content }];
+      const parentToolCallId = resolveParentToolCallId(event.agentId, undefined, state);
+      return parentToolCallId ? [{ type: "reasoning_delta", content, parentToolCallId }] : [];
     }
     case "skill.invoked": {
       if (event.data.trigger === "context-load" || event.agentId) return [];
@@ -184,12 +183,28 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
         },
       ];
     }
-    case "assistant.turn_start":
-      return event.agentId ? [] : [{ type: "status", status: "thinking" }];
+    case "assistant.turn_start": {
+      if (!event.agentId) return [{ type: "status", status: "thinking" }];
+      // Each subagent turn starts a new reasoning preview on its agent call.
+      const parentToolCallId = resolveParentToolCallId(
+        event.agentId,
+        event.data.parentToolCallId,
+        state,
+      );
+      return parentToolCallId ? [{ type: "reasoning", content: "", parentToolCallId }] : [];
+    }
+    case "assistant.idle":
+      return event.agentId ? [] : [{ type: "status", status: "background" }];
     case "session.compaction_complete":
       return event.agentId ? [] : [{ type: "status", status: "thinking" }];
     case "session.compaction_start":
       return event.agentId ? [] : [{ type: "status", status: "compacting" }];
+    case "session.usage_info": {
+      const { currentTokens: tokens, tokenLimit: tokenWindow } = event.data;
+      return event.agentId
+        ? []
+        : [{ type: "context_usage_changed", usage: { tokens, tokenWindow } }];
+    }
     case "session.error":
       return [{ type: "end", reason: "error", error: event.data.message }];
     case "session.start":
@@ -290,6 +305,15 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
           ...(question ? { question } : {}),
         },
       ];
+    }
+    case "tool.shell_output": {
+      const { toolCallId, text: content } = event.data;
+      if (!content) return [];
+      if (!event.agentId) return [{ type: "tool_output_delta", toolCallId, content }];
+      const parentToolCallId = resolveParentToolCallId(event.agentId, undefined, state);
+      return parentToolCallId
+        ? [{ type: "tool_output_delta", toolCallId, content, parentToolCallId }]
+        : [];
     }
     case "tool.execution_complete": {
       const { data } = event;

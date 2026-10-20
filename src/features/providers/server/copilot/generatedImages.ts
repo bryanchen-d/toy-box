@@ -4,8 +4,8 @@ import type { SessionHooks } from "@github/copilot-sdk";
 
 type PostToolUse = NonNullable<SessionHooks["onPostToolUse"]>;
 
-// Workaround for CLI 1.0.97-1: image_generation returns images without saving them and has no
-// output path. TODO: Remove when Copilot can write generated images to disk itself.
+// Workaround seen through CLI 1.0.100-1: image_generation returns images without saving
+// them and has no output path. TODO: Remove when Copilot can write generated images to disk itself.
 /** Save generated images like Codex does, and tell the model where so agents can attach them. */
 export async function saveGeneratedImages(
   { toolName, toolResult }: Parameters<PostToolUse>[0],

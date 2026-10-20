@@ -219,7 +219,7 @@ component needs:
 
 ```ts
 type AppSession = Session & {
-  status: "running" | "waiting" | "idle" | "unread";
+  status: "running" | "waiting" | "background" | "idle" | "unread";
   kind: "standard" | "automation" | "hyper";
   worktree?: SessionWorktree;
   children: AppSession[];

@@ -1,6 +1,4 @@
-import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { approveAll } from "@github/copilot-sdk";
 import type {
   CopilotSession,
@@ -10,12 +8,12 @@ import type {
   Tool as CopilotTool,
 } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
+import type { ProviderSubscription } from "@providers/model";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
 import { normalizeToolResult } from "@sessions/server/tools/definition";
-import { SESSION_STATE_PATH } from "./constants";
 import { startCopilotClient, stopCopilotClient } from "./client";
 import { connectCopilotSession } from "./connection";
-import { adaptModelCatalog } from "./models";
+import { toModelInfo } from "./models";
 import { toSdkSessionModelOptions } from "./modelConfiguration";
 import { toSessionSkills } from "./skills";
 import { createSdkEventProjector } from "./projector";
@@ -26,16 +24,14 @@ export const copilotProvider: SessionProvider = {
   id: "copilot",
   name: "GitHub Copilot",
   async listModels() {
-    return adaptModelCatalog(await (await startCopilotClient()).listModels()).map(
-      ({ id, name, supportedReasoningEfforts, defaultReasoningEffort, supportedContextTiers }) => ({
-        id,
-        name,
-        provider: "copilot",
-        supportedReasoningEfforts,
-        defaultReasoningEffort,
-        supportedContextTiers,
-      }),
-    );
+    return (await (await startCopilotClient()).listModels()).map(toModelInfo);
+  },
+  async readSubscription() {
+    const { rpc } = await startCopilotClient();
+    const { authInfo } = await rpc.account.getCurrentAuth();
+    const plan =
+      authInfo && "copilotUser" in authInfo ? authInfo.copilotUser?.copilot_plan : undefined;
+    return plan ? toSubscription(plan, (await rpc.account.getQuota({})).quotaSnapshots) : undefined;
   },
   async listSessions() {
     return (await (await startCopilotClient()).listSessions()).map(
@@ -116,21 +112,37 @@ export const copilotProvider: SessionProvider = {
     );
   },
   async isHistoryCurrent(nativeId, capturedAt) {
-    try {
-      // Preserve the SDK's short trailing-flush window after a completed turn.
-      return (
-        (await stat(join(homedir(), SESSION_STATE_PATH, nativeId, "events.jsonl"))).mtimeMs <=
-        capturedAt + 2_000
-      );
-    } catch {
-      return false;
-    }
+    const metadata = await (await startCopilotClient()).getSessionMetadata(nativeId);
+    // Preserve the SDK's short trailing-flush window after a completed turn.
+    return !!metadata && metadata.modifiedTime.getTime() <= capturedAt + 2_000;
   },
   async delete(nativeId) {
     await (await startCopilotClient()).deleteSession(nativeId);
   },
   stop: stopCopilotClient,
 };
+
+type CopilotQuotas = Awaited<
+  ReturnType<CopilotClient["rpc"]["account"]["getQuota"]>
+>["quotaSnapshots"];
+
+/** Copilot meters premium requests monthly, unless the plan makes them unlimited. */
+export function toSubscription(plan: string, quotas: CopilotQuotas): ProviderSubscription {
+  const premium = quotas.premium_interactions;
+  return {
+    plan,
+    limits:
+      premium && !premium.isUnlimitedEntitlement
+        ? [
+            {
+              name: "Premium requests",
+              usedPercent: 100 - premium.remainingPercentage,
+              ...(premium.resetDate ? { resetsAt: Date.parse(premium.resetDate) } : {}),
+            },
+          ]
+        : [],
+  };
+}
 
 async function connect(
   session: CopilotSession,

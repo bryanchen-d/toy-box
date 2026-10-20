@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { code } from "@streamdown/code";
 import { BookOpenText, FileCode2, GitFork, Pencil, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
-import { Markdown } from "@/shared/ui/markdown";
+import { codePlugins, Markdown } from "@/shared/ui/markdown";
 import {
   activeOption,
   canRemoveEntity,
@@ -245,7 +244,7 @@ function EntityDetails({
       <>
         {entity.finding.whyItMatters && (
           <InspectorSection title="Why it matters">
-            <Markdown plugins={{ code }} className="space-y-1 text-[11.5px] leading-relaxed">
+            <Markdown plugins={codePlugins} className="space-y-1 text-[11.5px] leading-relaxed">
               {entity.finding.whyItMatters}
             </Markdown>
           </InspectorSection>

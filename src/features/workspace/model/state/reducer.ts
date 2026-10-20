@@ -26,7 +26,7 @@ export type WorkspaceEnvironment = {
  * A live session remembers `since`, when its current run began.
  */
 export type WorkspaceSessionState =
-  | { status: "running" | "waiting"; since: number }
+  | { status: "running" | "waiting" | "background"; since: number }
   | { status: "unread" };
 
 /** A session's shared status, including idle, which has no stored state. */
@@ -68,6 +68,7 @@ export function reduceWorkspaceState(state: WorkspaceState, event: WorkspaceEven
       return setHyperSessionMembership(state, event.sessionId, false);
     case "session.running":
     case "session.waiting":
+    case "session.background":
     case "session.idle":
     case "session.unread":
     case "session.read":
@@ -106,6 +107,7 @@ export type WorkspaceSessionEvent = Extract<
     type:
       | "session.running"
       | "session.waiting"
+      | "session.background"
       | "session.idle"
       | "session.unread"
       | "session.read"
@@ -120,12 +122,17 @@ export function reduceWorkspaceSessionState(
 ): WorkspaceSessionState | undefined {
   switch (event.type) {
     case "session.running":
-    case "session.waiting": {
-      const status = event.type === "session.running" ? "running" : "waiting";
+    case "session.waiting":
+    case "session.background": {
+      const status =
+        event.type === "session.running"
+          ? "running"
+          : event.type === "session.waiting"
+            ? "waiting"
+            : "background";
       if (state?.status === status) return state;
-      // Waiting is a pause within the same run, so moving between the live states keeps its start.
-      const since =
-        state?.status === "running" || state?.status === "waiting" ? state.since : event.at;
+      // Moving between live states keeps the execution's start.
+      const since = state && "since" in state ? state.since : event.at;
       return { status, since };
     }
     case "session.idle":
@@ -140,7 +147,7 @@ export function reduceWorkspaceSessionState(
 }
 
 export function isWorkspaceSessionLive(status: WorkspaceSessionStatus | undefined): boolean {
-  return status === "running" || status === "waiting";
+  return status === "running" || status === "waiting" || status === "background";
 }
 
 function reduceSessionInWorkspace(

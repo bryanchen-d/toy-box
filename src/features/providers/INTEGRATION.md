@@ -27,6 +27,9 @@ and the conversation-rewind limitation.
 | Queue and cancellation          | Sessions owns the queue. Provider sees only a next turn or immediate steering.                                                             |
 | Steering and interruption       | Provider targets the active native turn. Browser disconnect only removes observation.                                                      |
 | Events and history              | Both paths project into SessionEvent. The runtime consumes provider end events to drain queued work before publishing completion.          |
+| Live tool output                | Providers append running tools' output as it arrives; the result replaces it. Native histories keep only the result.                       |
+| Context usage                   | Providers report the root conversation's context occupancy while running. Native histories omit it.                                        |
+| Subscriptions                   | Providers read the signed-in account's plan and how much of each of its limits is used, on demand for Settings.                            |
 | Todos and plans                 | Providers translate native updates into shared TodoItem patches. Codex plans replace the checklist; Copilot keeps its SQL todo projection. |
 | Edit statistics                 | Providers supply edit data to the shared patch parser and diff counter. Codex normalizes raw additions/deletions and update hunks.         |
 | Questions                       | Provider correlates native requests and answers with domain tool calls, including multi-question requests.                                 |
@@ -47,7 +50,7 @@ Run the full checks and dogfood both observing clients across active and histori
 
 Copilot uses `@github/copilot-sdk`; Codex uses bidirectional `codex app-server` JSON-RPC.
 Both resolve the installed CLI from PATH and reuse its existing authentication. The
-Codex protocol snapshot and native smoke tests use CLI 0.161.0; Copilot tests retain
+Codex protocol snapshot and native smoke tests use CLI 0.163.0; Copilot tests retain
 the existing SDK fixtures and also execute against the installed CLI.
 
 Public session UUIDs are allocated before a provider is chosen. Copilot and Claude reuse that UUID;
@@ -70,6 +73,30 @@ Configurable context tiers are currently unavailable in Toy Box for Codex and Cl
 Both providers inherit native context defaults and user configuration. Toy Box adds
 no provider-specific persistence to retain context tiers.
 
+Codex streams command output through `item/commandExecution/outputDelta`, except each command's
+first chunk, which only its completed output includes; Copilot streams append-only
+`tool.shell_output`, which replaces its deprecated snapshot event. Claude's Agent SDK streams no
+tool output. Context usage comes from Codex `thread/tokenUsage/updated`, using the last request's
+total tokens as Codex itself does; Copilot `session.usage_info`; and, once per Claude turn, the
+main thread's last request, or its size after a compaction, paired with the turn result's context
+window for that model. Codex and Copilot report usage again right after compacting.
+
+All three providers compact long conversations automatically: Codex at 90% of its model's full
+window, Copilot in the background from 80% of its limit, and Claude near its window, which Toy Box
+enables whatever the owner's Claude setting. Transcripts keep every message across compactions,
+live and in history, except within Claude subagent transcripts.
+
+A subscription carries its account's native plan name; an account using an API key has none. Each
+provider's API exposes a fixed set of limit fields, so each provider reads those fields, and a limit
+appears only when the account reports it. Codex `account/rateLimits/read` reports a main bucket and
+any per-model buckets, each with two rolling-window slots named by their length ("5-hour",
+"Weekly"); a per-model bucket's limits also name its model. Copilot's plan comes from
+`account.getCurrentAuth`; of `account.getQuota`'s quotas, Toy Box shows only premium requests, and
+only when the plan meters them. Claude's experimental usage request has a 5-hour window, a weekly
+window, weekly Opus and Sonnet windows, and per-model weekly windows that the server names. The same
+response carries an undeclared generic `limits` array, which Toy Box does not read because the SDK
+does not type it.
+
 Provider failures are isolated during catalog/history discovery, so Codex alone works.
 Copilot discovery and context use the SDK's `listSessions()` and `getSessionMetadata()`;
 history uses `rpc.sessions.readPersistedEvents()` without resuming. Native history files are not parsed for metadata. An empty
@@ -91,10 +118,12 @@ Both providers receive the same Toy Box definitions, instructions, and bundled s
 
 Both providers enable interactive questions for standard and Hyper sessions; unattended
 managed roles do not wait for user input. Codex questions can be batched, secret, or
-nonblocking. Codex's public history API omits questions, answers, and `update_plan`
+nonblocking, and unattended Codex sessions receive neither blocking nor asynchronous
+question tools. Codex's public history API omits questions, answers, and `update_plan`
 checklists, so those are projected live but are absent when rebuilding a session
 from native history. Codex retains their underlying tool calls for model context;
-plan-mode prose is a separate durable item. The provider owns no Toy Box database
+plan-mode prose is a separate durable item. Codex history keeps at most 64 KiB of
+each command's output. The provider owns no Toy Box database
 tables; Sessions owns the shared session identities and resources.
 Original inputs preserve system-message semantics and images. Images use native image
 inputs. Imported local images are read back when available and retain an unavailable-file reference

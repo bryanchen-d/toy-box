@@ -50,7 +50,8 @@ write workspace settings or alter open panes.
 [`model/state/reducer.ts`](model/state/reducer.ts) applies the same `WorkspaceEvent` transitions on
 the server and in each browser. The sparse `sessionStates` map retains only meaningful shared
 activity: active work or unread completion. Active work carries `since`, stamped from the `at` of
-the event that began the run; waiting keeps it and a new run restarts it. Draft sessions live in
+the event that began the run; waiting and background keep it and a new run restarts it.
+Background sessions remain live but do not count as foreground work. Draft sessions live in
 the Sessions catalog; ordinary read-idle sessions have no workspace activity entry.
 
 [`model/state/drafts.ts`](model/state/drafts.ts) defines saved drafts: each composer's unsent

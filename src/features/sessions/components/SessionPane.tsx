@@ -101,6 +101,7 @@ export function SessionPane({
     status,
     reasoningContent,
     model: sessionModel,
+    contextUsage,
     todos,
     linkedSessionIds,
     canvases,
@@ -165,15 +166,20 @@ export function SessionPane({
 
   const worktree = sessionRecord?.worktree;
   const isWorktreeSession = !isDraft && Boolean(worktree?.branch);
-  const mergeWorktreeMutation = useMutation(sessionMutations.mergeWorktree(sessionId));
-  const applyWorktreeMutation = useMutation(sessionMutations.applyWorktree(sessionId));
-  const isWorktreeMutationPending =
-    mergeWorktreeMutation.isPending || applyWorktreeMutation.isPending;
-  const worktreeError = (
-    mergeWorktreeMutation.submittedAt > applyWorktreeMutation.submittedAt
-      ? mergeWorktreeMutation
-      : applyWorktreeMutation
-  ).error;
+  const {
+    mutate: mergeWorktree,
+    isPending: isMergePending,
+    error: mergeError,
+    submittedAt: mergeSubmittedAt,
+  } = useMutation(sessionMutations.mergeWorktree(sessionId));
+  const {
+    mutate: applyWorktree,
+    isPending: isApplyPending,
+    error: applyError,
+    submittedAt: applySubmittedAt,
+  } = useMutation(sessionMutations.applyWorktree(sessionId));
+  const isWorktreeMutationPending = isMergePending || isApplyPending;
+  const worktreeError = mergeSubmittedAt > applySubmittedAt ? mergeError : applyError;
 
   // Shared between the desktop composer and compact title bar.
   const isExistingLocationLoading = !isDraft && isSessionRecordLoading;
@@ -193,8 +199,8 @@ export function SessionPane({
           ? {
               worktreeBranch: worktree?.branch,
               worktreeBaseBranch: worktree?.baseBranch,
-              onMerge: () => mergeWorktreeMutation.mutate(),
-              onApply: () => applyWorktreeMutation.mutate(),
+              onMerge: () => mergeWorktree(),
+              onApply: () => applyWorktree(),
               isPending: isWorktreeMutationPending,
             }
           : undefined,
@@ -285,6 +291,7 @@ export function SessionPane({
             onSubmit={handleSubmit}
             models={models}
             isStreaming={isStreaming}
+            isBusy={isStreaming && status !== "background"}
             onStop={stop}
             model={displayedModel}
             onModelChange={handleModelChange}
@@ -297,6 +304,7 @@ export function SessionPane({
             queuedMessages={queuedMessages}
             sessionName={session?.title}
             lastMessage={lastVoiceMessage}
+            contextUsage={contextUsage}
           />
         </div>
       )}

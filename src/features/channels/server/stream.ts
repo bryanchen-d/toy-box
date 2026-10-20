@@ -38,6 +38,7 @@ export function streamChannel(
       live &&
       (event.type === "session.running" ||
         event.type === "session.waiting" ||
+        event.type === "session.background" ||
         event.type === "session.idle" ||
         event.type === "session.unread" ||
         event.type === "session.deleted") &&

@@ -21,6 +21,7 @@ import { ComposerTray } from "@workspace/components/outputs/ComposerTray";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 import type { Preview } from "@/shared/preview";
 import { DiffPopup } from "./DiffPopup";
+import { ContextMeter } from "./ContextMeter";
 import { RunControls, SendControls, sendNowHotkey } from "./DeliveryControls";
 import { VoiceButton } from "./VoiceButton";
 import { QueuedMessageList, type QueuedMessageListHandle } from "./QueuedMessageList";
@@ -44,6 +45,7 @@ type SendMessage = (
 type SessionComposerCommonProps = {
   onSubmit: SendMessage;
   isStreaming?: boolean;
+  isBusy?: boolean;
   onStop?: () => void;
   models: ModelInfo[];
   model?: ModelConfiguration | null;
@@ -59,6 +61,7 @@ type SessionComposerCommonProps = {
   /** Context that grounds a voice call in the current session. */
   sessionName?: string;
   lastMessage?: string;
+  contextUsage?: SessionState["contextUsage"];
 };
 
 type SessionComposerProps = SessionComposerCommonProps &
@@ -80,6 +83,7 @@ export function SessionComposer(props: SessionComposerProps) {
     sessionId,
     onSubmit,
     isStreaming = false,
+    isBusy = isStreaming,
     onStop,
     models,
     model,
@@ -93,6 +97,7 @@ export function SessionComposer(props: SessionComposerProps) {
     queuedMessages = [],
     sessionName,
     lastMessage,
+    contextUsage,
   } = props;
   const run = props.sessionId === undefined ? props.onRun : undefined;
   const draft = useComposerDraft({
@@ -111,7 +116,7 @@ export function SessionComposer(props: SessionComposerProps) {
   );
   const hasDiff = sessionDiff && (sessionDiff.total.added > 0 || sessionDiff.total.removed > 0);
   // Desktop teaches one relevant shortcut while a turn runs.
-  const placeholder = !isStreaming
+  const placeholder = !isBusy
     ? "Ask a question or describe your idea..."
     : isMobile
       ? "Queue a follow-up"
@@ -135,7 +140,7 @@ export function SessionComposer(props: SessionComposerProps) {
     });
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (isStreaming && matchesKeyboardEvent(event.nativeEvent, sendNowHotkey)) {
+    if (isBusy && matchesKeyboardEvent(event.nativeEvent, sendNowHotkey)) {
       event.preventDefault();
       sendTo(onSubmit, true);
     } else if (event.key === "ArrowUp" && draft.value === "" && queuedInputs.length > 0) {
@@ -172,7 +177,7 @@ export function SessionComposer(props: SessionComposerProps) {
                 time: updatedAt,
               }))}
             artifactTimeLabel="Updated"
-            checklist={getDisplayTodos(todos ?? [], isStreaming)}
+            checklist={getDisplayTodos(todos ?? [], isBusy)}
             checklistLabel="Todos"
             extraOutput={
               preview || hasDiff ? (
@@ -211,6 +216,7 @@ export function SessionComposer(props: SessionComposerProps) {
           {models.length > 0 && model && onModelChange && (
             <ModelConfigurationPicker models={models} value={model} onValueChange={onModelChange} />
           )}
+          {contextUsage && <ContextMeter usage={contextUsage} />}
         </>
       }
       actions={
@@ -236,11 +242,7 @@ export function SessionComposer(props: SessionComposerProps) {
           {run ? (
             <RunControls draft={draft} onSend={() => sendTo(onSubmit)} />
           ) : (
-            <SendControls
-              draft={draft}
-              isStreaming={isStreaming}
-              onSendNow={() => sendTo(onSubmit, true)}
-            />
+            <SendControls draft={draft} isBusy={isBusy} onSendNow={() => sendTo(onSubmit, true)} />
           )}
         </>
       }
@@ -263,13 +265,13 @@ function ModelConfigurationSkeleton() {
   );
 }
 
-/** While a session streams without an active todo, its next pending todo reads as in progress. */
-function getDisplayTodos(todos: TodoItem[], isStreaming: boolean): ChecklistItem[] {
+/** While the assistant works without an active todo, its next pending todo reads as in progress. */
+function getDisplayTodos(todos: TodoItem[], isBusy: boolean): ChecklistItem[] {
   const hasActiveTodo = todos.some((todo) => todo.status === "in_progress");
   let promotedPending = false;
 
   return todos.map((todo) => {
-    if (isStreaming && !hasActiveTodo && !promotedPending && todo.status === "pending") {
+    if (isBusy && !hasActiveTodo && !promotedPending && todo.status === "pending") {
       promotedPending = true;
       return { ...todo, status: "in_progress" };
     }

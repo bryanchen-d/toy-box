@@ -25,6 +25,8 @@ const retainedSessionIds = sharedSet<string>("retained-session-snapshots");
 
 /** Load an idle session snapshot from cache, or replay provider history and cache it. */
 export async function loadSessionSnapshot(sessionId: string): Promise<SessionState> {
+  // Native histories omit context usage, so a rebuild keeps the last one reported live.
+  const contextUsage = snapshotCache.get(sessionId)?.snapshot.contextUsage;
   const cachedSnapshot = await getCachedSnapshot(sessionId);
   if (cachedSnapshot) return cachedSnapshot;
 
@@ -33,6 +35,7 @@ export async function loadSessionSnapshot(sessionId: string): Promise<SessionSta
   const snapshot: SessionState = {
     ...replaySessionHistory(events),
     artifacts,
+    ...(contextUsage ? { contextUsage } : {}),
   };
 
   cacheSnapshot(sessionId, snapshot);

@@ -25,7 +25,11 @@ export type WorkspaceEvent =
       type: "session.upserted";
       session: SessionUpdate;
     }
-  | { type: "session.running" | "session.waiting"; sessionId: string; at: number }
+  | {
+      type: "session.running" | "session.waiting" | "session.background";
+      sessionId: string;
+      at: number;
+    }
   | SimpleSessionUpdateEvents<"deleted" | "idle" | "unread" | "touched">
   | { type: "inbox.changed" }
   | {

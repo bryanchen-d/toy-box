@@ -218,7 +218,14 @@ function VirtualizedMessageList({
             if (!isRenderableMessage(message)) return null;
 
             const isLast = absoluteIndex === messages.length - 1;
-            const content = <Message message={message} isStreaming={isStreaming} isLast={isLast} />;
+            const content = (
+              <Message
+                message={message}
+                isStreaming={isStreaming}
+                isBusy={isStreaming && status !== "background"}
+                isLast={isLast}
+              />
+            );
             return (
               <div
                 // eslint-disable-next-line react/no-array-index-key -- messages append in order and streaming updates replace content in place

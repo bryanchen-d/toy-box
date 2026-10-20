@@ -155,6 +155,10 @@ test("full commands and output survive live projection and history replay", () =
         "item/started",
       ),
     ),
+    ...live({
+      method: "item/commandExecution/outputDelta",
+      params: { threadId: "native", turnId: "turn", itemId: item.id, delta: "hel" },
+    }),
     ...live(itemEvent(item)),
   ];
   const replay = createCodexProjector("command-details", "native")(itemEvent(item));
@@ -163,8 +167,30 @@ test("full commands and output survive live projection and history replay", () =
   expect(reduce(events)).toEqual(reduce(replay));
   expect(events).toMatchObject([
     { type: "tool_start", toolName: "bash", arguments: { command: item.command } },
+    { type: "tool_output_delta", toolCallId: item.id, content: "hel" },
     { type: "tool_end", success: true, result: item.aggregatedOutput },
   ]);
+});
+
+test("context usage counts the last request's tokens, not the thread's running total", () => {
+  const project = createCodexProjector("context-usage", "native");
+  const updated = (modelContextWindow: number | null): RpcNotification => ({
+    method: "thread/tokenUsage/updated",
+    params: {
+      threadId: "native",
+      turnId: "turn",
+      tokenUsage: {
+        total: { totalTokens: 90_000 },
+        last: { totalTokens: 41_000 },
+        modelContextWindow,
+      },
+    },
+  });
+
+  expect(project(updated(258_400))).toEqual([
+    { type: "context_usage_changed", usage: { tokens: 41_000, tokenWindow: 258_400 } },
+  ]);
+  expect(project(updated(null))).toEqual([]);
 });
 
 const imageItem: ThreadItem = {

@@ -16,10 +16,10 @@ import { SessionMetadataBadges } from "../location/SessionMetadataBadges";
 type SessionListItemProps = {
   session: Session;
   onSelect: (sessionId: string, toggleInWorkspace: boolean) => void;
-  onPinToggle?: () => void;
-  onRename: () => void;
+  onPinToggle?: (sessionId: string) => void;
+  onRename: (sessionId: string) => void;
   onBrowseDirectory: (directory: string) => void;
-  onDelete: () => void;
+  onDelete: (sessionId: string) => void;
   isActive?: boolean;
   isPinned?: boolean;
   isWorktree?: boolean;
@@ -96,6 +96,8 @@ export function SessionListItem({
           !isDraft &&
           (activity.waiting ? (
             <span className="italic">Waiting for input</span>
+          ) : activity.background ? (
+            <span className="italic">Background tasks running</span>
           ) : activity.running && activity.since !== undefined ? (
             <RunningTime since={activity.since} />
           ) : (
@@ -115,12 +117,12 @@ export function SessionListItem({
         menuItems={
           <>
             {onPinToggle && (
-              <DropdownMenuItem disabled={isDraft} onClick={onPinToggle}>
+              <DropdownMenuItem disabled={isDraft} onClick={() => onPinToggle(session.id)}>
                 {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
                 {isPinned ? "Unpin session" : "Pin session"}
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem disabled={isDraft} onClick={onRename}>
+            <DropdownMenuItem disabled={isDraft} onClick={() => onRename(session.id)}>
               <Pencil className="h-3.5 w-3.5" />
               Rename session
             </DropdownMenuItem>
@@ -160,7 +162,7 @@ export function SessionListItem({
           title="Delete session?"
           description="This will permanently delete this session, its child sessions, and all their messages. This action cannot be undone."
           mutation={sessionMutations.deleteSession(session.id)}
-          onSubmit={onDelete}
+          onSubmit={() => onDelete(session.id)}
           onOpenChange={setDeleteOpen}
         />
       )}

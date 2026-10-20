@@ -7,6 +7,7 @@ const methods = {
   initialize: ["InitializeParams", "InitializeResponse"],
   "model/list": ["v2/ModelListParams", "v2/ModelListResponse"],
   "account/read": ["v2/GetAccountParams", "v2/GetAccountResponse"],
+  "account/rateLimits/read": ["v2/GetAccountRateLimitsParams", "v2/GetAccountRateLimitsResponse"],
   "skills/list": ["v2/SkillsListParams", "v2/SkillsListResponse"],
   "thread/list": ["v2/ThreadListParams", "v2/ThreadListResponse"],
   "thread/start": ["v2/ThreadStartParams", "v2/ThreadStartResponse"],
@@ -33,6 +34,8 @@ const events = [
   "TurnPlanUpdatedNotification",
   "AgentMessageDeltaNotification",
   "ReasoningTextDeltaNotification",
+  "CommandExecutionOutputDeltaNotification",
+  "ThreadTokenUsageUpdatedNotification",
   "ServerRequestResolvedNotification",
   "ThreadNameUpdatedNotification",
 ];

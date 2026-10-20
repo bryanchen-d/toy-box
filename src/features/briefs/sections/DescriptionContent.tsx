@@ -1,5 +1,4 @@
-import { code } from "@streamdown/code";
-import { Markdown } from "@/shared/ui/markdown";
+import { codePlugins, Markdown } from "@/shared/ui/markdown";
 import { cn } from "@/shared/utils";
 import type { DescriptionSection } from "../model/index";
 
@@ -7,7 +6,7 @@ import type { DescriptionSection } from "../model/index";
 export function DescriptionContent({ section }: { section: DescriptionSection }) {
   if (section.kind === "markdown") {
     return (
-      <Markdown plugins={{ code }} className="text-[12px] leading-relaxed text-foreground/90">
+      <Markdown plugins={codePlugins} className="text-[12px] leading-relaxed text-foreground/90">
         {section.body}
       </Markdown>
     );
@@ -23,7 +22,7 @@ export function DescriptionContent({ section }: { section: DescriptionSection })
     >
       {section.items.map((item) => (
         <li key={item}>
-          <Markdown plugins={{ code }} className="space-y-1">
+          <Markdown plugins={codePlugins} className="space-y-1">
             {item}
           </Markdown>
         </li>

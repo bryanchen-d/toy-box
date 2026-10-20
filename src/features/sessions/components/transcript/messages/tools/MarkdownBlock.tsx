@@ -1,5 +1,4 @@
-import { Markdown } from "@/shared/ui/markdown";
-import { code } from "@streamdown/code";
+import { codePlugins, Markdown } from "@/shared/ui/markdown";
 
 type MarkdownBlockProps = {
   title?: string;
@@ -14,7 +13,7 @@ export function MarkdownBlock({ title, maxHeight = "max-h-48", children }: Markd
     <div>
       {title && <div className="text-xs text-muted-foreground mb-1">{title}</div>}
       <div className={`bg-secondary-background text-xs p-2 rounded overflow-x-auto ${maxHeight}`}>
-        <Markdown plugins={{ code }}>{children}</Markdown>
+        <Markdown plugins={codePlugins}>{children}</Markdown>
       </div>
     </div>
   );

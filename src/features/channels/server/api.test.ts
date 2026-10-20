@@ -208,6 +208,16 @@ test("live events and presence send only changed facts without rereading durable
     type: "presence",
     presence: { [channel.id]: { state: "working" } },
   });
+  setSessionStatus(channel.id, "background");
+  expect(await client.next()).toEqual({
+    type: "presence",
+    presence: { [channel.id]: { state: "waiting", text: "A reply" } },
+  });
+  setSessionStatus(channel.id, "running");
+  expect(await client.next()).toEqual({
+    type: "presence",
+    presence: { [channel.id]: { state: "working" } },
+  });
   setSessionStatus(channel.id, "idle");
   expect(await client.next()).toEqual({
     type: "presence",

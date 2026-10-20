@@ -1,6 +1,7 @@
 import { Markdown } from "@/shared/ui/markdown";
 import { StickToBottom } from "use-stick-to-bottom";
 import { RunningIndicator } from "@/shared/ui/running-indicator";
+import { Layers } from "lucide-react";
 import type { SessionStatus } from "../../model";
 
 export function StatusIndicator({ status }: { status: SessionStatus }) {
@@ -14,6 +15,8 @@ export function StatusIndicator({ status }: { status: SessionStatus }) {
         return "Reasoning";
       case "responding":
         return "Responding";
+      case "background":
+        return "Background tasks running";
       default:
         return "Processing";
     }
@@ -21,7 +24,11 @@ export function StatusIndicator({ status }: { status: SessionStatus }) {
 
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <RunningIndicator className="h-4 w-4" />
+      {status === "background" ? (
+        <Layers aria-hidden className="h-4 w-4" />
+      ) : (
+        <RunningIndicator className="h-4 w-4" />
+      )}
       <span className="italic">{getStatusText()}</span>
     </div>
   );

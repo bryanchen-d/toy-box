@@ -145,6 +145,8 @@ describe("workspace state", () => {
     setSessionStatus(sessionId, "running");
     setSessionStatus(sessionId, "waiting");
     setSessionStatus(sessionId, "waiting");
+    setSessionStatus(sessionId, "background");
+    setSessionStatus(sessionId, "background");
     setSessionStatus(sessionId, "unread");
     setSessionStatus(sessionId, "unread");
     applyWorkspaceAction({ type: "session.read", sessionId });
@@ -153,6 +155,7 @@ describe("workspace state", () => {
     expect(events.map((event) => event.type)).toEqual([
       "session.running",
       "session.waiting",
+      "session.background",
       "session.unread",
       "session.read",
     ]);
