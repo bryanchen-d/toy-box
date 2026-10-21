@@ -1,4 +1,4 @@
-import { type Connect, defineConfig, lazyPlugins } from "vite-plus";
+import { type Connect, defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
       tsconfigPaths: true,
     },
 
-    plugins: lazyPlugins(() => [
+    plugins: [
       tailwindcss(),
       socketDevelopment(),
       {
@@ -92,11 +92,6 @@ export default defineConfig(({ mode }) => {
         },
       }),
       viteReact({ compiler: true }),
-    ]),
-
-    staged: {
-      "*.{ts,tsx}": ["bun lint --fix", "bun fmt --no-error-on-unmatched-pattern"],
-      "*.{json,md,css,html}": "bun fmt --no-error-on-unmatched-pattern",
-    },
+    ],
   };
 });
