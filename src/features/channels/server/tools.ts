@@ -99,7 +99,7 @@ const postChannelMessageTool = defineTool("post_channel_message", {
 
 const readChannelForSessionTool = defineTool("read_channel", {
   description:
-    "Reads the channel purpose, tasks, URL or screen preview, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: channelIdentitySchema.extend({
     beforeSequence: z.number().int().positive().optional(),
   }),
@@ -135,7 +135,7 @@ const waitForChannelAgentsTool = defineTool("wait_for_channel_agents", {
 
 const readChannelForAgentTool = defineTool("read_channel", {
   description:
-    "Reads the channel purpose, tasks, URL or screen preview, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z.object({}),
   handler: async (_args, invocation) => {
     const { readChannelForAgent } = await import("@channels/server");
@@ -203,7 +203,7 @@ const setChannelStatusTool = defineTool("set_agent_status", {
 
 const updateChannelTool = defineTool("update_channel", {
   description:
-    "Updates this channel's name, purpose, working directory, tasks, or preview. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_channel_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. Share file artifacts instead of using them as previews. Set purpose, directory, or preview to null to clear it.",
+    "Updates this channel's name, purpose, working directory, tasks, preview, or canvas. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_channel_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-toy-box-app skill, validate it, share_channel_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set purpose, directory, preview, or canvasArtifactId to null to clear it.",
   parameters: updateChannelInputSchema,
   handler: async (args, invocation) => {
     const { updateChannelFromLead } = await import("@channels/server");
@@ -398,8 +398,16 @@ function toChannelReadToolResult(
   } satisfies ToolResult;
 }
 
-function channelContextForTool({ name, purpose, directory, tasks, preview }: Channel) {
-  return { name, purpose, directory, tasks, preview };
+function channelContextForTool({
+  id,
+  name,
+  purpose,
+  directory,
+  tasks,
+  preview,
+  canvasArtifactId,
+}: Channel) {
+  return { channelId: id, name, purpose, directory, tasks, preview, canvasArtifactId };
 }
 
 function agentForTool(agent: ChannelAgent) {

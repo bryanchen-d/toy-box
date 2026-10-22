@@ -67,7 +67,19 @@ export const channelMutations = {
     }),
   post: () =>
     mutationOptions({
-      mutationFn: (input: PostChannelMessageInput) => postChannelMessage({ data: input }),
+      mutationFn: async (input: PostChannelMessageInput) => {
+        const message = await postChannelMessage({ data: input });
+        if (
+          message?.id !== input.id ||
+          !Number.isSafeInteger(message.sequence) ||
+          message.sequence <= 0
+        ) {
+          throw new Error(
+            "The server did not confirm delivery. Check the channel before retrying.",
+          );
+        }
+        return message;
+      },
       onMutate: (input, { client }) => {
         client.setQueryData<ChannelQueryData | null>(
           channelQueries.detail(input.channelId).queryKey,
@@ -84,7 +96,21 @@ export const channelMutations = {
                   timestamp: new Date().toISOString(),
                 },
               }),
+              optimisticMessageIds: [...(state.optimisticMessageIds ?? []), input.id],
             },
+        );
+      },
+      onError: (_error, input, _result, { client }) => {
+        client.setQueryData<ChannelQueryData | null>(
+          channelQueries.detail(input.channelId).queryKey,
+          (state) =>
+            state?.optimisticMessageIds?.includes(input.id)
+              ? {
+                  ...state,
+                  optimisticMessageIds: state.optimisticMessageIds.filter((id) => id !== input.id),
+                  messages: state.messages.filter(({ id }) => id !== input.id),
+                }
+              : state,
         );
       },
     }),

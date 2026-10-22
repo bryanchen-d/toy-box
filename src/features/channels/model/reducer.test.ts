@@ -108,6 +108,7 @@ test("metadata messages update the public channel alongside transcript activity"
     system(103, { type: "channel_purpose_changed", actor, purpose: "Ship it" }),
     system(104, { type: "channel_directory_changed", actor, directory: "/work" }),
     system(105, { type: "preview_changed", actor, preview: { kind: "url", url: "/preview" } }),
+    system(106, { type: "canvas_changed", actor, canvasArtifactId: "session:channel:board.toy" }),
   ];
   const changed = events.reduce(reduceChannelState, snapshot());
   expect(changed.channel).toMatchObject({
@@ -115,21 +116,24 @@ test("metadata messages update the public channel alongside transcript activity"
     purpose: "Ship it",
     directory: "/work",
     preview: { kind: "url", url: "/preview" },
-    latestSequence: 105,
+    canvasArtifactId: "session:channel:board.toy",
+    latestSequence: 106,
     updatedAt: events[0]!.message.timestamp,
   });
   const cleared = [
-    system(106, { type: "channel_purpose_changed", actor, purpose: null }),
-    system(107, { type: "channel_directory_changed", actor, directory: null }),
-    system(108, { type: "preview_changed", actor, preview: null }),
+    system(107, { type: "channel_purpose_changed", actor, purpose: null }),
+    system(108, { type: "channel_directory_changed", actor, directory: null }),
+    system(109, { type: "preview_changed", actor, preview: null }),
+    system(110, { type: "canvas_changed", actor, canvasArtifactId: null }),
   ].reduce(reduceChannelState, changed);
   expect([cleared.channel.purpose, cleared.channel.directory, cleared.channel.preview]).toEqual([
     undefined,
     undefined,
     undefined,
   ]);
-  expect(cleared.messages.slice(-7).map(({ sequence }) => sequence)).toEqual([
-    102, 103, 104, 105, 106, 107, 108,
+  expect(cleared.channel.canvasArtifactId).toBeUndefined();
+  expect(cleared.messages.slice(-9).map(({ sequence }) => sequence)).toEqual([
+    102, 103, 104, 105, 106, 107, 108, 109, 110,
   ]);
 });
 

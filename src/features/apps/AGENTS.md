@@ -144,6 +144,8 @@ The SDK exposes:
 - `useChannel(channelId, options?)`, a direct export of the channel pane hook.
   It shares the detail cache, stream, paging, and post mutation. Observation is active
   by default; `mode: "passive"` leaves unread state untouched. Key the observer by channel ID when switching.
+  `postMessage` returns a promise for the persisted user message and exposes
+  failures through rejection and `postError`; it does not await the team's work.
 - `channelTasksDiff`, a direct export from Channels, for displaying derived diff totals without
   duplicating domain logic. Artifacts carry the `id` that tasks reference as `artifactId`.
 - `useFile`, which reuses the live file lifecycle from editor panes, including
@@ -162,6 +164,8 @@ editor pane identity. The SDK's `useApp()` adds saved-only share and worker acti
 flushing state before starting a worker. Artifact apps have no saved state store.
 Creating and opening a session refreshes the session catalog before publishing
 its pane, so retention observes the newly created session.
+Channels can also mount that same artifact renderer beside chat, supplying a
+channel-specific publisher identity while retaining the source file's ownership.
 Its `runtime/` modules contain only what compiled author code can consume. The
 app-state store is intentionally imperative because it owns a debounced
 optimistic write, serialized conflict replay, and rollback lifecycle. Ordinary

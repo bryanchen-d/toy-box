@@ -110,6 +110,8 @@ export function reduceChannel(channel: Channel, event: ChannelEvent<unknown>): C
           return { ...next, directory: content.directory ?? undefined };
         case "preview_changed":
           return { ...next, preview: content.preview ?? undefined };
+        case "canvas_changed":
+          return { ...next, canvasArtifactId: content.canvasArtifactId ?? undefined };
         case "member_left":
           return { ...next, tasks: unassignChannelTasks(channel.tasks, content.member.id) };
         case "tasks_completed":

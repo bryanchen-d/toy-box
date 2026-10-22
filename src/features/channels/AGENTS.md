@@ -76,6 +76,11 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   carries its `id`, so tasks, apps, and native clients never derive it. Files owns the address and
   editor. Channels owns only the shared index and the `artifact_shared` transcript event, whose own
   timestamp records the share.
+- `Channel.canvasArtifactId` optionally selects one shared session-owned `.toy` artifact.
+  The lead sets or clears it through `update_channel`; validation rejects unshared files,
+  machine files, and non-app artifacts. `canvas_changed` is a durable system message,
+  reduced and replayed like preview changes. The artifact remains the source of truth:
+  Channels stores no app code, app state, or alternate execution model.
 - `ChannelRoutine` is scheduled, recurring work that serves the purpose: a short title, a prompt, and
   a local-time cron schedule with one fixed minute, so it runs at most hourly. Adding, changing, and
   deleting one each append a typed system message that shows its title. Only the lead adds or changes
@@ -361,6 +366,23 @@ cached content and mounted drafts remain. On return, replay catches up that cach
 the unread boundary before read acknowledgement or initial unread scrolling. A reader joining an
 existing observer captures the current shared read cursor. Arrivals during reading do not move that boundary. A deleted event
 ends observation and reaches the pane's existing unavailable boundary.
+
+The Canvas control opens the selected artifact beside chat in a wide channel pane,
+or switches to it in a narrow pane. Visibility belongs to each mounted channel view,
+not shared channel metadata. `ChannelCanvas` uses Files' read/watch lifecycle and
+the existing `ArtifactAppPane`, with a channel-specific publisher identity so its
+linked panes do not collide with a separate editor of the same app. Closing cleans
+up that observation without stopping channel agents. App failures stay within the
+canvas. Agents follow the bundled app-authoring guidance for public user requests,
+delivery versus completion, freshness, and trusted-code limits.
+
+`useChannel.postMessage` returns the persisted message, or rejects on delivery
+failure. The composer returns that promise to its draft lifecycle for restoration
+on failure and renders `postError`. Apps must not treat delivery as agent completion.
+Receipts must match the submitted message ID and contain a committed sequence.
+Query-local `optimisticMessageIds` distinguish uncommitted messages from server
+echoes. A failed post removes only its still-optimistic message, preserving
+committed echoes, concurrent changes, and mounted canvas feedback.
 
 `ChannelUserMessage` adds mentions, reactions, and timeline timestamps to the shared
 [`UserMessage`](../../shared/messages/UserMessage.tsx); agent messages reuse the shared

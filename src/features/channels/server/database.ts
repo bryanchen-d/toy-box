@@ -34,6 +34,7 @@ import {
 import { reduceChannel } from "@channels/model/reducer";
 import { applyPatch } from "@channels/model/changes";
 import { previewSchema } from "@/shared/preview";
+import { artifactAppPathSchema } from "@apps/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { modelConfigurationSchema } from "@providers/model";
 import { inStateTransaction } from "@/server/database";
@@ -267,6 +268,18 @@ export class ChannelDatabase {
     return inStateTransaction(this.db, async (db) => {
       const channel = await requireLeadChannel(db, leadId);
       if (input.tasks) await assertTaskReferences(db, channel.id, input.tasks);
+      if (input.canvasArtifactId) {
+        const artifact = (await listArtifacts(db, channel.id)).find(
+          ({ id }) => id === input.canvasArtifactId,
+        );
+        if (
+          !artifact ||
+          artifact.file.kind !== "session" ||
+          !artifactAppPathSchema.safeParse(artifact.file.path).success
+        ) {
+          throw new Error("Choose a shared session-owned .toy app as the channel canvas.");
+        }
+      }
       return updateChannelFields(db, channel, input, { type: "agent", agentId: leadId });
     });
   }
@@ -626,6 +639,12 @@ async function updateChannelFields(
     updates.push({ type: "channel_directory_changed", actor, directory: next.directory ?? null });
   if (!Bun.deepEquals(next.preview, current.preview))
     updates.push({ type: "preview_changed", actor, preview: next.preview ?? null });
+  if (next.canvasArtifactId !== current.canvasArtifactId)
+    updates.push({
+      type: "canvas_changed",
+      actor,
+      canvasArtifactId: next.canvasArtifactId ?? null,
+    });
   if (!channelTasksComplete(current.tasks) && channelTasksComplete(next.tasks))
     updates.push({ type: "tasks_completed" });
   // User edits count as activity; task revisions alone stay quiet.
@@ -662,7 +681,10 @@ async function updateChannelFields(
 }
 
 function channelColumns(
-  channel: Pick<Channel, "name" | "purpose" | "directory" | "model" | "tasks" | "preview">,
+  channel: Pick<
+    Channel,
+    "name" | "purpose" | "directory" | "model" | "tasks" | "preview" | "canvasArtifactId"
+  >,
 ) {
   return {
     name: channel.name,
@@ -671,6 +693,7 @@ function channelColumns(
     model: JSON.stringify(channel.model),
     tasks: JSON.stringify(channel.tasks),
     preview: channel.preview ? JSON.stringify(channel.preview) : null,
+    canvas_artifact_id: channel.canvasArtifactId ?? null,
   };
 }
 
@@ -839,6 +862,7 @@ type ChannelRow = {
   model: string;
   tasks: string;
   preview: string | null;
+  canvas_artifact_id: string | null;
   latest_sequence: number;
   revision: number;
   seen_through: number;
@@ -888,6 +912,7 @@ function channelFromRow(row: ChannelRow): Channel {
     model: modelConfigurationSchema.parse(JSON.parse(row.model)),
     tasks: channelTasksSchema.parse(JSON.parse(row.tasks)),
     ...(row.preview ? { preview: previewSchema.parse(JSON.parse(row.preview)) } : {}),
+    ...(row.canvas_artifact_id ? { canvasArtifactId: row.canvas_artifact_id } : {}),
     latestSequence: row.latest_sequence,
     seenThrough: row.seen_through,
     completedSequence: row.completed_sequence,

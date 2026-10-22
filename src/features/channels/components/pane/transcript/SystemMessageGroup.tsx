@@ -4,6 +4,7 @@ import {
   FileUp,
   Folder,
   MonitorPlay,
+  PanelsTopLeft,
   Pencil,
   UserMinus,
   UserPlus,
@@ -143,6 +144,12 @@ const SYSTEM_MESSAGES: {
       ) : (
         "Preview cleared"
       ),
+    }),
+  },
+  canvas_changed: {
+    icon: <PanelsTopLeft className="size-3.5 shrink-0" />,
+    present: ([{ canvasArtifactId }]) => ({
+      content: canvasArtifactId ? "Channel canvas updated" : "Channel canvas cleared",
     }),
   },
   member_joined: {

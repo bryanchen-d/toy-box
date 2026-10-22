@@ -46,6 +46,7 @@ test.each([undefined, 0])(
             channel: { ...snapshot.channel, latestSequence: 0 },
             revision,
             messages: [],
+            optimisticMessageIds: ["stale-local-post"],
             arrival: { id: 1, unreadAfter: null },
           },
     );
@@ -58,6 +59,7 @@ test.each([undefined, 0])(
     connection.send({ type: "snapshot", state: snapshot });
     await stream.waitFor((view) => view?.revision === 101);
     expect(stream.view()!.arrival.unreadAfter).toBe(0);
+    expect(stream.view()!.optimisticMessageIds).toBeUndefined();
     expect(stream.client.getQueryData<ChannelList>(channelQueries.listKey())?.channels).toEqual([
       acknowledged,
     ]);
@@ -78,12 +80,14 @@ test("replayed reads establish arrival only at the resumption and retain paging 
     { channelId: snapshot.channel.id, id: "optimistic", content: "Still sending" },
     { client: stream.client, meta: undefined },
   );
+  expect(stream.view()!.optimisticMessageIds).toEqual(["optimistic"]);
   connection.send({ type: "read", revision: 103, seenThrough: 102 });
   await stream.waitFor((view) => view?.revision === 103);
   expect(stream.view()!.arrival).toEqual(arrival);
   connection.send({ type: "resumed", presence: {} });
   await stream.waitFor((view) => view?.arrival.id !== arrival.id);
   expect(stream.view()!.arrival.unreadAfter).toBeNull();
+  expect(stream.view()!.optimisticMessageIds).toEqual(["optimistic"]);
   expect(stream.view()!.messages.map(({ id }) => id)).toEqual([
     "message-1",
     "message-101",
@@ -94,6 +98,14 @@ test("replayed reads establish arrival only at the resumption and retain paging 
   connection.send({ type: "presence", presence: { channel: { state: "working" } } });
   await stream.waitFor((view) => view?.presence.channel?.state === "working");
   expect(stream.view()!.arrival).toEqual(arrived);
+  connection.send({
+    type: "message",
+    revision: 104,
+    message: { ...message(104), id: "optimistic", content: "Still sending" },
+  });
+  await stream.waitFor((view) => view?.revision === 104);
+  expect(stream.view()!.optimisticMessageIds).toEqual([]);
+  expect(stream.view()!.messages.filter(({ id }) => id === "optimistic")).toHaveLength(1);
 });
 
 test("deletion before bootstrap completes observation and removes the catalog entry", async () => {

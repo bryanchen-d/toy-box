@@ -1,6 +1,6 @@
 ---
 name: create-toy-box-app
-description: Create, edit, promote, install, uninstall, or repair Toy Box apps—session-scoped .toy artifact apps and installed React TSX surfaces that use the public app SDK to compose workspace sessions, files, and panes. Use for requests to build or change an artifact app, session app, or installed Toy Box app.
+description: Create, edit, promote, install, uninstall, or repair Toy Box apps—session-scoped .toy artifact apps, channel canvases, and installed React TSX surfaces that use the public app SDK to compose workspace sessions, files, and panes. Use for requests to build or change an artifact app, session app, channel canvas, or installed Toy Box app.
 ---
 
 # Author Toy Box Apps
@@ -81,6 +81,33 @@ uniquely named `.toy` files in the same session.
    non-executing pane for the same path. Exercise the artifact only when browser
    controls are actually available because successful validation proves
    compilation, not runtime behavior.
+
+## Publish a Channel Canvas
+
+A channel canvas is a selected shared `.toy` artifact, not an installed app or a
+separate runtime. If the user wants an interactive view beside channel chat:
+
+1. Read the channel and use its returned `channelId` to bind the app. Follow the
+   runtime reference's interactive-workflow guidance, including honest action
+   feedback, explicit consequential actions, and data freshness.
+2. Author and validate an artifact app as above. Prefer the lead's artifacts
+   folder for a long-lived canvas, because removing a member deletes its private
+   session. Do not put secrets in the app or execute privileged work in browser code.
+3. Share the existing artifact's absolute path with `share_channel_artifact`.
+   Keep its returned `artifactId`. Unlike ordinary session artifact discovery,
+   sharing explicitly makes the file available in the channel.
+4. The lead calls `update_channel` with `{ "canvasArtifactId": "<artifactId>" }`.
+   A member instead mentions `@lead` with the shared artifact ID for selection.
+   Only shared session-owned `.toy` files qualify. Set `canvasArtifactId` to
+   `null` to clear the selection without deleting the app.
+5. The user opens the channel's Canvas control. Wide channel panes show chat and
+   canvas together. Narrow panes switch between them. Opening and closing is
+   local to each browser, and closing never stops the agents.
+
+Use `useChannel(channelId, { mode: "passive" })` for shared tasks, presence, and
+public user requests, and `useFile` for agent-updated data. Await `postMessage`
+for delivery acknowledgement only. Do not treat it as an approval result or
+completion receipt. Keep all user decisions visible in the public channel.
 
 ## Installed Definition Contract
 

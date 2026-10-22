@@ -46,6 +46,7 @@ export type Channel = {
   model: ModelConfiguration;
   tasks: ChannelTask[];
   preview?: Preview;
+  canvasArtifactId?: string;
   latestSequence: number;
   seenThrough: number;
   /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
@@ -263,6 +264,13 @@ export const channelSystemMessageContentSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("canvas_changed"),
+      actor: channelMessageActorSchema,
+      canvasArtifactId: z.string().min(1).nullable(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("artifact_shared"),
       actor: channelMessageActorSchema,
       // The message's own timestamp records when it was shared.
@@ -394,6 +402,14 @@ const channelChangesSchema = z
       .describe(
         "The current runnable preview: a URL or an existing screenId, or null to clear it.",
       ),
+    canvasArtifactId: z
+      .string()
+      .min(1)
+      .nullable()
+      .optional()
+      .describe(
+        "The artifactId of a shared session-owned .toy app to present beside channel chat, or null to clear it. Create, validate, and share the app first.",
+      ),
   })
   .strict();
 export type ChannelChanges = z.output<typeof channelChangesSchema>;
@@ -409,7 +425,8 @@ export const editChannelInputSchema = channelChangesSchema
 export const updateChannelInputSchema = channelChangesSchema
   .omit({ model: true })
   .refine(hasChanges, {
-    message: "Update the name, purpose, directory, tasks, preview, or any combination of them.",
+    message:
+      "Update the name, purpose, directory, tasks, preview, canvas, or any combination of them.",
   });
 
 export const postChannelMessageInputSchema = z

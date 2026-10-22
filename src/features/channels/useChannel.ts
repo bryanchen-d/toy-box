@@ -69,7 +69,7 @@ export function useChannel(
   if (nextVisit !== visit) setVisit(nextVisit);
 
   const { mutate: markRead } = useMutation(channelMutations.markRead());
-  const { mutate: post } = useMutation(channelMutations.post());
+  const { mutateAsync: post, error: postError } = useMutation(channelMutations.post());
   const latestSequence = state?.channel.latestSequence;
   const seenThrough = state?.channel.seenThrough;
   // Reading acknowledges only after the visit has captured where unread messages begin.
@@ -90,11 +90,16 @@ export function useChannel(
       console.error("Failed to load previous Channel messages:", error),
     );
 
-  const postMessage = (message: Pick<PostChannelMessageInput, "content" | "attachments">) =>
-    post({ ...message, channelId, id: generateUUID() });
+  const postMessage = (message: Pick<PostChannelMessageInput, "content" | "attachments">) => {
+    const delivery = post({ ...message, channelId, id: generateUUID() });
+    void delivery.catch((error: unknown) =>
+      console.error("Unable to post Channel message:", error),
+    );
+    return delivery;
+  };
 
   if (state === null) throw new Error("This channel has been deleted.");
   /** Where unread messages began on arrival; null means read, undefined awaits arrival. */
   const unreadAfter = visit.status === "reading" ? visit.unreadAfter : undefined;
-  return { state, unreadAfter, loadPrevious, postMessage };
+  return { state, unreadAfter, loadPrevious, postMessage, postError };
 }

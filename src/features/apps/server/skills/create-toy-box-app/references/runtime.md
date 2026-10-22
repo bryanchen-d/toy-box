@@ -126,6 +126,42 @@ part of the interaction, and verify it in hosted desktop and mobile panes.
   preview. Pass its `sessionId`; previewing is passive and does not mark the
   session read.
 
+### Honest Interactive Workflows
+
+Apps are trusted browser code inside Toy Box, not security sandboxes. Never
+embed credentials, rely on a hidden button as an authorization boundary, or
+silently perform consequential work on mount. Keep privileged execution with
+the agent or an explicit server capability. Instructions and disabled controls
+do not provide authorization, atomic approval, or cross-client deduplication.
+
+When a user action asks an agent to do work:
+
+- Name the exact target and effect before the click. Distinguish "Request PR
+  approval" from an operation that actually submits a GitHub review or merges a
+  branch. Include the target ID and relevant revision in the public request.
+- Show separate delivery and execution states. While awaiting `postMessage`,
+  show "Sending request". On resolution, show "Request sent" or "Waiting for
+  lead". Show "Approved", "Merged", or "Completed" only when an authoritative
+  result confirms that outcome, never from a click or an optimistic transcript.
+- Disable duplicate and conflicting controls while a request is pending.
+  Derive durable outcomes from channel or file data so reloads and other clients
+  agree. Mount-local React state is not a durable decision record.
+- Catch rejected actions and display an accessible error with an appropriate
+  recovery action. If delivery is uncertain, check authoritative state before
+  retrying rather than claiming that no work occurred. Do not auto-retry
+  consequential actions.
+- Recheck the current target and revision before executing the requested work.
+  An app must not promise exactly-once execution or safe conflicting approvals
+  unless the executing server capability explicitly supplies those guarantees.
+
+For dashboards and work queues, show the data source and last successful update,
+and distinguish loading, empty, refreshing, stale, unavailable, and failed states.
+Never present missing data as zero or sample data as live. If collection must
+continue while the app is closed, let agents or channel routines own it rather
+than a browser timer. Reuse channel tasks and presence as the source of truth.
+Use named controls, keyboard-accessible interactions, and an `aria-live` status
+or `AppAlert` for action feedback.
+
 ### Pickers
 
 - Use `AppModelPicker` when the user should choose the model for a new session
@@ -307,13 +343,35 @@ channel using the same Query cache, stream, reducer, history, and post mutation 
 the native channel pane. Mount it in a child keyed by the selected channel ID:
 
 ```tsx
+import { useState } from "react";
+import { AppButton, AppSkeleton, useChannel } from "@toy-box/sdk";
+
 function Office({ channelId }: { channelId: string }) {
-  const { state, loadPrevious, postMessage } = useChannel(channelId, { mode: "passive" });
+  const { state, postMessage } = useChannel(channelId, { mode: "passive" });
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState("");
   if (!state) return <AppSkeleton />;
   return (
     <>
       <h2>{state.channel.name}</h2>
-      <button onClick={() => postMessage({ content: "Hello, team!" })}>Say hello</button>
+      <AppButton
+        disabled={sending}
+        onClick={async () => {
+          setSending(true);
+          setFeedback("Sending request");
+          try {
+            await postMessage({ content: "Hello, team!" });
+            setFeedback("Request sent");
+          } catch (error) {
+            setFeedback(error instanceof Error ? error.message : "Unable to send request");
+          } finally {
+            setSending(false);
+          }
+        }}
+      >
+        Say hello
+      </AppButton>
+      <p role="status">{feedback}</p>
     </>
   );
 }
@@ -328,7 +386,10 @@ A task's `artifactId` is the `id` of its artifact in `state.artifacts`. `channel
 sums their direct and reported descendant diffs, or returns `undefined` when none are reported;
 pass `[task]` for one subtree. It reuses the Channels logic.
 `loadPrevious(sequence?)` loads one older page or pages through a target message.
-`postMessage({ content, attachments? })` uses the shared optimistic mutation.
+`postMessage({ content, attachments? })` uses the shared optimistic mutation and
+returns a promise for the persisted `ChannelMessage`. Resolution acknowledges
+delivery, not execution or completion by an agent. Rejection must be surfaced.
+The hook also exposes `postError` (`Error | null`) for delivery feedback.
 
 Observation is active by default and marks visible content read. Set `mode: "passive"`
 for previews and visualizations. `unreadAfter` is the reader's stable unread divider.

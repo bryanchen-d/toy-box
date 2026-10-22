@@ -9,6 +9,7 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
       model           TEXT NOT NULL CHECK (json_valid(model)),
       tasks           TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tasks)),
       preview         TEXT CHECK (preview IS NULL OR json_valid(preview)),
+      canvas_artifact_id TEXT,
       latest_sequence INTEGER NOT NULL DEFAULT 0
         CHECK (typeof(latest_sequence) = 'integer' AND latest_sequence >= 0),
       revision        INTEGER NOT NULL DEFAULT 0

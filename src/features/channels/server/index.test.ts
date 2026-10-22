@@ -5,7 +5,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChannelEvent } from "@channels/model";
-import { machineFile, workspaceFileId } from "@files/model";
+import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { reduceChannelState } from "@channels/model/reducer";
 import { createTestDatabase } from "@/server/database";
 import { detachManagedSession } from "@/server/managedSessions";
@@ -537,6 +537,41 @@ test("a Session can seed and passively read Channel context", async () => {
     messages: [{ id: "kickoff" }],
     hasMore: false,
   });
+});
+
+test("canvas selection reaches observers and agent context through the existing channel protocol", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Canvas", ...CHANNEL_DEFAULTS });
+  const file = sessionFile(channel.id, "board.toy");
+  await channels.shareArtifact({
+    channelId: channel.id,
+    file,
+    title: "Work board",
+    actor: { type: "agent", agentId: channel.id },
+  });
+  const initial = (await getChannelSnapshot(channel.id))!;
+  const events: ChannelEvent[] = [];
+  onTestFinished(subscribeChannelEvents(channel.id, (event) => events.push(event)));
+  onTestFinished(() => releaseChannelEvents(channel.id));
+  const canvasArtifactId = workspaceFileId(file);
+
+  const result = await invokeTool("update_channel", { canvasArtifactId }, channel.id);
+  expect(result).toMatchObject({ channelId: channel.id, canvasArtifactId });
+  expect(events).toMatchObject([
+    { type: "message", message: { content: { type: "canvas_changed", canvasArtifactId } } },
+  ]);
+  expect(events.reduce(reduceChannelState, initial)).toEqual(
+    (await getChannelSnapshot(channel.id))!,
+  );
+  const context = await invokeTool("read_channel", { channelId: channel.id });
+  expect(context.channel).toMatchObject({ channelId: channel.id, canvasArtifactId });
+  expect(context.artifacts[0]).toMatchObject({ artifactId: canvasArtifactId, title: "Work board" });
+
+  await invokeTool("update_channel", { canvasArtifactId: null }, channel.id);
+  expect(events.reduce(reduceChannelState, initial)).toEqual(
+    (await getChannelSnapshot(channel.id))!,
+  );
+  expect((await channels.getChannel(channel.id))?.canvasArtifactId).toBeUndefined();
 });
 
 test("committed edits and reads replay to the durable view and only a new purpose wakes the lead", async () => {

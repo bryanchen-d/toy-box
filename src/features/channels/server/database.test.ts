@@ -630,6 +630,75 @@ describe("channel database", () => {
     expect((await channels.listMessagesAfter(channel.id))[0]?.content).toMatchObject({ preview });
   });
 
+  test("a canvas is one durable, idempotent shared app reference", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Canvas", ...CHANNEL_DEFAULTS });
+    const actor = { type: "agent", agentId: channel.id } as const;
+    const files = [sessionFile(channel.id, "board.toy"), sessionFile(channel.id, "metrics.toy")];
+    for (const file of files) {
+      await channels.shareArtifact({ channelId: channel.id, file, title: file.path, actor });
+    }
+    const firstId = workspaceFileId(files[0]!);
+    const secondId = workspaceFileId(files[1]!);
+    const selected = await channels.updateChannel(channel.id, { canvasArtifactId: firstId });
+    expect(selected.events).toMatchObject([
+      {
+        type: "message",
+        message: { content: { type: "canvas_changed", actor, canvasArtifactId: firstId } },
+      },
+    ]);
+    expect((await channels.getChannel(channel.id))?.canvasArtifactId).toBe(firstId);
+    expect((await channels.listChannels()).channels[0]?.canvasArtifactId).toBe(firstId);
+    expect((await channels.getSnapshot(channel.id, 100))?.channel.canvasArtifactId).toBe(firstId);
+    expect(
+      (await channels.updateChannel(channel.id, { canvasArtifactId: firstId })).events,
+    ).toEqual([]);
+    const replaced = await channels.updateChannel(channel.id, { canvasArtifactId: secondId });
+    expect(replaced.channel.canvasArtifactId).toBe(secondId);
+    const cleared = await channels.updateChannel(channel.id, { canvasArtifactId: null });
+    expect(cleared.events).toMatchObject([
+      { type: "message", message: { content: { type: "canvas_changed", canvasArtifactId: null } } },
+    ]);
+    expect((await channels.getChannel(channel.id))?.canvasArtifactId).toBeUndefined();
+    expect(await channels.listArtifacts(channel.id)).toHaveLength(2);
+  });
+
+  test("invalid canvas selections roll back the whole channel update", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Canvas", ...CHANNEL_DEFAULTS });
+    const other = await createStoredChannel(channels, { name: "Other", ...CHANNEL_DEFAULTS });
+    const files = [
+      machineFile("/workspace/board.toy"),
+      sessionFile(channel.id, "notes.md"),
+      sessionFile(other.id, "private.toy"),
+    ];
+    for (const file of files) {
+      await channels.shareArtifact({
+        channelId: file === files[2] ? other.id : channel.id,
+        file,
+        title: file.path,
+        actor: { type: "user" },
+      });
+    }
+    const before = await channels.getSnapshot(channel.id, 100);
+    for (const canvasArtifactId of ["missing", ...files.map(workspaceFileId)]) {
+      await expect(
+        channels.updateChannel(channel.id, { name: "Rejected", canvasArtifactId }),
+      ).rejects.toThrow("shared session-owned .toy app");
+      expect(await channels.getSnapshot(channel.id, 100)).toEqual(before);
+    }
+  });
+
+  test("only the lead selects the canvas", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Canvas", ...CHANNEL_DEFAULTS });
+    const { member } = await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+    await expect(channels.updateChannel(member.id, { canvasArtifactId: null })).rejects.toThrow(
+      "Only the channel lead",
+    );
+    expect((await channels.getChannel(channel.id))?.canvasArtifactId).toBeUndefined();
+  });
+
   test("rejecting a provider change leaves all channel fields unchanged", async () => {
     const channels = await openChannels();
     const channel = await createStoredChannel(channels, { name: "Planning", ...CHANNEL_DEFAULTS });

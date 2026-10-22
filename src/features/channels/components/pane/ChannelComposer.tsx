@@ -48,7 +48,7 @@ export function ChannelComposer({
   channelId: string;
   state?: ChannelState;
   handleRef: RefObject<ChannelComposerHandle | null>;
-  onSubmit: (message: Pick<PostChannelMessageInput, "content" | "attachments">) => void;
+  onSubmit: (message: Pick<PostChannelMessageInput, "content" | "attachments">) => Promise<unknown>;
   onShowRequest: () => void;
 }) {
   const { revealFile, focusedPaneAtom } = useWorkspaceSurface();

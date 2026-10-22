@@ -73,7 +73,9 @@ describe("app compiler", () => {
           return <button onClick={async () => {
             await updateState(draft => { draft.count += 1; });
             if (artifact) actions.openFile(artifact.file);
-            await channel.postMessage({ content: file.content ?? "" });
+            const receipt = await channel.postMessage({ content: file.content ?? "" });
+            const deliveredSequence: number = receipt.sequence;
+            void deliveredSequence;
             await actions.createSession({ message: { content: "Start", model: { provider: "codex", name: "model" } } });
           }}>{state.count}{channels.length}{sessions[0]?.context?.directory}{channelTasksDiff(channel.state?.channel.tasks ?? [])?.added}</button>;
         }

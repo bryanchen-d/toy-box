@@ -2,12 +2,20 @@ import { expect, test } from "bun:test";
 import { channelLeadTools, channelMemberTools, channelTools } from "./tools";
 
 test("only leads receive nonterminal task and routine tools", () => {
-  for (const name of ["edit_channel_tasks", "set_routine", "delete_routine"]) {
+  for (const name of ["update_channel", "edit_channel_tasks", "set_routine", "delete_routine"]) {
     const tool = channelLeadTools.find((tool) => tool.name === name);
     expect(tool).toBeDefined();
     expect(tool?.isTerminal).not.toBe(true);
     expect([...channelMemberTools, ...channelTools].some((tool) => tool.name === name)).toBe(false);
   }
+});
+
+test("the lead can select or clear a canvas using its shared artifact identity", () => {
+  const update = channelLeadTools.find(({ name }) => name === "update_channel");
+  for (const canvasArtifactId of ["session:lead:board.toy", null]) {
+    expect(update?.parameters?.parse({ canvasArtifactId })).toEqual({ canvasArtifactId });
+  }
+  expect(update?.parameters?.safeParse({ canvasArtifactId: "" }).success).toBe(false);
 });
 
 test("only the lead's messages can request input", () => {

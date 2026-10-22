@@ -39,6 +39,7 @@ export function ChannelOverview({
   routines,
   variant,
   actions,
+  allowPin = true,
 }: {
   channel: Channel;
   artifacts: ChannelArtifact[];
@@ -46,6 +47,7 @@ export function ChannelOverview({
   variant: PaneVariant;
   /** The pane's other actions, which precede the overview's trigger and give way to it when pinned. */
   actions?: ReactNode;
+  allowPin?: boolean;
 }) {
   const {
     openFile,
@@ -57,7 +59,7 @@ export function ChannelOverview({
   const overviewRef = useRef<HTMLDivElement>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [dialog, setDialog] = useState<OverviewDialog>();
-  const canPin = variant === "normal";
+  const canPin = variant === "normal" && allowPin;
   const isPinned = canPin && channelOverviewPinned;
   const openLabel = `Open #${channel.name} overview`;
   const trigger = canPin ? (

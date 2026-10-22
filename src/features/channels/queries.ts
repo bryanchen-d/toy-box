@@ -13,6 +13,7 @@ import { removeChannelFromList } from "./queryCache";
 /** Browser arrival is distinct from cached content and from later live updates. */
 export type ChannelQueryData = ChannelState & {
   arrival: { id: number; unreadAfter: number | null };
+  optimisticMessageIds?: string[];
 };
 
 export const channelQueries = {
@@ -46,6 +47,12 @@ export const channelQueries = {
           const arrived = event.type === "snapshot" || event.type === "resumed";
           return {
             ...state,
+            optimisticMessageIds:
+              event.type === "snapshot"
+                ? undefined
+                : event.type === "message"
+                  ? previous?.optimisticMessageIds?.filter((id) => id !== event.message.id)
+                  : previous?.optimisticMessageIds,
             arrival: arrived
               ? {
                   id: (previous?.arrival.id ?? 0) + 1,

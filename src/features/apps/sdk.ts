@@ -28,6 +28,7 @@ import type { WorkspaceSessionStatus } from "@workspace/model/state/reducer";
 import type {
   Channel,
   ChannelAgent,
+  ChannelMessage,
   ChannelState,
   PostChannelMessageInput,
   channelStatus,
@@ -37,6 +38,7 @@ export type {
   AppInstance,
   AppShare,
   Channel,
+  ChannelMessage,
   ChannelState,
   ContextTier,
   ModelConfiguration,
@@ -221,7 +223,11 @@ export declare function useChannel(
   state: ChannelState | undefined;
   unreadAfter: number | null | undefined;
   loadPrevious(throughSequence?: number): Promise<void>;
-  postMessage(message: Pick<PostChannelMessageInput, "content" | "attachments">): void;
+  /** Resolves when the user message is persisted, not when the team finishes the request. */
+  postMessage(
+    message: Pick<PostChannelMessageInput, "content" | "attachments">,
+  ): Promise<ChannelMessage>;
+  postError: Error | null;
 };
 
 export declare function useFile(file: WorkspaceFile, mode: WorkspaceFileMode): WorkspaceFileState;

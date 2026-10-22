@@ -8,7 +8,11 @@ import { PaneMessage } from "@/shared/ui/pane-message";
 import { AppErrorBoundary, AppHost, appErrorMessage } from "../host/AppHost";
 
 /** Renders a stateless session `.toy` file through the shared app host. */
-export function ArtifactAppPane({ title, file }: EditorProps) {
+export function ArtifactAppPane({
+  title,
+  file,
+  publisherPaneId,
+}: Pick<EditorProps, "title" | "file"> & { publisherPaneId?: string }) {
   const { source } = file;
   if (source.kind !== "session") {
     return (
@@ -23,7 +27,12 @@ export function ArtifactAppPane({ title, file }: EditorProps) {
     <ClientOnly
       fallback={<PaneMessage title={`Loading ${title}`} detail="Compiling app…" loading />}
     >
-      <MountedApp source={source} title={title} revision={file.revision} />
+      <MountedApp
+        source={source}
+        title={title}
+        revision={file.revision}
+        publisherPaneId={publisherPaneId ?? createEditorPaneId(source)}
+      />
     </ClientOnly>
   );
 }
@@ -32,10 +41,12 @@ function MountedApp({
   source,
   title,
   revision,
+  publisherPaneId,
 }: {
   source: SessionFile;
   title: string;
   revision: number;
+  publisherPaneId: string;
 }) {
   const bundleQuery = useQuery(appQueries.artifactBundle(source, revision));
 
@@ -53,7 +64,7 @@ function MountedApp({
     <AppErrorBoundary title={title} resetKey={revision}>
       <AppHost
         scopeId={scopeId}
-        publisherPaneId={createEditorPaneId(source)}
+        publisherPaneId={publisherPaneId}
         AppComponent={AppComponent}
         css={css}
       />
