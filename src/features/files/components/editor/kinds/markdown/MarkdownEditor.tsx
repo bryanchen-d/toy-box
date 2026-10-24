@@ -7,7 +7,7 @@ import {
 } from "@lostintangent/documint";
 import type { JSONType } from "zod";
 import type { EditorProps } from "../index";
-import { usePreferredColorScheme } from "@/shared/hooks/usePreferredColorScheme";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { buildArtifactCommentPrompt } from "./comments";
 
@@ -68,13 +68,16 @@ function artifactCommentThreadId(metadata: JSONType | undefined): string | undef
 }
 
 function useDocumintTheme(): EditorTheme {
-  // Re-read computed theme tokens whenever their media query changes.
-  usePreferredColorScheme();
+  "use no memo";
+
+  // Resolved CSS colors are external state and must not be cached by React Compiler.
+  useColorScheme();
   const accentColor = useWorkspaceSelector((workspace) => workspace.settings.accentColor);
 
   return {
     accent: accentColor,
     background: readThemeColor("--background"),
+    codeBackground: readThemeColor("--muted"),
     fontSize: 14,
     muted: readThemeColor("--muted-foreground"),
     text: readThemeColor("--foreground"),

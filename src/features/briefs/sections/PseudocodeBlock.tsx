@@ -2,6 +2,7 @@ import { startTransition, useEffect, useState } from "react";
 import { Check, Copy, TriangleAlert } from "lucide-react";
 import { highlightCode, type HighlightedLine } from "@/shared/syntaxHighlight";
 import { cn } from "@/shared/utils";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 
 type HighlightedSource = {
   key: string;
@@ -20,14 +21,15 @@ export function PseudocodeBlock({
   label: string;
   compact?: boolean;
 }) {
-  const sourceKey = `${language ?? "text"}\u0000${content}`;
+  const colorScheme = useColorScheme();
+  const sourceKey = `${colorScheme}\u0000${language ?? "text"}\u0000${content}`;
   const [highlighted, setHighlighted] = useState<HighlightedSource>();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const lines = highlighted?.key === sourceKey ? highlighted.lines : undefined;
 
   useEffect(() => {
     let cancelled = false;
-    void highlightCode(content, language ?? "text")
+    void highlightCode(content, language ?? "text", `github-${colorScheme}`)
       .then((nextLines) => {
         if (cancelled) return;
         startTransition(() => setHighlighted({ key: sourceKey, lines: nextLines }));
@@ -39,7 +41,7 @@ export function PseudocodeBlock({
     return () => {
       cancelled = true;
     };
-  }, [content, language, sourceKey]);
+  }, [colorScheme, content, language, sourceKey]);
 
   useEffect(() => {
     if (copyState === "idle") return;

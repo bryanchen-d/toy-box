@@ -6,6 +6,8 @@ import { domMax, LazyMotion, MotionConfig } from "motion/react";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { workspaceQueries } from "@workspace/queries";
 import { TooltipProvider } from "@/shared/ui/tooltip";
+import { ThemePreferenceContext, useThemePreference } from "@/shared/hooks/useColorScheme";
+import { readThemePreference } from "@/shared/theme";
 
 import appCss from "./styles.css?url";
 
@@ -15,6 +17,13 @@ const readWorkspaceRevision = createIsomorphicFn().server(async () => {
   const { getWorkspaceRevision } = await import("@workspace/server/events");
   return getWorkspaceRevision();
 });
+
+const readThemeCookie = createIsomorphicFn()
+  .client(() => document.cookie)
+  .server(async () => {
+    const { getRequestHeader } = await import("@tanstack/react-start/server");
+    return getRequestHeader("cookie");
+  });
 
 type RouterContext = {
   queryClient: QueryClient;
@@ -34,6 +43,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   beforeLoad: async () => ({ workspaceRevision: await readWorkspaceRevision() }),
   loader: async ({ context }) => {
     await context.queryClient.ensureQueryData(workspaceQueries.state());
+    return { themePreference: readThemePreference(await readThemeCookie()) };
   },
   head: () => ({
     meta: [
@@ -62,6 +72,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootDocument({ children }: { children: ReactNode }) {
+  const initial = Route.useLoaderData();
+  const themePreference = useThemePreference(initial.themePreference);
   const accentColor = useWorkspaceSelector((workspace) => workspace.settings.accentColor);
   const style: CSSProperties & { "--accent": string } = {
     "--accent": accentColor,
@@ -69,18 +81,20 @@ function RootDocument({ children }: { children: ReactNode }) {
 
   // Motion+ uses full motion elements, which are incompatible with LazyMotion strict mode.
   return (
-    <html lang="en" style={style}>
+    <html lang="en" style={style} data-theme={themePreference}>
       <head>
         <HeadContent />
       </head>
       <body className="h-dvh overflow-hidden bg-background safe-top safe-x">
-        <TooltipProvider>
-          <LazyMotion features={domMax}>
-            <MotionConfig reducedMotion="user">
-              <div className="h-full overflow-hidden">{children}</div>
-            </MotionConfig>
-          </LazyMotion>
-        </TooltipProvider>
+        <ThemePreferenceContext value={themePreference}>
+          <TooltipProvider>
+            <LazyMotion features={domMax}>
+              <MotionConfig reducedMotion="user">
+                <div className="h-full overflow-hidden">{children}</div>
+              </MotionConfig>
+            </LazyMotion>
+          </TooltipProvider>
+        </ThemePreferenceContext>
         <Scripts />
       </body>
     </html>

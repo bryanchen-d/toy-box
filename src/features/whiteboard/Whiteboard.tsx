@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useSelector } from "@tanstack/react-store";
 import { shallow } from "@tanstack/store";
-import { usePreferredColorScheme } from "@/shared/hooks/usePreferredColorScheme";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 import { SvgDocument } from "./document";
 import { Editor } from "./editor/Editor";
 import {
@@ -91,7 +91,7 @@ function WhiteboardActionProjection({
   store: EditorStore;
   render: (actions: WhiteboardActions) => ReactNode;
 }) {
-  const colorScheme = usePreferredColorScheme();
+  const colorScheme = useColorScheme();
   const isEmpty = useSyncExternalStore(
     document.subscribe,
     () => document.getSnapshot().isEmpty,

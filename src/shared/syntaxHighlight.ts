@@ -1,6 +1,7 @@
 import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import type { HighlighterCore, ThemedToken } from "shiki/types";
+import { getColorScheme } from "./theme";
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 
@@ -10,7 +11,6 @@ const SHIKI_THEMES = {
 } as const;
 
 type HighlightTheme = (typeof SHIKI_THEMES)[keyof typeof SHIKI_THEMES];
-const PREFERS_DARK_QUERY = "(prefers-color-scheme: dark)";
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: "typescript",
@@ -107,8 +107,7 @@ export type HighlightedLine = {
 };
 
 function getCurrentShikiTheme(): HighlightTheme {
-  if (typeof window === "undefined") return SHIKI_THEMES.dark;
-  return window.matchMedia(PREFERS_DARK_QUERY).matches ? SHIKI_THEMES.dark : SHIKI_THEMES.light;
+  return SHIKI_THEMES[getColorScheme()];
 }
 
 export async function highlightCode(

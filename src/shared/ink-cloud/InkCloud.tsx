@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/shared/utils";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 import { createInkCloud, type Ink, type Point, type Reaction, type Traveler } from "./cloud";
 
 export type { Ink, Reaction, Traveler } from "./cloud";
@@ -23,6 +24,7 @@ export function InkCloud({
   className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colorScheme = useColorScheme();
 
   useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
@@ -40,7 +42,7 @@ export function InkCloud({
       inks: inks.map((ink) => ({ ...ink, color: resolveColor(canvas, ink.color) })),
       reaction,
       traveler: traveler && { ...traveler, color: resolveColor(canvas, traveler.color) },
-      surface: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+      surface: colorScheme,
     });
 
     // Any pointer counts: a hovering mouse, a pen, or a finger. A pointer that goes out to
@@ -77,7 +79,7 @@ export function InkCloud({
       window.removeEventListener("pointerdown", follow);
       window.removeEventListener("pointerout", leave);
     };
-  }, [inks, reaction, traveler]);
+  }, [colorScheme, inks, reaction, traveler]);
 
   return <canvas ref={canvasRef} aria-hidden className={cn("block", className)} />;
 }

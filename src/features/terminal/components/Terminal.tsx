@@ -1,6 +1,7 @@
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { terminalManager } from "../client/terminalManager";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -13,6 +14,7 @@ export function Terminal({ onClose }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalShell = useWorkspaceSelector((workspace) => workspace.settings.terminalShell);
   const handleClose = useEffectEvent(() => onClose?.());
+  const colorScheme = useColorScheme();
 
   useLayoutEffect(() => {
     terminalManager.setShell(terminalShell);
@@ -27,6 +29,10 @@ export function Terminal({ onClose }: TerminalProps) {
       onClose: () => handleClose(),
     });
   }, []);
+
+  useLayoutEffect(() => {
+    terminalManager.updateTheme();
+  }, [colorScheme]);
 
   return (
     <div className="relative h-full min-h-0 p-2 pb-0">

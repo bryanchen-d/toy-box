@@ -1,11 +1,11 @@
 import type { SessionCanvas } from "../model";
-import { usePreferredColorScheme } from "@/shared/hooks/usePreferredColorScheme";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 
 /** Presents one SDK-provided canvas URL as a workspace pane. */
 export function CanvasPane({ canvas }: { canvas: SessionCanvas }) {
   const title = canvas.title || canvas.canvasId;
   const src = resolveCanvasUrl(canvas.url);
-  const colorScheme = usePreferredColorScheme();
+  const colorScheme = useColorScheme();
 
   return (
     <div className="flex h-full flex-col bg-background" style={{ colorScheme }}>

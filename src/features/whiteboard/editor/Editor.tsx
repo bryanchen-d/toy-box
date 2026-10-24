@@ -1,7 +1,7 @@
 import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { useSelector } from "@tanstack/react-store";
 import { shallow } from "@tanstack/store";
-import { usePreferredColorScheme } from "@/shared/hooks/usePreferredColorScheme";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
 import type { SvgDocument } from "../document";
 import { resolveActiveTool, type EditorStore } from "../store";
 import { SvgToolbar } from "../toolbar/SvgToolbar";
@@ -45,7 +45,7 @@ export function Editor({
     editorRef.current?.focus();
   }
 
-  const colorScheme = usePreferredColorScheme();
+  const colorScheme = useColorScheme();
   const themeForegroundColor = colorScheme === "dark" ? "#ffffff" : "#000000";
 
   const viewportGestureSource = useViewport({

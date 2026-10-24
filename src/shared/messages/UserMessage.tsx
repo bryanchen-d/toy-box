@@ -1,10 +1,18 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Markdown } from "@/shared/ui/markdown";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { Separator } from "@/shared/ui/separator";
 import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
 import type { Attachment, AttachmentReference } from "@/shared/attachments/model";
 import { CopyControl } from "./CopyControl";
+
+const bubbleTheme: CSSProperties & Record<`--${string}`, string> = {
+  "--background": "var(--primary)",
+  "--foreground": "var(--primary-foreground)",
+  "--muted": "color-mix(in srgb, var(--primary-foreground) 15%, transparent)",
+  "--muted-foreground": "color-mix(in srgb, var(--primary-foreground) 70%, transparent)",
+  "--border": "color-mix(in srgb, var(--primary-foreground) 20%, transparent)",
+};
 
 export function UserMessage({
   message,
@@ -28,7 +36,10 @@ export function UserMessage({
   return (
     <div className="flex flex-col items-end gap-2">
       {message.content && (
-        <div className="max-w-full @md:max-w-[80%] rounded-lg bg-primary px-3 py-2.5 text-sm text-primary-foreground [&_[data-streamdown=link]]:text-primary-foreground [&_[data-streamdown=inline-code]]:bg-primary-foreground/15">
+        <div
+          style={bubbleTheme}
+          className="max-w-full @md:max-w-[80%] rounded-lg bg-primary px-3 py-2.5 text-sm text-primary-foreground [&_[data-streamdown=link]]:text-primary-foreground [&_[data-streamdown=inline-code]]:bg-primary-foreground/15"
+        >
           {children ?? <Markdown preserveLineBreaks>{message.content}</Markdown>}
         </div>
       )}

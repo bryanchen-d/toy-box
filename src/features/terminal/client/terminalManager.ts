@@ -14,6 +14,15 @@ import { TerminalConnection } from "./connection";
 import { TerminalResize, isValidSize } from "./resize";
 import { TerminalBuffer } from "./buffer";
 import { createTerminalTheme } from "./theme";
+import { getColorScheme } from "@/shared/theme";
+
+function readTerminalTheme(container: HTMLDivElement) {
+  const styles = container.ownerDocument.defaultView?.getComputedStyle(container);
+  return createTerminalTheme({
+    isDark: getColorScheme() === "dark",
+    background: styles?.backgroundColor ?? "",
+  });
+}
 
 const TERMINAL_CONFIG = {
   cursorBlink: true,
@@ -126,6 +135,12 @@ class TerminalManager {
     this.#shell = shell.trim() || undefined;
   }
 
+  updateTheme() {
+    if (this.#xterm && this.#container) {
+      this.#xterm.options.theme = readTerminalTheme(this.#container);
+    }
+  }
+
   // Container lifecycle
 
   #attachContainer(container: HTMLDivElement) {
@@ -149,12 +164,7 @@ class TerminalManager {
   }
 
   #ensureTerminal(container: HTMLDivElement) {
-    const view = container.ownerDocument.defaultView;
-    const styles = view?.getComputedStyle(container);
-    const theme = createTerminalTheme({
-      isDark: view?.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true,
-      background: styles?.backgroundColor ?? "",
-    });
+    const theme = readTerminalTheme(container);
 
     if (!this.#xterm) {
       const xterm = new XTerm({ ...TERMINAL_CONFIG, theme });

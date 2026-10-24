@@ -8,6 +8,8 @@ import { getToolCallFileDiffs, type DiffHunk, type FileDiff } from "../../../../
 import { toRelativePath } from "@files/model/paths";
 import { ToolCallCard } from "./ToolCallCard";
 import { TextBlock } from "./TextBlock";
+import { useColorScheme } from "@/shared/hooks/useColorScheme";
+import type { ColorScheme } from "@/shared/theme";
 
 type Segment = { text: string; type: "same" | "added" | "removed" };
 
@@ -403,12 +405,13 @@ async function highlightDiffLines(
   newText: string,
   path: string,
   minIndent: number,
+  colorScheme: ColorScheme,
 ): Promise<DiffLine[]> {
   const { getLangFromPath, highlightCode } = await import("@/shared/syntaxHighlight");
   const lang = getLangFromPath(path);
   const [oldHighlighted, newHighlighted] = await Promise.all([
-    highlightCode(oldText, lang),
-    highlightCode(newText, lang),
+    highlightCode(oldText, lang, `github-${colorScheme}`),
+    highlightCode(newText, lang, `github-${colorScheme}`),
   ]);
   let oldLineIndex = 0;
   let newLineIndex = 0;
@@ -437,7 +440,11 @@ async function highlightDiffLines(
 }
 
 function useSyntaxHighlightedDiff(source: DiffRenderSource): DiffLine[] {
-  const [highlightedLines, setHighlightedLines] = useState<DiffLine[] | null>(null);
+  const colorScheme = useColorScheme();
+  const [highlighted, setHighlighted] = useState<{
+    colorScheme: ColorScheme;
+    lines: DiffLine[];
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -447,17 +454,18 @@ function useSyntaxHighlightedDiff(source: DiffRenderSource): DiffLine[] {
       source.newText,
       source.path,
       source.minIndent,
+      colorScheme,
     ).then((enhanced) => {
       if (cancelled) return;
-      startTransition(() => setHighlightedLines(enhanced));
+      startTransition(() => setHighlighted({ colorScheme, lines: enhanced }));
     });
 
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [colorScheme, source]);
 
-  return highlightedLines ?? source.lines;
+  return highlighted?.colorScheme === colorScheme ? highlighted.lines : source.lines;
 }
 
 function DiffHunkView({ hunk, path }: { hunk: DiffHunk; path: string }) {

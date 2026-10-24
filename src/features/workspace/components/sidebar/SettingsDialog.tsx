@@ -6,6 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { isAccentColor, isSessionFeatureScope } from "@workspace/model/config/settings";
 import { useUpdateWorkspaceSetting, useWorkspaceSelector } from "@workspace/hooks/state";
 import { ProviderSettings } from "@providers/components/ProviderSettings";
+import { useThemePreference } from "@/shared/hooks/useColorScheme";
+import { isThemePreference, setThemePreference } from "@/shared/theme";
+
+const THEME_OPTIONS = { system: "System", light: "Light", dark: "Dark" } as const;
 
 const AUTO_FOCUS_ARTIFACT_OPTIONS = {
   always: "Always",
@@ -24,6 +28,7 @@ export function SettingsDialog({
   const settings = useWorkspaceSelector((workspace) => workspace.settings);
   const updateSetting = useUpdateWorkspaceSetting();
   const { accentColor, terminalShell, useWorktree, autoFocusArtifacts } = settings;
+  const themePreference = useThemePreference();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,6 +37,32 @@ export function SettingsDialog({
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
+          <div className="grid gap-2">
+            <label htmlFor="theme-preference" className="text-sm font-medium text-foreground">
+              Appearance
+            </label>
+            <Select
+              items={THEME_OPTIONS}
+              value={themePreference}
+              onValueChange={(value) => {
+                if (isThemePreference(value)) setThemePreference(value);
+              }}
+            >
+              <SelectTrigger id="theme-preference" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(THEME_OPTIONS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Saved in this browser. System follows your device's light or dark appearance.
+            </p>
+          </div>
           <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-x-4 gap-y-2">
             <label htmlFor="auto-focus-artifacts" className="text-sm font-medium text-foreground">
               Auto-focus artifacts

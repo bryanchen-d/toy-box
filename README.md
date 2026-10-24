@@ -33,6 +33,15 @@ Beyond simple session management, Toy Box provides several helpful workflows tha
 
 Restart Toy Box and reload the page after installing, removing, or updating a provider to refresh the model catalog.
 
+### Appearance
+
+Choose **Settings > Appearance > System, Light, or Dark**. System follows your device's
+appearance; an explicit choice overrides it. The preference is saved in this browser,
+not shared with other devices, and is applied before the page renders.
+
+Markdown code blocks use their surrounding surface's colors, including user-message
+bubbles. Editors, syntax highlighting, whiteboards, and terminals follow the selected theme.
+
 ## Access From Anywhere
 
 In order to access Toy Box from your phone (or other machines), simply configure [Tailscale](https://tailscale.com/) on the desired devices, enable MagicDNS and HTTPS for your tailnet, start Toy Box (`toy-box`), then run:
