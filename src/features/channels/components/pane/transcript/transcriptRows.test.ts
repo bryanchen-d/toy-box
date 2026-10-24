@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { ChannelConversationMessage, ChannelMessage } from "@channels/model";
 import {
   pendingRequestRow,
+  threadParticipants,
+  threadRows,
   transcriptDayLabel,
   transcriptRows,
   type AgentRunEntry,
@@ -57,6 +59,8 @@ const rowIds = (rows: TranscriptRow[]) =>
         return row.entries.map(({ message }) => message.id);
       case "system":
         return row.messages.map(({ id }) => id);
+      case "thread":
+        return row.thread.replies.map(({ id }) => id);
     }
   });
 
@@ -262,6 +266,118 @@ describe("your messages view", () => {
       1,
     );
     expect(rows.map(({ divider }) => divider?.unread ?? false)).toEqual([false, true]);
+  });
+});
+
+describe("threads", () => {
+  function reply(
+    sequence: number,
+    threadSequence: number,
+    agentId?: string,
+    content = `Reply ${sequence}`,
+  ): ChannelConversationMessage {
+    const base = agentId ? agentPost(sequence, agentId, undefined, content) : userPost(sequence);
+    return { ...(base as ChannelConversationMessage), threadSequence };
+  }
+  const threadOfRow = (row: TranscriptRow | undefined) => {
+    if (row?.type === "user") return row.thread;
+    if (row?.type === "agent") return row.entries[0]!.thread;
+    if (row?.type === "thread") return row.thread;
+  };
+  const replyIds = (row: TranscriptRow | undefined) =>
+    threadOfRow(row)?.replies.map(({ id }) => id);
+
+  test("replies right below their top-level message join its row's thread", () => {
+    const rows = rowsOf([userPost(1), reply(2, 1, "lead"), reply(3, 1, "engine")]);
+    expect(rowIds(rows)).toEqual([["1"]]);
+    expect(replyIds(rows[0])).toEqual(["2", "3"]);
+  });
+
+  test("an agent's run holds the threads of each of its messages", () => {
+    const rows = rowsOf([agentPost(1, "lead"), agentPost(2, "lead"), reply(3, 1, "engine")]);
+    expect(rowIds(rows)).toEqual([["1", "2"]]);
+    expect(replyIds(rows[0])).toEqual(["3"]);
+  });
+
+  test("replies separated from their thread form one thread row where they arrive", () => {
+    const rows = rowsOf([
+      userPost(1),
+      agentPost(2, "engine"),
+      reply(3, 1, "lead"),
+      reply(4, 1, "engine"),
+    ]);
+    expect(rowIds(rows)).toEqual([["1"], ["2"], ["3", "4"]]);
+    expect(rows[2]).toMatchObject({ type: "thread", root: { id: "1" } });
+    expect(replyIds(rows[0])).toEqual(["3", "4"]);
+  });
+
+  test("replies to different threads interleave as separate thread rows", () => {
+    const rows = rowsOf([userPost(1), userPost(2), reply(3, 1), reply(4, 2), reply(5, 1)]);
+    expect(rowIds(rows)).toEqual([["1"], ["2"], ["3"], ["4"], ["5"]]);
+    expect(replyIds(rows[0])).toEqual(["3", "5"]);
+  });
+
+  test("unread replies begin below the New rule, even right below their thread", () => {
+    const rows = rowsOf([userPost(1), reply(2, 1, "lead")], 1);
+    expect(rowIds(rows)).toEqual([["1"], ["2"]]);
+    expect(rows[1]).toMatchObject({ type: "thread", divider: { unread: true } });
+  });
+
+  test("a thread row names its top-level message only once that is loaded", () => {
+    const [row] = rowsOf([reply(5, 1, "lead")]);
+    expect(row).toMatchObject({ type: "thread", thread: { sequence: 1 } });
+    expect(row).not.toHaveProperty("root");
+  });
+
+  test("a question in a thread pends until a later user message anywhere", () => {
+    const asked = { ...reply(3, 1, "lead"), request: true as const };
+    const pending = rowsOf([userPost(1), agentPost(2, "engine"), asked]);
+    expect(threadOfRow(pending[0])?.request).toBe("pending");
+    expect(threadOfRow(pending[2])?.request).toBe("pending");
+    const acknowledged = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
+    expect(threadOfRow(acknowledged[2])?.request).toBe("acknowledged");
+  });
+
+  test("your messages view keeps replies for the user and leaves coordination out", () => {
+    const rows = transcriptRows(
+      [
+        userPost(1),
+        agentPost(2, "engine"),
+        reply(3, 1, "lead", "@engine Take this."),
+        reply(4, 1, "lead", "It's done."),
+      ],
+      { lead, members, view: "yours" },
+    );
+    expect(rowIds(rows)).toEqual([["1"]]);
+    expect(replyIds(rows[0])).toEqual(["3", "4"]);
+  });
+
+  test("a thread's own rows begin with its top-level message and group replies as runs", () => {
+    const messages = [
+      userPost(1),
+      agentPost(2, "engine"),
+      reply(3, 1, "lead"),
+      reply(4, 1, "lead"),
+      reply(5, 1),
+      reply(6, 2, "lead"),
+    ];
+    const rows = threadRows(messages, 1, { lead, members });
+    expect(rowIds(rows)).toEqual([["1"], ["3", "4"], ["5"]]);
+    expect(rows.every((row) => threadOfRow(row) === undefined)).toBe(true);
+  });
+
+  test("participants are listed once each, most recent first", () => {
+    const participants = threadParticipants([
+      reply(2, 1, "lead"),
+      reply(3, 1, "engine"),
+      reply(4, 1, "lead"),
+      reply(5, 1),
+    ]);
+    expect(participants).toEqual([
+      { type: "user" },
+      { type: "agent", agentId: "lead" },
+      { type: "agent", agentId: "engine" },
+    ]);
   });
 });
 

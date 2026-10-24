@@ -38,7 +38,7 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
 ├─ Team        the Channel's agents
 │  ├─ Lead     intrinsic and fixed; its Worker and Session ID is the Channel ID
 │  └─ Members  created on demand; editable and removable
-├─ Transcript  sequenced user, agent, and system messages, plus agent reactions
+├─ Transcript  sequenced user, agent, and system messages, plus agent reactions; replies form threads
 ├─ Artifacts   shared workspace files
 └─ Routines    scheduled prompts that privately wake the lead
 ```
@@ -69,6 +69,11 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   a member preserves prior content while the UI presents a deleted identity.
   `tasks_completed` records the task list becoming complete. The lead flags an ordinary message with
   `request: true`; `requestSequence` points to that question until a user replies.
+  A user or Agent message may reply in a thread: its `threadSequence` is the sequence of the
+  earlier top-level user or Agent message that starts the thread. Threads are one level deep, so
+  replying to a reply joins the same thread, and system messages neither start nor join one. A
+  reply is an ordinary message in the same sequence, so reading, paging, reactions, requests,
+  status targets, and replay need nothing thread-specific.
 - `ChannelReaction` is one Agent's durable acknowledgement or sentiment on a user or Agent message.
   It does not wake anyone or advance message sequence.
 - `ChannelArtifact` indexes a shared `WorkspaceFile` by its `id` (the file's identity), with its
@@ -128,10 +133,15 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
 ### Messages
 
 - Append user, Agent, and typed system messages with one transactionally allocated sequence.
+- Reply in a thread by naming any message in it. The append transaction resolves the thread's
+  top-level message, rejecting system messages and messages outside the Channel. Read one thread
+  whole, without changing read state.
 - Route every message through one pure `resolveChannelAudience` policy. An unmentioned user or member
   message wakes the lead. An unmentioned lead message wakes nobody. Explicit name-derived mentions
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
   The composer resolves the same policy for its draft, so it shows exactly who a message will wake.
+  A thread never routes: its participants wake only as any message would wake them, so agents
+  replying to each other can't loop without mentioning each other.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, and recordings to messages; generated images are attached by their saved paths.
@@ -174,7 +184,11 @@ needs one and none was provided, the lead can create and assign it through `upda
 
 The collaboration protocol asks an agent to read current context at turn start, use the smallest
 useful public action, set status only for substantive work, reread before a result or handoff, mention
-members whose wait it fulfills, and finish every turn explicitly. Public messages, reactions,
+members whose wait it fulfills, and finish every turn explicitly. Agents answer a message in its
+thread, keep responding in a thread whose reply woke them, and post top-level for kickoffs, new
+topics, milestones, and results; `read_channel` with a `threadSequence` reads one thread whole.
+The lead asks a question about a thread's topic in that thread and posts its closing result
+top-level. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Channel. Model-facing message tools cap posts at 3,000 characters so
 durable long-form work stays in canonical shared artifacts; browser messages retain the Channel
@@ -326,7 +340,7 @@ replace an overlapping stale list read. This browser metadata does not change th
 It retries pages older than its cached revision, merges without advancing the stream cursor, and
 continues through the target sequence when revealing a pending request.
 
-`POST /api/v1/channels/:channelId/messages` accepts `{ id, content, attachments? }`, uses the normal
+`POST /api/v1/channels/:channelId/messages` accepts `{ id, content, attachments?, threadSequence? }`, uses the normal
 user-message schema and delivery policy, and returns HTTP 201 with `{ version: 1, message }`.
 Duplicate IDs return 409 without repeating delivery. `POST …/read` accepts `{ sequence }`, uses
 the same monotonic read operation as the browser, and returns `{ version: 1, seenThrough }`.
@@ -347,7 +361,8 @@ observation; the first snapshot populates the tray and roster and enables input.
 It uses the same shared composer shell and native `ComposerInput` as Sessions. Agent mentions remain plain `@handle`
 text, so audience resolution and delivery are unchanged. The draft is the Workspace saved draft
 `channel:<id>`, so it survives reloads and follows the user across clients; reply and mention
-actions edit it through the draft's verbs. The composer owns the member-creation mutation and
+actions edit it through the draft's verbs. A thread's composer is the same composer with its own
+draft, `channel:<id>:<sequence>`, and without the tray or request button. The composer owns the member-creation mutation and
 binds it into one pure source. `agentCompletionSource.ts` owns the whole mention policy:
 everyone, the lead, matching members by name, and an offer to create an unknown handle, whose
 acceptance creates the member and resolves to its mention. The completion hook owns that
@@ -376,6 +391,16 @@ up that observation without stopping channel agents. App failures stay within th
 canvas. Agents follow the bundled app-authoring guidance for public user requests,
 delivery versus completion, freshness, and trusted-code limits.
 
+`ChannelThread` shows one thread the same way: beside chat in a wide pane or in its place in a
+narrow one, as the view's single aside alongside the canvas. It renders `threadRows` with the
+transcript's own row component and a thread composer, opens on a pending question it holds or else
+its latest reply, and follows new replies at the end. Loaded history always reaches the newest
+message, so a loaded top-level message has every reply loaded; opening an older thread pages history
+through its top-level message, as revealing a pending request does. Every user and agent message
+offers "Reply in thread", which opens its thread with the draft addressed to its agent, as the
+former Reply action did. A message still being sent offers none until it commits. "Input needed"
+opens a question asked in a thread.
+
 `useChannel.postMessage` returns the persisted message, or rejects on delivery
 failure. The composer returns that promise to its draft lifecycle for restoration
 on failure and renders `postError`. Apps must not treat delivery as agent completion.
@@ -393,6 +418,11 @@ presents one deleted identity everywhere.
 
 - The transcript's rows come from `transcriptRows`, its pure presentation model: each user message
   stands alone, one agent's consecutive messages form a run, and matching system messages merge.
+  Replies stay with their thread. A reply joins the row holding its thread's top-level message when
+  that is the latest row; otherwise consecutive replies to one thread form a thread row where they
+  arrive, so new replies stay in view of a reader at the end, under the same "New" rule, without
+  any per-thread read state. A message that starts a thread summarizes its replies, who wrote them,
+  when the latest arrived, and any question among them, all derived from loaded messages.
   Each message in a run carries its addressee, its body without the leading mentions that addressee
   names, its request state, whether it repeats the run's header, and whether it collapses. One
   optional divider precedes a row, labeling a new day, marking where unread messages begin with a
@@ -462,7 +492,7 @@ presents one deleted identity everywhere.
 - `queries.ts`, `stream.ts`, `mutations.ts`, `queryCache.ts`, and `useChannel.ts` own client data:
   catalog and streamed detail queries, the SSE adapter, mutations, catalog event patches, and one
   open Channel's visibility and read lifecycle.
-- `components/pane/` holds the pane, composer, and shared pane context, with `transcript/` and
+- `components/pane/` holds the pane, composer, thread, and shared pane context, with `transcript/` and
   `overview/` beneath it. `components/agents/` holds avatars, mention Markdown, the mention
   source and menu, the member editor, and working agents. `components/sidebar/` holds the Channels panel and its
   attention priority. The top level holds the create/edit dialog and channel menu.

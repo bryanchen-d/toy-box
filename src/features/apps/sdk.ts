@@ -225,7 +225,7 @@ export declare function useChannel(
   loadPrevious(throughSequence?: number): Promise<void>;
   /** Resolves when the user message is persisted, not when the team finishes the request. */
   postMessage(
-    message: Pick<PostChannelMessageInput, "content" | "attachments">,
+    message: Pick<PostChannelMessageInput, "content" | "attachments" | "threadSequence">,
   ): Promise<ChannelMessage>;
   postError: Error | null;
 };

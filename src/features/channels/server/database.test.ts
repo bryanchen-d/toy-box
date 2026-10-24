@@ -161,6 +161,83 @@ describe("channel attention", () => {
   });
 });
 
+describe("channel threads", () => {
+  async function setup() {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Threads", ...CHANNEL_DEFAULTS });
+    const post = async (content: string, threadSequence?: number) =>
+      (
+        await channels.appendMessage({
+          id: crypto.randomUUID(),
+          channelId: channel.id,
+          sender: { type: "agent", agentId: channel.id },
+          content,
+          ...(threadSequence === undefined ? {} : { threadSequence }),
+        })
+      ).message;
+    return { channels, channel, post };
+  }
+
+  test("a reply joins the thread of the message it answers", async () => {
+    const { post } = await setup();
+    const root = await post("Add dark mode?");
+    expect(root).not.toHaveProperty("threadSequence");
+    expect(await post("On it.", root.sequence)).toMatchObject({
+      sequence: 2,
+      threadSequence: root.sequence,
+    });
+  });
+
+  test("replying to a reply joins the same thread, so threads stay one level deep", async () => {
+    const { post } = await setup();
+    const root = await post("Add dark mode?");
+    const reply = await post("On it.", root.sequence);
+    expect((await post("Done.", reply.sequence)).threadSequence).toBe(root.sequence);
+  });
+
+  test("replies persist with their thread across reads", async () => {
+    const { channels, channel, post } = await setup();
+    const root = await post("Add dark mode?");
+    const reply = await post("On it.", root.sequence);
+    expect(await channels.listMessagesAfter(channel.id)).toEqual([root, reply]);
+    expect((await channels.getSnapshot(channel.id, 100))?.messages).toEqual([root, reply]);
+  });
+
+  test("only a user or agent message in the same channel starts a thread", async () => {
+    const { channels, channel, post } = await setup();
+    const other = await createStoredChannel(channels, { name: "Other", ...CHANNEL_DEFAULTS });
+    for (const content of ["One", "Two", "Three"]) {
+      await channels.appendMessage({
+        id: crypto.randomUUID(),
+        channelId: other.id,
+        sender: { type: "user" },
+        content,
+      });
+    }
+    await channels.updateChannel(channel.id, { name: "Renamed" });
+    const latest = (await channels.getChannel(channel.id))!.latestSequence;
+    const onlyElsewhere = (await channels.getChannel(other.id))!.latestSequence;
+    expect(onlyElsewhere).toBeGreaterThan(latest);
+    for (const sequence of [latest, onlyElsewhere]) {
+      await expect(post("Reply", sequence)).rejects.toThrow(
+        "Reply to a user or agent message in this channel.",
+      );
+    }
+    expect((await channels.getChannel(channel.id))?.latestSequence).toBe(latest);
+  });
+
+  test("a thread lists its top-level message and every reply, from any message in it", async () => {
+    const { channels, channel, post } = await setup();
+    const root = await post("Add dark mode?");
+    const reply = await post("On it.", root.sequence);
+    await post("Separately, the build is green.");
+    const done = await post("Done.", root.sequence);
+    for (const sequence of [root.sequence, reply.sequence]) {
+      expect(await channels.listThread(channel.id, sequence)).toEqual([root, reply, done]);
+    }
+  });
+});
+
 describe("channel task edits", () => {
   async function setup() {
     const channels = await openChannels();

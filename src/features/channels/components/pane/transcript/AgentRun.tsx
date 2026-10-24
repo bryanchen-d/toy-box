@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Check, Reply } from "lucide-react";
+import { MessageSquareReply } from "lucide-react";
 import { AgentAvatar } from "@channels/components/agents/AgentAvatar";
 import { AgentMentionMarkdown } from "@channels/components/agents/AgentMentionMarkdown";
 import type { ChannelAgentIdentity } from "@channels/model";
@@ -9,11 +9,13 @@ import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { ShowMore, useShowMore } from "@/shared/ui/show-more";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { RunningIndicator, waitingOutlineClassName } from "@/shared/ui/running-indicator";
+import { waitingOutlineClassName } from "@/shared/ui/running-indicator";
 import { cn } from "@/shared/utils";
 import { useChannelPane } from "../ChannelPaneContext";
 import { ChannelReactions } from "./ChannelReactions";
-import type { AgentRunEntry, ChannelRequestState } from "./transcriptRows";
+import { RequestTag } from "./RequestTag";
+import { ThreadSummary } from "./ThreadReplies";
+import type { AgentRunEntry } from "./transcriptRows";
 
 /** One agent's consecutive messages under a single avatar. */
 export function AgentRun({
@@ -38,13 +40,13 @@ export function AgentRun({
 }
 
 function AgentMessage({
-  entry: { message, body, startsRun, addressee, request, showHeader, collapsible },
+  entry: { message, body, startsRun, addressee, request, showHeader, collapsible, thread },
   agent,
 }: {
   entry: AgentRunEntry;
   agent: ChannelAgentIdentity;
 }) {
-  const { reply } = useChannelPane();
+  const { replyInThread } = useChannelPane();
   const textRef = useRef<HTMLDivElement>(null);
   const { collapsed, clamped, toggle } = useShowMore(textRef, message.content, collapsible);
   const attachments = message.attachments ?? [];
@@ -92,24 +94,22 @@ function AgentMessage({
             )}
           </div>
           <div className="pointer-events-none absolute -top-3 right-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-focus-within/entry:pointer-events-auto group-focus-within/entry:opacity-100 group-hover/entry:pointer-events-auto group-hover/entry:opacity-100">
-            {!agent.deleted && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="text-muted-foreground hover:text-foreground"
-                      aria-label={`Reply to ${agent.name}`}
-                      onClick={() => reply(agent)}
-                    >
-                      <Reply aria-hidden />
-                    </Button>
-                  }
-                />
-                <TooltipContent sideOffset={4}>Reply</TooltipContent>
-              </Tooltip>
-            )}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label={`Reply to ${agent.name} in thread`}
+                    onClick={() => replyInThread(message)}
+                  >
+                    <MessageSquareReply aria-hidden />
+                  </Button>
+                }
+              />
+              <TooltipContent sideOffset={4}>Reply in thread</TooltipContent>
+            </Tooltip>
             <CopyControl content={message.content} />
           </div>
         </div>
@@ -120,20 +120,7 @@ function AgentMessage({
         </div>
       )}
       <ChannelReactions message={message} className="mt-2" />
+      {thread && <ThreadSummary thread={thread} className="mt-1 -ml-1.5" />}
     </div>
-  );
-}
-
-function RequestTag({ state }: { state: ChannelRequestState }) {
-  return state === "pending" ? (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 py-px pr-2 pl-0.5 text-2xs font-medium text-amber-700 dark:text-amber-400">
-      <RunningIndicator waiting className="size-3.5" />
-      Needs your reply
-    </span>
-  ) : (
-    <span className="inline-flex shrink-0 items-center gap-1 text-2xs text-muted-foreground">
-      <Check className="size-3" />
-      Replied
-    </span>
   );
 }

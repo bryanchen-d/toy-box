@@ -37,7 +37,9 @@ const {
   finishChannelAgentTurn,
   markChannelRead,
   postChannelMessageFromSession,
+  readChannelForAgent,
   readChannelForSession,
+  readChannelThreadForAgent,
   runChannelRoutine,
   sendChannelMessageFromAgent,
   setChannelAgentStatus,
@@ -298,6 +300,58 @@ test("an Agent can attach image and video files to a durable Channel message", a
     attachments: [screenshot, recording],
   });
   expect((await channels.listMessagesAfter(channel.id)).at(-1)).toEqual(message);
+});
+
+test("agents reply within a thread and read it whole without moving their read position", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Threads", ...CHANNEL_DEFAULTS });
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "started",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => {
+    releaseChannelEvents(channel.id);
+    deliver.mockRestore();
+  });
+
+  const question = await postChannelMessageFromSession("coordinator", {
+    id: "question",
+    channelId: channel.id,
+    content: "Add dark mode?",
+  });
+  const reply = await invokeTool(
+    "send_channel_message",
+    { content: "On it.", threadSequence: question.sequence },
+    channel.id,
+  );
+  await sendChannelMessageFromAgent(channel.id, { content: "The build is green." });
+  expect((await readChannelForAgent(channel.id)).messages).toMatchObject([
+    { sequence: question.sequence },
+    { sequence: reply.sequence, threadSequence: question.sequence },
+    { content: "The build is green." },
+  ]);
+  const done = await sendChannelMessageFromAgent(channel.id, {
+    content: "Done.",
+    threadSequence: reply.sequence,
+  });
+
+  expect(done.threadSequence).toBe(question.sequence);
+  expect(
+    (await readChannelThreadForAgent(channel.id, done.sequence)).messages.map(
+      ({ sequence }) => sequence,
+    ),
+  ).toEqual([question.sequence, reply.sequence, done.sequence]);
+  expect((await channels.getAgent(channel.id))?.seenThrough).toBe(3);
+  expect(
+    await invokeTool("read_channel", { channelId: channel.id, threadSequence: question.sequence }),
+  ).toMatchObject({
+    messages: [
+      { content: "Add dark mode?" },
+      { content: "On it." },
+      { content: "Done.", threadSequence: question.sequence },
+    ],
+    hasMore: false,
+  });
 });
 
 test("joining starts onboarding before any mention; later assignments use normal delivery", async () => {

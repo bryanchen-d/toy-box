@@ -139,17 +139,23 @@ export function useTranscriptViewport({
   };
 }
 
-/** A row's height before it's measured: a message apiece, taller with attachments. */
+/** A row's height before it's measured: a message apiece, taller with attachments or a thread. */
 function estimatedRowHeight(row: TranscriptRow): number {
   const messageHeight = ({ attachments }: ChannelConversationMessage) =>
     100 + (attachments?.length ? 96 : 0);
+  const threadHeight = (thread: unknown) => (thread ? 32 : 0);
   switch (row.type) {
     case "user":
-      return messageHeight(row.message);
+      return messageHeight(row.message) + threadHeight(row.thread);
     case "agent":
-      return row.entries.reduce((height, { message }) => height + messageHeight(message), 0);
+      return row.entries.reduce(
+        (height, { message, thread }) => height + messageHeight(message) + threadHeight(thread),
+        0,
+      );
     case "system":
       return 20;
+    case "thread":
+      return 60;
   }
 }
 

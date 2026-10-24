@@ -19,16 +19,37 @@ const RUN_WINDOW_MS = 10 * 60 * 1000;
 export type TranscriptView = "all" | "yours";
 
 type TranscriptRowContent =
-  | { type: "user"; message: ChannelConversationMessage }
+  | { type: "user"; message: ChannelConversationMessage; thread?: TranscriptThread }
   | { type: "agent"; agentId: string; entries: AgentRunEntry[] }
-  | { type: "system"; messages: ChannelSystemMessage[] };
+  | { type: "system"; messages: ChannelSystemMessage[] }
+  | {
+      type: "thread";
+      /** The replies that arrived here, after other rows separated them from their thread. */
+      thread: TranscriptThread;
+      /** The thread's top-level message, once loaded. */
+      root?: ChannelConversationMessage;
+    };
 
-/** One transcript row: a user's message, one agent's run, or merged system messages. */
+/**
+ * One transcript row: a user's message, one agent's run, merged system messages, or replies in a
+ * thread whose top-level message is further up.
+ */
 export type TranscriptRow = TranscriptRowContent & {
   /** The first message's ID, which the row keeps as later messages join it. */
   key: string;
   /** Precedes a row that begins a day, the messages unread on arrival, or both at once. */
   divider?: { day?: Date; unread: boolean };
+};
+
+/**
+ * A thread's replies, identified by the sequence of its top-level message, and the state of the
+ * latest question among them. Loaded history always reaches the newest message, so a loaded
+ * top-level message has every reply loaded too.
+ */
+export type TranscriptThread = {
+  sequence: number;
+  replies: ChannelConversationMessage[];
+  request?: ChannelRequestState;
 };
 
 /** One message in an agent's run, as its header and body present it. */
@@ -45,6 +66,8 @@ export type AgentRunEntry = {
   showHeader: boolean;
   /** Coordination between agents recedes; messages for the user and requests stay whole. */
   collapsible: boolean;
+  /** The replies to this message, when it starts a thread. */
+  thread?: TranscriptThread;
 };
 
 /** A question the lead flagged stays pending until a later user message acknowledges it. */
@@ -54,13 +77,19 @@ type RowContext = {
   lead: ChannelAgent;
   members: readonly ChannelAgent[];
   latestUserSequence: number;
+  /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
+  threads?: ReadonlyMap<number, LoadedThread>;
 };
+
+type LoadedThread = { root?: ChannelConversationMessage; replies: ChannelConversationMessage[] };
 
 /**
  * The transcript's rows. A user message stands alone, one agent's consecutive messages form a run,
- * and membership changes merge, as do one agent's artifact shares. Rows never span a day or the
- * start of unread messages, so dividers always fall between rows. Rows form from the messages the
- * view shows, so runs and dividers follow what the reader sees.
+ * and membership changes merge, as do one agent's artifact shares. Replies stay with their thread:
+ * they join the row that holds the thread, or else form a thread row where they arrive, so new
+ * replies remain in view. Rows never span a day or the start of unread messages, so dividers always
+ * fall between rows. Rows form from the messages the view shows, so runs and dividers follow what
+ * the reader sees.
  */
 export function transcriptRows(
   messages: readonly ChannelMessage[],
@@ -80,12 +109,45 @@ export function transcriptRows(
   const context: RowContext = {
     lead,
     members,
-    latestUserSequence: messages.reduce(
-      (latest, { sender, sequence }) =>
-        sender.type === "user" ? Math.max(latest, sequence) : latest,
-      0,
-    ),
+    latestUserSequence: latestUserSequence(messages),
+    threads: loadedThreads(messages),
   };
+  return rowsOf(messages, context, { unreadAfter, view });
+}
+
+/**
+ * One thread as a conversation of its own: its top-level message, then its replies grouped as the
+ * transcript groups messages. Requests acknowledge from anywhere in the Channel.
+ */
+export function threadRows(
+  messages: readonly ChannelMessage[],
+  sequence: number,
+  { lead, members }: { lead: ChannelAgent; members: readonly ChannelAgent[] },
+): TranscriptRow[] {
+  const context: RowContext = { lead, members, latestUserSequence: latestUserSequence(messages) };
+  const thread = messages.filter(
+    (message) => message.sequence === sequence || message.threadSequence === sequence,
+  );
+  return rowsOf(thread, context, { view: "all" });
+}
+
+/** Who replied in a thread, each once, most recent first. */
+export function threadParticipants(
+  replies: readonly ChannelConversationMessage[],
+): ChannelConversationMessage["sender"][] {
+  const participants = new Map<string, ChannelConversationMessage["sender"]>();
+  for (const { sender } of [...replies].reverse()) {
+    const key = sender.type === "agent" ? sender.agentId : "user";
+    if (!participants.has(key)) participants.set(key, sender);
+  }
+  return [...participants.values()];
+}
+
+function rowsOf(
+  messages: readonly ChannelMessage[],
+  context: RowContext,
+  { unreadAfter, view }: { unreadAfter?: number | null; view: TranscriptView },
+): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let previous: ChannelMessage | undefined;
   for (const message of messages) {
@@ -144,13 +206,28 @@ function dividerBetween(
 
 function startRow(message: ChannelMessage, context: RowContext): TranscriptRowContent {
   if (isChannelSystemMessage(message)) return { type: "system", messages: [message] };
+  const thread = threadOf(message, context);
+  if (thread) {
+    return {
+      type: "thread",
+      thread: transcriptThread(thread.sequence, [message], context),
+      ...(thread.root ? { root: thread.root } : {}),
+    };
+  }
   const { sender } = message;
-  return sender.type === "agent"
-    ? { type: "agent", agentId: sender.agentId, entries: [agentRunEntry(message, context)] }
+  if (sender.type === "agent") {
+    return { type: "agent", agentId: sender.agentId, entries: [agentRunEntry(message, context)] };
+  }
+  const replies = context.threads?.get(message.sequence)?.replies;
+  return replies
+    ? { type: "user", message, thread: transcriptThread(message.sequence, replies, context) }
     : { type: "user", message };
 }
 
-/** Adds the message to the row it continues: the same agent's run, or matching system messages. */
+/**
+ * Adds the message to the row it continues: a reply to the row holding its thread, an agent's
+ * message to its own run, or a system message to matching ones.
+ */
 function extendRow(row: TranscriptRow, message: ChannelMessage, context: RowContext): boolean {
   if (row.type === "system" && isChannelSystemMessage(message)) {
     const group = systemMessageGroup(message);
@@ -158,13 +235,80 @@ function extendRow(row: TranscriptRow, message: ChannelMessage, context: RowCont
     row.messages.push(message);
     return true;
   }
-  if (row.type !== "agent" || isChannelSystemMessage(message)) return false;
+  if (isChannelSystemMessage(message)) return false;
+  const thread = threadOf(message, context);
+  if (thread) {
+    if (row.type === "thread" && row.thread.sequence === thread.sequence) {
+      row.thread = transcriptThread(thread.sequence, [...row.thread.replies, message], context);
+      return true;
+    }
+    // A reply below its top-level message is already in its summary.
+    return (
+      (row.type === "user" && row.message.sequence === thread.sequence) ||
+      (row.type === "agent" &&
+        row.entries.some((entry) => entry.message.sequence === thread.sequence))
+    );
+  }
+  if (row.type !== "agent") return false;
   if (message.sender.type !== "agent" || message.sender.agentId !== row.agentId) return false;
   const last = row.entries.at(-1)!;
   const gap = Date.parse(message.timestamp) - Date.parse(last.message.timestamp);
   if (gap > RUN_WINDOW_MS) return false;
   row.entries.push(agentRunEntry(message, context, last));
   return true;
+}
+
+/** The thread a reply belongs to, when the rows group replies into threads. */
+function threadOf(
+  { threadSequence: sequence }: ChannelConversationMessage,
+  { threads }: RowContext,
+): { sequence: number; root?: ChannelConversationMessage } | undefined {
+  if (sequence === undefined || !threads) return undefined;
+  return { sequence, root: threads.get(sequence)?.root };
+}
+
+function transcriptThread(
+  sequence: number,
+  replies: ChannelConversationMessage[],
+  context: RowContext,
+): TranscriptThread {
+  const question = replies.filter(({ request }) => request).at(-1);
+  return {
+    sequence,
+    replies,
+    ...(question ? { request: requestState(question, context) } : {}),
+  };
+}
+
+/** Each loaded thread's replies, and its top-level message when that is loaded too. */
+function loadedThreads(messages: readonly ChannelMessage[]): Map<number, LoadedThread> {
+  const threads = new Map<number, LoadedThread>();
+  for (const message of messages) {
+    if (message.threadSequence === undefined || isChannelSystemMessage(message)) continue;
+    const thread = threads.get(message.threadSequence);
+    if (thread) thread.replies.push(message);
+    else threads.set(message.threadSequence, { replies: [message] });
+  }
+  for (const message of messages) {
+    const thread = threads.get(message.sequence);
+    if (thread && !isChannelSystemMessage(message)) thread.root = message;
+  }
+  return threads;
+}
+
+function latestUserSequence(messages: readonly ChannelMessage[]): number {
+  return messages.reduce(
+    (latest, { sender, sequence }) =>
+      sender.type === "user" ? Math.max(latest, sequence) : latest,
+    0,
+  );
+}
+
+function requestState(
+  message: ChannelConversationMessage,
+  { latestUserSequence }: RowContext,
+): ChannelRequestState {
+  return message.sequence > latestUserSequence ? "pending" : "acknowledged";
 }
 
 /** Your messages are the user's own and those for them; system changes stay in the full view. */
@@ -179,13 +323,10 @@ function agentRunEntry(
   context: RowContext,
   previous?: AgentRunEntry,
 ): AgentRunEntry {
-  const { lead, members, latestUserSequence } = context;
+  const { lead, members } = context;
   const addressee = addresseeOf(message, context);
-  const request: ChannelRequestState | undefined = message.request
-    ? message.sequence > latestUserSequence
-      ? "pending"
-      : "acknowledged"
-    : undefined;
+  const request = message.request ? requestState(message, context) : undefined;
+  const replies = context.threads?.get(message.sequence)?.replies;
   return {
     message,
     body: withoutLeadingMentions(message.content, [lead, ...members]),
@@ -194,6 +335,7 @@ function agentRunEntry(
     startsRun: !previous,
     showHeader: !previous || addressee !== previous.addressee || request !== undefined,
     collapsible: !isForUser(message, addressee),
+    ...(replies ? { thread: transcriptThread(message.sequence, replies, context) } : {}),
   };
 }
 

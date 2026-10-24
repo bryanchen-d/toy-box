@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDebouncer } from "@tanstack/react-pacer/debouncer";
 import { getOrCreateClientId } from "@workspace/model/config/clientId";
 import type { DraftKey, SavedDraft } from "@workspace/model/state/drafts";
+import type { WorkspaceState } from "@workspace/model/state/reducer";
+import { dispatchWorkspaceAction, workspaceQueries } from "@workspace/queries";
 import { useDispatchWorkspaceAction, useWorkspaceSelector } from "./state";
 
 const DRAFT_SYNC_DELAY_MS = 1500;
@@ -47,6 +50,27 @@ export function useSavedDraft(key: DraftKey) {
   }, [origin, shared, sync]);
 
   return { value, onValueChange };
+}
+
+/**
+ * Edits the saved draft of a composer that isn't mounted, as this client, so the composer starts
+ * from the edit when it mounts. A mounted composer edits its own draft instead.
+ */
+export function useEditSavedDraft() {
+  const queryClient = useQueryClient();
+  const [origin] = useState(getOrCreateClientId);
+
+  return (key: DraftKey, edit: (text: string) => string): void => {
+    const workspace = queryClient.getQueryData<WorkspaceState>(workspaceQueries.stateKey());
+    const current = workspace?.drafts[key]?.text ?? "";
+    const text = edit(current);
+    if (text === current) return;
+    dispatchWorkspaceAction(queryClient, {
+      type: "draft.changed",
+      key,
+      draft: { text, origin, updatedAt: Date.now() },
+    });
+  };
 }
 
 export function shouldAdoptSavedDraft(

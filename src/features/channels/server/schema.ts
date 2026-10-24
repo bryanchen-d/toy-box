@@ -37,6 +37,10 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
       attachments          TEXT CHECK (
         attachments IS NULL OR (sender_type <> 'system' AND json_valid(attachments))
       ),
+      -- A reply names the earlier top-level message that starts its thread.
+      thread_sequence      INTEGER CHECK (
+        thread_sequence IS NULL OR (sender_type <> 'system' AND thread_sequence < sequence)
+      ),
       timestamp            TEXT NOT NULL,
       CHECK (request = 0 OR (sender_type = 'agent' AND sender_agent_id = channel_id)),
       CHECK (
@@ -48,6 +52,10 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_channel_messages_sender
       ON channel_messages(channel_id, sender_type, sequence);
+
+    CREATE INDEX IF NOT EXISTS idx_channel_messages_thread
+      ON channel_messages(channel_id, thread_sequence, sequence)
+      WHERE thread_sequence IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS channel_message_reactions (
       channel_id       TEXT NOT NULL,

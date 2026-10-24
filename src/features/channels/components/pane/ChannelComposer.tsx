@@ -21,6 +21,7 @@ import type { WorkspaceFile } from "@files/model";
 import { ComposerTray } from "@workspace/components/outputs/ComposerTray";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { useSavedDraft } from "@workspace/hooks/useSavedDraft";
+import type { DraftKey } from "@workspace/model/state/drafts";
 import { createEditorPaneId } from "@workspace/model/panes";
 import { Composer, ComposerSendButton } from "@/shared/composers/Composer";
 import { useComposerDraft } from "@/shared/composers/useComposerDraft";
@@ -33,27 +34,45 @@ import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview
 /** Starts a message from elsewhere in the pane, continuing whatever draft exists. */
 export type ChannelComposerHandle = {
   /** Addresses the draft to an agent by mentioning it first. */
-  reply: (agent: ChannelAgent) => void;
+  reply: (agent: Pick<ChannelAgent, "name">) => void;
   /** Begins a mention, so its menu can address or add an agent. */
   mention: () => void;
+  focus: () => void;
 };
+
+/** The saved draft of the Channel's composer, or of one thread's. */
+export function channelDraftKey(channelId: string, threadSequence?: number): DraftKey {
+  return threadSequence === undefined
+    ? `channel:${channelId}`
+    : `channel:${channelId}:${threadSequence}`;
+}
+
+/** The draft with an agent's mention first, unless it already opens with it. */
+export function addressedDraft(text: string, agent: Pick<ChannelAgent, "name">): string {
+  const mention = `@${agentHandleFromName(agent.name)} `;
+  return text.startsWith(mention) ? text : `${mention}${text}`;
+}
 
 export function ChannelComposer({
   channelId,
+  threadSequence,
   state,
   handleRef,
   onSubmit,
   onShowRequest,
 }: {
   channelId: string;
+  /** Replies in this thread, in place of posting to the Channel. */
+  threadSequence?: number;
   state?: ChannelState;
   handleRef: RefObject<ChannelComposerHandle | null>;
   onSubmit: (message: Pick<PostChannelMessageInput, "content" | "attachments">) => Promise<unknown>;
-  onShowRequest: () => void;
+  onShowRequest?: () => void;
 }) {
   const { revealFile, focusedPaneAtom } = useWorkspaceSurface();
   const channel = state?.channel;
   const diff = channelTasksDiff(channel?.tasks ?? []);
+  const inThread = threadSequence !== undefined;
   const request = state?.request;
   const needsReply = channel ? channelHasPendingRequest(channel) : false;
   const { lead, members, agents } = useChannelPane();
@@ -61,7 +80,7 @@ export function ChannelComposer({
     .map(({ file, title, sharedAt }) => ({ file, label: title, time: Date.parse(sharedAt) }))
     .reverse();
   const draft = useComposerDraft({
-    ...useSavedDraft(`channel:${channelId}`),
+    ...useSavedDraft(channelDraftKey(channelId, threadSequence)),
     onSend: onSubmit,
     disabled: !state,
   });
@@ -77,8 +96,7 @@ export function ChannelComposer({
 
   useImperativeHandle(handleRef, () => ({
     reply: (agent) => {
-      const mention = `@${agentHandleFromName(agent.name)} `;
-      if (!draft.value.startsWith(mention)) draft.setValue(`${mention}${draft.value}`);
+      draft.setValue(addressedDraft(draft.value, agent));
       draft.focus();
     },
     mention: () => {
@@ -86,6 +104,7 @@ export function ChannelComposer({
       draft.setValue(value === "" || /\s$/.test(value) ? `${value}@` : `${value} @`);
       draft.focus();
     },
+    focus: draft.focus,
   }));
 
   function openArtifact(file: WorkspaceFile) {
@@ -97,21 +116,23 @@ export function ChannelComposer({
     <Composer
       draft={draft}
       tray={
-        <ComposerTray
-          artifacts={artifacts ?? []}
-          checklist={channelTaskItems({
-            tasks: channel?.tasks ?? [],
-            owners: agents,
-            artifacts: state?.artifacts ?? [],
-            onArtifactOpen: ({ file }) => openArtifact(file),
-            closeOnArtifactOpen: true,
-          })}
-          artifactTimeLabel="Shared"
-          checklistLabel="Tasks"
-          checklistHeaderDetail={diff && <TaskDiff diff={diff} />}
-          extraOutput={channel?.preview && <WorkspacePreview preview={channel.preview} />}
-          onOpenArtifact={openArtifact}
-        />
+        !inThread && (
+          <ComposerTray
+            artifacts={artifacts ?? []}
+            checklist={channelTaskItems({
+              tasks: channel?.tasks ?? [],
+              owners: agents,
+              artifacts: state?.artifacts ?? [],
+              onArtifactOpen: ({ file }) => openArtifact(file),
+              closeOnArtifactOpen: true,
+            })}
+            artifactTimeLabel="Shared"
+            checklistLabel="Tasks"
+            checklistHeaderDetail={diff && <TaskDiff diff={diff} />}
+            extraOutput={channel?.preview && <WorkspacePreview preview={channel.preview} />}
+            onOpenArtifact={openArtifact}
+          />
+        )
       }
       completions={{
         sources: [
@@ -126,15 +147,21 @@ export function ChannelComposer({
       controls={
         <>
           <ChannelAudience audience={audience} agentCount={agents.length} />
-          {request && <InputNeeded request={request.content} onShow={onShowRequest} />}
+          {request && onShowRequest && (
+            <InputNeeded request={request.content} onShow={onShowRequest} />
+          )}
         </>
       }
-      actions={<ComposerSendButton draft={draft} label="Send message" />}
-      label="Channel message"
+      actions={
+        <ComposerSendButton draft={draft} label={inThread ? "Send reply" : "Send message"} />
+      }
+      label={inThread ? "Thread reply" : "Channel message"}
       placeholder={
-        needsReply
-          ? `Reply to ${lead.name}, or @mention an agent`
-          : `Message ${channel ? `#${channel.name}` : "the channel"}, or @mention an agent`
+        inThread
+          ? "Reply in thread, or @mention an agent"
+          : needsReply
+            ? `Reply to ${lead.name}, or @mention an agent`
+            : `Message ${channel ? `#${channel.name}` : "the channel"}, or @mention an agent`
       }
     />
   );

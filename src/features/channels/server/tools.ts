@@ -5,6 +5,7 @@ import {
   channelIdentitySchema,
   channelMessageContentSchema,
   channelReactionKindSchema,
+  channelThreadSequenceSchema,
   createChannelMemberInputSchema,
   createChannelInputSchema,
   editChannelTasksInputSchema,
@@ -81,10 +82,11 @@ const createCurrentChannelMembersTool = defineTool("create_channel_members", {
 
 const postChannelMessageTool = defineTool("post_channel_message", {
   description:
-    "Posts a user-attributed Markdown message with optional image or video paths to a channel. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents. A message without mentions wakes the lead. Read the channel for exact mentions.",
+    "Posts a user-attributed Markdown message with optional image or video paths to a channel, or replies in a thread with threadSequence. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents, in a thread or not. A message without mentions wakes the lead. Read the channel for exact mentions.",
   parameters: channelIdentitySchema.extend({
     content: conciseChannelMessageSchema,
     attachments: z.array(filePathSchema).optional(),
+    threadSequence: channelThreadSequenceSchema.optional(),
   }),
   handler: async ({ attachments, ...input }, invocation) => {
     const { postChannelMessageFromSession } = await import("@channels/server");
@@ -97,15 +99,34 @@ const postChannelMessageTool = defineTool("post_channel_message", {
   },
 });
 
+const readThreadParameter = {
+  threadSequence: channelThreadSequenceSchema
+    .optional()
+    .describe(
+      "Reads only the thread of the message with this sequence: its top-level message and every reply, without changing read state.",
+    ),
+};
+
 const readChannelForSessionTool = defineTool("read_channel", {
   description:
-    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. File attachments are absolute paths. Inline uploads are attached images.",
-  parameters: channelIdentitySchema.extend({
-    beforeSequence: z.number().int().positive().optional(),
-  }),
-  handler: async ({ channelId, beforeSequence }) => {
-    const { readChannelForSession } = await import("@channels/server");
-    return toChannelReadToolResult(await readChannelForSession(channelId, beforeSequence));
+    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. A reply's threadSequence names its thread. Pass threadSequence instead to read one whole thread. File attachments are absolute paths. Inline uploads are attached images.",
+  parameters: channelIdentitySchema
+    .extend({
+      beforeSequence: z.number().int().positive().optional(),
+      ...readThreadParameter,
+    })
+    .refine(
+      ({ beforeSequence, threadSequence }) =>
+        beforeSequence === undefined || threadSequence === undefined,
+      "Pass either beforeSequence or threadSequence.",
+    ),
+  handler: async ({ channelId, beforeSequence, threadSequence }) => {
+    const { readChannelForSession, readChannelThread } = await import("@channels/server");
+    return toChannelReadToolResult(
+      threadSequence === undefined
+        ? await readChannelForSession(channelId, beforeSequence)
+        : await readChannelThread(channelId, threadSequence),
+    );
   },
 });
 
@@ -135,17 +156,22 @@ const waitForChannelAgentsTool = defineTool("wait_for_channel_agents", {
 
 const readChannelForAgentTool = defineTool("read_channel", {
   description:
-    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
-  parameters: z.object({}),
-  handler: async (_args, invocation) => {
-    const { readChannelForAgent } = await import("@channels/server");
-    return toChannelReadToolResult(await readChannelForAgent(invocation.sessionId));
+    "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead. File attachments are absolute paths. Inline uploads are attached images.",
+  parameters: z.object(readThreadParameter),
+  handler: async ({ threadSequence }, invocation) => {
+    const { readChannelForAgent, readChannelThreadForAgent } = await import("@channels/server");
+    return toChannelReadToolResult(
+      threadSequence === undefined
+        ? await readChannelForAgent(invocation.sessionId)
+        : await readChannelThreadForAgent(invocation.sessionId, threadSequence),
+    );
   },
 });
 
 const sendChannelMessageParameters = z.object({
   content: conciseChannelMessageSchema,
   attachments: z.array(filePathSchema).optional(),
+  threadSequence: channelThreadSequenceSchema.optional(),
 });
 
 const sendLeadMessageParameters = sendChannelMessageParameters.extend({
@@ -159,7 +185,7 @@ const sendLeadMessageParameters = sendChannelMessageParameters.extend({
 
 const sendChannelMessageTool = defineTool("send_channel_message", {
   description:
-    "Publishes a Markdown channel message without ending the turn. Pass screenshot, image, and video paths in attachments. Name-derived @mentions wake the addressed agents. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
+    "Publishes a Markdown channel message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, and video paths in attachments. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
   parameters: sendChannelMessageParameters,
   handler: async (args: z.output<typeof sendLeadMessageParameters>, invocation) => {
     const { sendChannelMessageFromAgent } = await import("@channels/server");
@@ -167,6 +193,7 @@ const sendChannelMessageTool = defineTool("send_channel_message", {
       content: args.content,
       attachmentPaths: args.attachments,
       request: args.request,
+      threadSequence: args.threadSequence,
     });
     return { sequence: message.sequence };
   },

@@ -297,6 +297,8 @@ export type ChannelConversationMessage<A = ChannelAttachment> = ChannelMessageBa
   content: string;
   /** The lead asks for the user's response; a later user message acknowledges it. */
   request?: true;
+  /** A reply's thread: the sequence of the top-level message that starts it. */
+  threadSequence?: number;
   attachments?: A[];
   reactions?: ChannelReaction[];
 };
@@ -307,7 +309,17 @@ export type ChannelSystemMessage = ChannelMessageBase & {
   attachments?: never;
   reactions?: never;
   request?: never;
+  threadSequence?: never;
 };
+
+/** Replying to any message in a thread replies to that thread; system messages start none. */
+export const channelThreadSequenceSchema = z
+  .number()
+  .int()
+  .positive()
+  .describe(
+    "Replies in the thread of the user or agent message with this sequence, or of the thread that message belongs to.",
+  );
 
 export type ChannelMessage<A = ChannelAttachment> =
   | ChannelConversationMessage<A>
@@ -435,6 +447,7 @@ export const postChannelMessageInputSchema = z
     channelId: durableIdSchema,
     content: channelMessageTextSchema,
     attachments: attachmentsSchema.optional(),
+    threadSequence: channelThreadSequenceSchema.optional(),
   })
   .strict()
   .refine(({ content, attachments }) => content.length > 0 || (attachments?.length ?? 0) > 0, {

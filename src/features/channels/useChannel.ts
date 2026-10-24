@@ -90,7 +90,9 @@ export function useChannel(
       console.error("Failed to load previous Channel messages:", error),
     );
 
-  const postMessage = (message: Pick<PostChannelMessageInput, "content" | "attachments">) => {
+  const postMessage = (
+    message: Pick<PostChannelMessageInput, "content" | "attachments" | "threadSequence">,
+  ) => {
     const delivery = post({ ...message, channelId, id: generateUUID() });
     void delivery.catch((error: unknown) =>
       console.error("Unable to post Channel message:", error),

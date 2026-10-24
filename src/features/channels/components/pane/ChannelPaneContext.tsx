@@ -2,12 +2,13 @@ import { createContext, useContext } from "react";
 import type {
   ChannelAgent,
   ChannelAgentIdentity,
+  ChannelConversationMessage,
   ChannelLead,
   ChannelMember,
 } from "@channels/model";
 import type { ChannelAgentPresence } from "@channels/model/presence";
 
-/** The open Channel's agents, and the drafts its transcript and overview start in the composer. */
+/** The open Channel's agents, its threads, and the drafts its transcript and overview start. */
 type ChannelPane = {
   lead: ChannelLead;
   members: readonly ChannelMember[];
@@ -16,8 +17,12 @@ type ChannelPane = {
   /** The agent with this ID, or a deleted identity once it has left. */
   agent: (id: string) => ChannelAgentIdentity;
   presence: Record<string, ChannelAgentPresence>;
-  /** Addresses the draft to an agent by mentioning it first. */
-  reply: (agent: ChannelAgent) => void;
+  /** Shows a thread by its top-level message's sequence. */
+  openThread: (sequence: number) => void;
+  /** Answers a message in its thread, addressing the draft to the agent who wrote it. */
+  replyInThread: (message: ChannelConversationMessage) => void;
+  /** A message still being sent has no committed sequence to reply to yet. */
+  isSending: (messageId: string) => boolean;
   /** Begins a mention, so the picker can address or add an agent. */
   mention: () => void;
 };

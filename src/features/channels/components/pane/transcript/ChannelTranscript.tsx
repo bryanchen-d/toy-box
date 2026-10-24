@@ -10,6 +10,7 @@ import { AgentRun } from "./AgentRun";
 import { ChannelPlaceholder } from "./ChannelPlaceholder";
 import { ChannelUserMessage } from "./ChannelUserMessage";
 import { SystemMessageGroup } from "./SystemMessageGroup";
+import { ThreadActivity } from "./ThreadReplies";
 import {
   transcriptDayLabel,
   transcriptRows,
@@ -96,15 +97,17 @@ export function ChannelTranscript({
   );
 }
 
-/** A user's message, one agent's run, or merged system messages. */
-function TranscriptRowContent({ row }: { row: TranscriptRow }) {
+/** A user's message, one agent's run, merged system messages, or replies in an earlier thread. */
+export function TranscriptRowContent({ row }: { row: TranscriptRow }) {
   switch (row.type) {
     case "user":
-      return <ChannelUserMessage message={row.message} />;
+      return <ChannelUserMessage message={row.message} thread={row.thread} />;
     case "agent":
       return <AgentRun agentId={row.agentId} entries={row.entries} />;
     case "system":
       return <SystemMessageGroup messages={row.messages} />;
+    case "thread":
+      return <ThreadActivity thread={row.thread} root={row.root} />;
   }
 }
 

@@ -23,8 +23,8 @@ test("only the lead's messages can request input", () => {
   const sendMember = channelMemberTools.find(({ name }) => name === "send_channel_message");
   const flagged = { content: "Which color?", request: true };
 
-  expect(sendLead?.parameters?.parse(flagged)).toEqual(flagged);
-  expect(sendMember?.parameters?.parse(flagged)).toEqual({ content: "Which color?" });
+  expect<unknown>(sendLead?.parameters?.parse(flagged)).toEqual(flagged);
+  expect<unknown>(sendMember?.parameters?.parse(flagged)).toEqual({ content: "Which color?" });
 });
 
 test("only the lead can ask to be woken, and within two hours", () => {

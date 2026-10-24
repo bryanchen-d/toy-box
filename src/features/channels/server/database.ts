@@ -344,6 +344,20 @@ export class ChannelDatabase {
     return listMessagesBefore(this.db, channelId, beforeSequence, limit);
   }
 
+  /** The thread a message starts or belongs to: its top-level message, then every reply. */
+  async listThread(channelId: string, sequence: number): Promise<ChannelMessage[]> {
+    return inStateTransaction(this.db, async (db) => {
+      const threadSequence = await resolveThreadSequence(db, channelId, sequence);
+      const rows = await db<ChannelMessageRow[]>`
+        SELECT * FROM channel_messages
+        WHERE channel_id = ${channelId}
+          AND (sequence = ${threadSequence} OR thread_sequence = ${threadSequence})
+        ORDER BY sequence
+      `;
+      return hydrateMessages(db, channelId, rows);
+    });
+  }
+
   /** History and reactions share a revision, so clients can reject an overtaken page. */
   async getHistory(channelId: string, beforeSequence: number) {
     return inStateTransaction(this.db, async (db) => {
@@ -359,11 +373,15 @@ export class ChannelDatabase {
     });
   }
 
-  /** Appends a user or Agent message. The lead can flag its own message as a request for the user. */
+  /**
+   * Appends a user or Agent message, in a thread when it replies. The lead can flag its own
+   * message as a request for the user.
+   */
   async appendMessage({
     channelId,
     attachments,
     request,
+    threadSequence,
     ...message
   }: Omit<ChannelConversationMessage, "sequence" | "timestamp" | "reactions" | "request"> & {
     channelId: string;
@@ -375,12 +393,17 @@ export class ChannelDatabase {
     }
     return inStateTransaction(this.db, async (db) => {
       const channel = await requireChannel(db, channelId);
+      const thread =
+        threadSequence === undefined
+          ? undefined
+          : await resolveThreadSequence(db, channelId, threadSequence);
       const acknowledgedRequest =
         message.sender.type === "user" && channel.requestSequence !== null;
       const change = await appendMessage(db, channelId, (position) => ({
         ...message,
         ...position,
         ...(request ? { request: true as const } : {}),
+        ...(thread === undefined ? {} : { threadSequence: thread }),
         ...(attachments?.length ? { attachments } : {}),
       }));
       return {
@@ -747,7 +770,24 @@ function messageColumns(message: ChannelMessage) {
       typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     attachments: message.attachments?.length ? JSON.stringify(message.attachments) : null,
     request: message.request ? 1 : 0,
+    thread_sequence: message.threadSequence ?? null,
   };
+}
+
+/** Replying within a thread joins it, so threads stay one level deep. */
+async function resolveThreadSequence(
+  db: Bun.SQL,
+  channelId: string,
+  sequence: number,
+): Promise<number> {
+  const [row] = await db<Pick<ChannelMessageRow, "sender_type" | "thread_sequence">[]>`
+    SELECT sender_type, thread_sequence FROM channel_messages
+    WHERE channel_id = ${channelId} AND sequence = ${sequence}
+  `;
+  if (!row || row.sender_type === "system") {
+    throw new Error("Reply to a user or agent message in this channel.");
+  }
+  return row.thread_sequence ?? sequence;
 }
 
 async function changeAgentStatus(
@@ -880,6 +920,7 @@ type ChannelMessageRow = {
   content: string;
   request: number;
   attachments: string | null;
+  thread_sequence: number | null;
   timestamp: string;
 };
 
@@ -1005,6 +1046,7 @@ function messageFromRow(row: ChannelMessageRow, reactions: ChannelReaction[]): C
     sender,
     content: row.content,
     ...(row.request ? { request: true as const } : {}),
+    ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     ...(attachments?.length ? { attachments } : {}),
     ...(reactions.length ? { reactions } : {}),
   };

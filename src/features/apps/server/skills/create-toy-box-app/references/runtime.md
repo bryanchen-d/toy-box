@@ -386,9 +386,11 @@ A task's `artifactId` is the `id` of its artifact in `state.artifacts`. `channel
 sums their direct and reported descendant diffs, or returns `undefined` when none are reported;
 pass `[task]` for one subtree. It reuses the Channels logic.
 `loadPrevious(sequence?)` loads one older page or pages through a target message.
-`postMessage({ content, attachments? })` uses the shared optimistic mutation and
-returns a promise for the persisted `ChannelMessage`. Resolution acknowledges
-delivery, not execution or completion by an agent. Rejection must be surfaced.
+`postMessage({ content, attachments?, threadSequence? })` uses the shared optimistic mutation and
+returns a promise for the persisted `ChannelMessage`. Pass a message's `sequence` as
+`threadSequence` to reply in its thread. A reply carries its thread's `threadSequence`, so a
+transcript that shows only top-level messages filters out messages that have one.
+Resolution acknowledges delivery, not execution or completion by an agent. Rejection must be surfaced.
 The hook also exposes `postError` (`Error | null`) for delivery feedback.
 
 Observation is active by default and marks visible content read. Set `mode: "passive"`

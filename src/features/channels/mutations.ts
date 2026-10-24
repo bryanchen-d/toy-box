@@ -93,6 +93,7 @@ export const channelMutations = {
                   sender: { type: "user" },
                   content: input.content,
                   ...(input.attachments ? { attachments: input.attachments } : {}),
+                  ...(input.threadSequence ? { threadSequence: input.threadSequence } : {}),
                   timestamp: new Date().toISOString(),
                 },
               }),

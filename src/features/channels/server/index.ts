@@ -256,6 +256,24 @@ export async function readChannelForAgent(sessionId: string) {
   return result;
 }
 
+/** One thread in full, read without changing anyone's read position. */
+export async function readChannelThread(channelId: string, threadSequence: number) {
+  const database = new ChannelDatabase(await getStateDatabase());
+  const channel = await database.getChannel(channelId);
+  if (!channel) throw new Error("Channel not found.");
+  return readChannel(
+    database,
+    channel,
+    await database.listThread(channel.id, threadSequence),
+    false,
+  );
+}
+
+export async function readChannelThreadForAgent(sessionId: string, threadSequence: number) {
+  const agent = await requireChannelAgent(new ChannelDatabase(await getStateDatabase()), sessionId);
+  return readChannelThread(agent.channelId, threadSequence);
+}
+
 async function readChannel(
   database: ChannelDatabase,
   channel: Channel,
@@ -286,6 +304,7 @@ export async function sendChannelMessageFromAgent(
     content: string;
     attachmentPaths?: readonly string[];
     request?: boolean;
+    threadSequence?: number;
   },
 ): Promise<StoredChannelMessage> {
   const agent = await requireChannelAgent(new ChannelDatabase(await getStateDatabase()), sessionId);
@@ -299,6 +318,7 @@ export async function sendChannelMessageFromAgent(
     content: input.content,
     attachments: await resolveAttachmentPaths(sessionId, input.attachmentPaths),
     request: input.request,
+    threadSequence: input.threadSequence,
   });
 }
 
