@@ -75,6 +75,9 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
       path                 TEXT NOT NULL,
       title                TEXT NOT NULL,
       created_at           TEXT NOT NULL,
+      -- The user's arrangement, ascending; a new share takes a position before every other.
+      position             INTEGER NOT NULL DEFAULT 0 CHECK (typeof(position) = 'integer'),
+      archived             INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
       CHECK (
         (kind = 'session' AND session_id IS NOT NULL) OR
         (kind = 'machine' AND session_id IS NULL)
@@ -87,8 +90,8 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_artifacts_session
       ON channel_artifacts(channel_id, session_id, path) WHERE kind = 'session';
 
-    CREATE INDEX IF NOT EXISTS idx_channel_artifacts_channel
-      ON channel_artifacts(channel_id, created_at, kind, session_id, path);
+    CREATE INDEX IF NOT EXISTS idx_channel_artifacts_position
+      ON channel_artifacts(channel_id, position);
 
     CREATE TABLE IF NOT EXISTS channel_routines (
       id          TEXT PRIMARY KEY,

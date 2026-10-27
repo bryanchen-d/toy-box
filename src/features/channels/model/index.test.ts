@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { ChannelAgent, ChannelMember } from "./index";
+import { machineFile } from "@files/model";
+import type {
+  ArrangeChannelArtifactsInput,
+  ChannelAgent,
+  ChannelArtifact,
+  ChannelMember,
+} from "./index";
 import {
   agentHandleFromName,
+  applyChannelArtifactArrangement,
+  arrangeChannelArtifactsInputSchema,
   channelAudienceLabel,
   channelLead,
   channelRoutineInputSchema,
@@ -270,4 +278,127 @@ describe("channel routines", () => {
       ).toBe(false);
     },
   );
+});
+
+describe("artifact arrangement", () => {
+  const artifact = (name: string): ChannelArtifact => {
+    const file = machineFile(`/workspace/${name}.md`);
+    return { id: `machine:${file.path}`, file, title: name, sharedAt: "2026-10-27T16:00:00.000Z" };
+  };
+  const [plan, spec, notes, brief] = ["plan", "spec", "notes", "brief"].map(artifact) as [
+    ChannelArtifact,
+    ChannelArtifact,
+    ChannelArtifact,
+    ChannelArtifact,
+  ];
+  const artifacts = [plan, spec, notes, brief];
+  const arrange = (
+    artifactIds: ChannelArtifact[],
+    arrangement: { beforeArtifactId?: ChannelArtifact | null; archived?: boolean } = {},
+  ) =>
+    applyChannelArtifactArrangement(artifacts, {
+      artifactIds: artifactIds.map(({ id }) => id),
+      ...(arrangement.beforeArtifactId !== undefined
+        ? { beforeArtifactId: arrangement.beforeArtifactId?.id ?? null }
+        : {}),
+      ...(arrangement.archived !== undefined ? { archived: arrangement.archived } : {}),
+    });
+  const titles = (arranged: readonly ChannelArtifact[]) => arranged.map(({ title }) => title);
+
+  test("moves an artifact before another, or last for null", () => {
+    expect(titles(arrange([notes], { beforeArtifactId: plan }))).toEqual([
+      "notes",
+      "plan",
+      "spec",
+      "brief",
+    ]);
+    expect(titles(arrange([plan], { beforeArtifactId: notes }))).toEqual([
+      "spec",
+      "plan",
+      "notes",
+      "brief",
+    ]);
+    expect(titles(arrange([plan], { beforeArtifactId: null }))).toEqual([
+      "spec",
+      "notes",
+      "brief",
+      "plan",
+    ]);
+  });
+
+  test("moves several artifacts together in the given order", () => {
+    expect(titles(arrange([brief, spec], { beforeArtifactId: plan }))).toEqual([
+      "brief",
+      "spec",
+      "plan",
+      "notes",
+    ]);
+    // Sorting is moving every artifact in its sorted order.
+    expect(titles(arrange([brief, notes, plan, spec], { beforeArtifactId: null }))).toEqual([
+      "brief",
+      "notes",
+      "plan",
+      "spec",
+    ]);
+  });
+
+  test("archives and restores in place without touching other artifacts", () => {
+    const archived = arrange([spec, brief], { archived: true });
+    expect(archived).toEqual([
+      plan,
+      { ...spec, archived: true },
+      notes,
+      { ...brief, archived: true },
+    ]);
+    expect(archived[0]).toBe(plan);
+    const restored = applyChannelArtifactArrangement(archived, {
+      artifactIds: [spec.id, brief.id],
+      archived: false,
+    });
+    expect(restored).toEqual(artifacts);
+    expect(restored[1]).not.toHaveProperty("archived");
+  });
+
+  test("moves and archives together", () => {
+    expect(arrange([plan], { beforeArtifactId: null, archived: true })).toEqual([
+      spec,
+      notes,
+      brief,
+      { ...plan, archived: true },
+    ]);
+  });
+
+  test("an arrangement that changes nothing keeps every artifact", () => {
+    for (const arranged of [
+      arrange([spec]),
+      arrange([spec], { beforeArtifactId: notes, archived: false }),
+      arrange([spec, notes], { beforeArtifactId: brief }),
+    ]) {
+      expect(arranged).toEqual(artifacts);
+      arranged.forEach((current, index) => expect(current).toBe(artifacts[index]!));
+    }
+  });
+
+  test.each<Omit<ArrangeChannelArtifactsInput, "channelId">>([
+    { artifactIds: ["machine:/workspace/missing.md"] },
+    { artifactIds: [plan.id], beforeArtifactId: "machine:/workspace/missing.md" },
+  ])("rejects artifacts this channel hasn't shared: %o", (arrangement) => {
+    expect(() => applyChannelArtifactArrangement(artifacts, arrangement)).toThrow(
+      "Arrange artifacts shared in this channel.",
+    );
+  });
+
+  test("rejects moving artifacts before one of themselves", () => {
+    expect(() => arrange([plan, spec], { beforeArtifactId: spec })).toThrow(
+      "Move artifacts before one that isn't moving.",
+    );
+  });
+
+  test("lists each artifact at most once", () => {
+    const input = { channelId: "channel", artifactIds: [plan.id, plan.id] };
+    expect(arrangeChannelArtifactsInputSchema.safeParse(input).success).toBe(false);
+    expect(
+      arrangeChannelArtifactsInputSchema.safeParse({ ...input, artifactIds: [] }).success,
+    ).toBe(false);
+  });
 });

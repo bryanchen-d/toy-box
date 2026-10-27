@@ -7,8 +7,10 @@ import type {
   ChannelMember,
 } from "@channels/model";
 import type { ChannelAgentPresence } from "@channels/model/presence";
+import type { WorkspaceFile } from "@files/model";
 
-/** The open Channel's agents, its threads, and the drafts its transcript and overview start. */
+/** The open Channel's agents, its threads and artifacts, and the drafts its transcript and
+ *  overview start. */
 type ChannelPane = {
   lead: ChannelLead;
   members: readonly ChannelMember[];
@@ -25,6 +27,10 @@ type ChannelPane = {
   isSending: (messageId: string) => boolean;
   /** Begins a mention, so the picker can address or add an agent. */
   mention: () => void;
+  /** Brings a shared artifact's editor forward, opening it when it isn't showing. */
+  openArtifact: (file: WorkspaceFile) => void;
+  /** Shows the artifacts panel, where the user arranges what the composer tray shows. */
+  openArtifacts: () => void;
 };
 
 const ChannelPaneContext = createContext<ChannelPane | undefined>(undefined);

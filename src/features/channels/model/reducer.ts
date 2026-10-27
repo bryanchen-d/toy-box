@@ -50,6 +50,8 @@ export function reduceChannelState(previous: ChannelState, event: ChannelStateEv
   if (event.type === "reaction") {
     state.messages = state.messages.map((message) => reduceChannelReaction(message, event));
     if (state.request) state.request = reduceChannelReaction(state.request, event);
+  } else if (event.type === "artifacts") {
+    state.artifacts = event.artifacts;
   } else if (event.type === "message") {
     const { message } = event;
     state.messages = upsertMessage(state.messages, message);
@@ -205,7 +207,7 @@ function setRoutine(
     : [...routines, routine];
 }
 
-/** Retitling a shared artifact preserves its original share time. */
+/** A new share comes first; retitling one keeps its place, archive state, and share time. */
 function shareArtifact(
   artifacts: readonly ChannelArtifact[],
   incoming: Omit<ChannelArtifact, "id" | "sharedAt">,
@@ -214,5 +216,5 @@ function shareArtifact(
   const id = workspaceFileId(incoming.file);
   return artifacts.some((artifact) => artifact.id === id)
     ? artifacts.map((artifact) => (artifact.id === id ? { ...artifact, ...incoming } : artifact))
-    : [...artifacts, { ...incoming, id, sharedAt }];
+    : [{ ...incoming, id, sharedAt }, ...artifacts];
 }

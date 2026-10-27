@@ -191,7 +191,65 @@ export type ChannelArtifact = z.output<typeof channelArtifactSchema> & {
   id: string;
   /** Public resource address supplied by the server; never accepted as a command input. */
   url?: string;
+  /** The user filed it away from the composer tray; it stays shared and openable. */
+  archived?: true;
 };
+
+const channelArtifactIdSchema = z.string().min(1);
+
+/** How the user arranges shared artifacts. Omitted fields keep their places or archive state. */
+export const arrangeChannelArtifactsInputSchema = z
+  .object({
+    channelId: durableIdSchema,
+    /** The artifacts to arrange, in the order a move places them. */
+    artifactIds: z
+      .array(channelArtifactIdSchema)
+      .min(1)
+      .refine((ids) => new Set(ids).size === ids.length, "List each artifact once."),
+    /** The artifact they move before, or null to move them last. */
+    beforeArtifactId: channelArtifactIdSchema.nullable().optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict();
+export type ArrangeChannelArtifactsInput = z.output<typeof arrangeChannelArtifactsInputSchema>;
+
+/** Moves or archives some artifacts, leaving the rest of the user's arrangement in place. A move
+ *  places them together, in the given order. */
+export function applyChannelArtifactArrangement(
+  artifacts: readonly ChannelArtifact[],
+  { artifactIds, beforeArtifactId, archived }: Omit<ArrangeChannelArtifactsInput, "channelId">,
+): ChannelArtifact[] {
+  const shared = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+  if (
+    artifactIds.some((id) => !shared.has(id)) ||
+    (beforeArtifactId && !shared.has(beforeArtifactId))
+  ) {
+    throw new Error("Arrange artifacts shared in this channel.");
+  }
+  if (beforeArtifactId && artifactIds.includes(beforeArtifactId)) {
+    throw new Error("Move artifacts before one that isn't moving.");
+  }
+  const arranged = new Map(
+    artifactIds.map((id) => [id, withArchived(shared.get(id)!, archived)] as const),
+  );
+  if (beforeArtifactId === undefined) {
+    return artifacts.map((artifact) => arranged.get(artifact.id) ?? artifact);
+  }
+  const others = artifacts.filter(({ id }) => !arranged.has(id));
+  const index =
+    beforeArtifactId === null
+      ? others.length
+      : others.findIndex(({ id }) => id === beforeArtifactId);
+  return [...others.slice(0, index), ...arranged.values(), ...others.slice(index)];
+}
+
+/** The same artifact when its archive state already matches. */
+function withArchived(artifact: ChannelArtifact, archived: boolean | undefined): ChannelArtifact {
+  if (archived === undefined || archived === !!artifact.archived) return artifact;
+  if (archived) return { ...artifact, archived: true };
+  const { archived: _archived, ...restored } = artifact;
+  return restored;
+}
 
 const channelMessageActorSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("user") }).strict(),
@@ -341,7 +399,7 @@ export type ChannelState = {
   messages: ChannelMessage[];
   /** The newest unanswered public request, including one outside the message window. */
   request: ChannelConversationMessage | null;
-  /** Oldest first. */
+  /** In the user's arrangement; new shares come first. */
   artifacts: ChannelArtifact[];
   /** Oldest first. */
   routines: ChannelRoutine[];
@@ -360,6 +418,7 @@ export type ChannelEvent<A = ChannelAttachment> = (
       reaction: ChannelReaction["reaction"] | null;
     }
   | { type: "tasks"; tasks: ChannelTask[] }
+  | { type: "artifacts"; artifacts: ChannelArtifact[] }
   | { type: "model"; model: ModelConfiguration; updatedAt: string }
   | { type: "read"; seenThrough: number }
   | { type: "member"; member: ChannelMember }

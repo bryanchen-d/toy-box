@@ -55,7 +55,12 @@ export function resolveMessageResources(message: StoredChannelMessage): ChannelM
 }
 
 export function resolveEventResources(event: ChannelEvent<StoredAttachment>): ChannelEvent {
-  return event.type === "message"
-    ? { ...event, message: resolveMessageResources(event.message) }
-    : event;
+  switch (event.type) {
+    case "message":
+      return { ...event, message: resolveMessageResources(event.message) };
+    case "artifacts":
+      return { ...event, artifacts: event.artifacts.map(resolveArtifactResources) };
+    default:
+      return event;
+  }
 }

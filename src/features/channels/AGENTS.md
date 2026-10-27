@@ -80,7 +80,9 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   title and when it was first shared; sharing it again changes only the title. Every artifact
   carries its `id`, so tasks, apps, and native clients never derive it. Files owns the address and
   editor. Channels owns only the shared index and the `artifact_shared` transcript event, whose own
-  timestamp records the share.
+  timestamp records the share. `ChannelState.artifacts` is the user's arrangement: a new share
+  comes first, and the user can move any artifact or archive it, which files it away from the
+  composer tray without unsharing it. Agents still read every shared artifact.
 - `Channel.canvasArtifactId` optionally selects one shared session-owned `.toy` artifact.
   The lead sets or clears it through `update_channel`; validation rejects unshared files,
   machine files, and non-app artifacts. `canvas_changed` is a durable system message,
@@ -145,6 +147,12 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, and recordings to messages; generated images are attached by their saved paths.
+- Let the user arrange artifacts with `arrangeChannelArtifacts`: move a set before another
+  artifact (or last), together in the given order, and archive or restore it. Moving one artifact,
+  moving a selection to the top, and sorting the whole list are all this one verb. One pure
+  `applyChannelArtifactArrangement` serves the server transaction and the browser's optimistic
+  update. Arranging is quiet, like task revisions: one revisioned `artifacts` event replaces the
+  list without a transcript entry or catalog activity.
 
 ### Status and reading
 
@@ -234,7 +242,9 @@ teardowns cannot produce member departures for the deleted Channel. Name, purpos
 changes update Channel metadata and append a separate typed system message for each changed property
 in one transaction, advancing sequence and revision for each; a user purpose change also wakes the lead
 to read the new direction. Preview changes append `preview_changed`; tasks and lead-model changes
-have their own revisioned events without a transcript entry. Human read-position advances also
+have their own revisioned events without a transcript entry, as does an artifact arrangement, which
+rewrites each artifact's `position` and `archived` columns. A new share takes the position before
+every other. Human read-position advances also
 have a revisioned event carrying only the committed cursor.
 Private Agent read-position changes update only Worker metadata. Message, reaction, and artifact tables continue
 to reference the stable Agent ID without a foreign key so authored history survives member removal.
@@ -311,7 +321,8 @@ The stream establishes state and follows changes:
   absent on connection. Workspace deletion also removes closed panes.
 
 `reduceChannelState` applies the complete public protocol: messages derive metadata and attention,
-quiet events replace tasks/model/read state, and presence updates merge or replace the presence map.
+quiet events replace tasks/model/read state and the artifact arrangement, and presence updates
+merge or replace the presence map.
 The separately retained pending request follows replies and reactions even outside the message window.
 Optimistic posts enter the reducer with their client-generated message ID without advancing server
 cursors or clearing attention; the committed echo replaces that message and applies its authoritative
@@ -353,7 +364,8 @@ to these capabilities under Toy Box's existing trusted-owner server assumption.
 and composer. It does not read the workspace catalog or derive agent presence from Session state.
 The sidebar uses the catalog and workspace activity independently; private Session previews and
 Files remain explicit integrations with their own capabilities. `ChannelPaneContext` shares one
-roster, presence, and the composer actions inside the pane. The roster exists from the first
+roster, presence, the composer actions, and opening artifacts and the artifacts panel inside the
+pane. The roster exists from the first
 render, starting from the intrinsic lead, so the composer, transcript, and overview never derive
 their own.
 The composer shell and its intrinsic "To Lead" audience render during SSR. Hydration starts
@@ -401,6 +413,14 @@ offers "Reply in thread", which opens its thread with the draft addressed to its
 former Reply action did. A message still being sent offers none until it commits. "Input needed"
 opens a question asked in a thread.
 
+`ChannelArtifacts` is the third aside, where the user manages what the composer tray shows. It
+opens from the tray's full list and the overview, and lists the Shared or Archived shelf with
+search. Each artifact opens on click, drags by a gutter grip on the Shared shelf while unfiltered,
+and has a menu to move it to the top, up, or down, or to archive or restore it. Moves stay relative
+to the whole shelf while searching. A selection of visible artifacts archives, restores, or moves
+to the top together, and Sort arranges the Shared shelf once by newest, oldest, or name. A drag
+reorders locally until its optimistic arrangement replaces the list.
+
 `useChannel.postMessage` returns the persisted message, or rejects on delivery
 failure. The composer returns that promise to its draft lifecycle for restoration
 on failure and renders `postError`. Apps must not treat delivery as agent completion.
@@ -445,7 +465,9 @@ presents one deleted identity everywhere.
   later user message acknowledges it. The activity row shows working agents; waiting
   shows in the overview, since a request already marks what the user needs to answer.
 - The composer docks Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx)
-  for shared artifacts, newest first, plus the tasks and preview. URL previews
+  for shared artifacts in the user's arrangement, without archived ones, plus the tasks and
+  preview. Each artifact in the tray's full list offers to archive it, and the list ends with
+  Manage artifacts, which opens the artifacts panel. URL previews
   retain their sandboxed hover iframe and open in a new tab. Screen previews
   show a passive live canvas and open/focus a Screen pane without opening a
   private agent Session. Tray, overview and historical preview messages share
@@ -458,7 +480,8 @@ presents one deleted identity everywhere.
   It shows the purpose, directory, and preview, then the team with its presence, the shared
   artifacts with when each was shared, the tasks, and any routines by title with their next
   run, each expanding to its prompt and offering Run routine and Delete routine. A waiting lead shows
-  when its follow-up checks back.
+  when its follow-up checks back. Its artifacts are the Shared shelf in order, with Manage opening
+  the artifacts panel.
 - Both checklists share a task projection with stable identity and compact diff totals (exact counts
   on hover and for assistive technology). Naturally sized counts and owners float beside the first
   title line, without reserved columns. Pending rows omit diff counts; reported zeros use the same
@@ -492,7 +515,7 @@ presents one deleted identity everywhere.
 - `queries.ts`, `stream.ts`, `mutations.ts`, `queryCache.ts`, and `useChannel.ts` own client data:
   catalog and streamed detail queries, the SSE adapter, mutations, catalog event patches, and one
   open Channel's visibility and read lifecycle.
-- `components/pane/` holds the pane, composer, thread, and shared pane context, with `transcript/` and
+- `components/pane/` holds the pane, composer, thread, artifacts panel, and shared pane context, with `transcript/` and
   `overview/` beneath it. `components/agents/` holds avatars, mention Markdown, the mention
   source and menu, the member editor, and working agents. `components/sidebar/` holds the Channels panel and its
   attention priority. The top level holds the create/edit dialog and channel menu.

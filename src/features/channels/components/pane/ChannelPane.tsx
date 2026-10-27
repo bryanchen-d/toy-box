@@ -7,8 +7,11 @@ import {
   type ChannelConversationMessage,
 } from "@channels/model";
 import { useChannel } from "@channels/useChannel";
+import type { WorkspaceFile } from "@files/model";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
+import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { useEditSavedDraft } from "@workspace/hooks/useSavedDraft";
+import { createEditorPaneId } from "@workspace/model/panes";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
 import {
@@ -18,6 +21,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils";
 import { ChannelCanvas } from "./ChannelCanvas";
+import { ChannelArtifacts } from "./ChannelArtifacts";
 import {
   addressedDraft,
   ChannelComposer,
@@ -32,7 +36,10 @@ import type { TranscriptView } from "./transcript/transcriptRows";
 import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
 
 /** What this view shows beside the chat, or in its place when the pane is narrow. */
-type ChannelAside = { type: "canvas" } | { type: "thread"; sequence: number };
+type ChannelAside =
+  | { type: "canvas" }
+  | { type: "thread"; sequence: number }
+  | { type: "artifacts" };
 
 export function ChannelPane({
   channelId,
@@ -71,12 +78,14 @@ function ChannelContent({
   const composerRef = useRef<ChannelComposerHandle>(null);
   const threadComposerRef = useRef<ChannelComposerHandle>(null);
   const editSavedDraft = useEditSavedDraft();
+  const { revealFile, focusedPaneAtom } = useWorkspaceSurface();
   const [view, setView] = useState<TranscriptView>("all");
   const [aside, setAside] = useState<ChannelAside | null>(null);
   const canvas = state?.artifacts.find(({ id }) => id === state.channel.canvasArtifactId);
   const showingCanvas = aside?.type === "canvas" && !!canvas;
   const thread = aside?.type === "thread" ? aside.sequence : undefined;
-  const showingAside = showingCanvas || thread !== undefined;
+  const showingArtifacts = aside?.type === "artifacts" && !!state;
+  const showingAside = showingCanvas || thread !== undefined || showingArtifacts;
   const canvasLabel = showingCanvas ? "Close channel canvas" : "Open channel canvas";
   // The lead is intrinsic, so the composer can address it before the first snapshot arrives.
   const lead = state?.lead ?? channelLead(channelId);
@@ -87,6 +96,11 @@ function ChannelContent({
   function openThread(sequence: number) {
     if (thread === sequence) threadComposerRef.current?.focus();
     else setAside({ type: "thread", sequence });
+  }
+
+  function openArtifact(file: WorkspaceFile) {
+    if (revealFile) revealFile(file);
+    else focusedPaneAtom.set(createEditorPaneId(file));
   }
 
   /** Opens the message's thread with the draft addressed to its agent, as a reply wakes them. */
@@ -122,6 +136,8 @@ function ChannelContent({
         replyInThread,
         isSending: (id) => state?.optimisticMessageIds?.includes(id) ?? false,
         mention: () => composerRef.current?.mention(),
+        openArtifact,
+        openArtifacts: () => setAside({ type: "artifacts" }),
       }}
     >
       {canvas && (
@@ -157,7 +173,8 @@ function ChannelContent({
           className={cn(
             "grid h-full min-h-0 min-w-0 bg-background",
             showingCanvas && "@3xl/channel:grid-cols-2",
-            thread !== undefined && "@3xl/channel:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]",
+            (thread !== undefined || showingArtifacts) &&
+              "@3xl/channel:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]",
           )}
         >
           <div
@@ -234,6 +251,13 @@ function ChannelContent({
               composerRef={threadComposerRef}
               onLoadThrough={loadPrevious}
               onReply={(message) => postMessage({ ...message, threadSequence: thread })}
+              onClose={() => setAside(null)}
+            />
+          )}
+          {showingArtifacts && (
+            <ChannelArtifacts
+              channelId={channelId}
+              artifacts={state.artifacts}
               onClose={() => setAside(null)}
             />
           )}

@@ -73,7 +73,8 @@ export function ChannelThread({
     >
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-3 pr-24">
         <MessageSquareReply className="size-4 shrink-0 text-muted-foreground" />
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium">Thread</h2>
+        <h2 className="min-w-0 truncate text-sm font-medium">Thread</h2>
+        {/* Beside the title, clear of the pane's own actions in the top-right corner. */}
         <Button
           type="button"
           variant="ghost"

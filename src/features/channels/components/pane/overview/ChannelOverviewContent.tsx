@@ -1,15 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import {
-  ChevronRight,
-  Clock3,
-  MoreHorizontal,
-  Pencil,
-  Play,
-  Plus,
-  Trash2,
-  UserMinus,
-} from "lucide-react";
+import { ChevronRight, Clock3, Pencil, Play, Plus, Trash2, UserMinus } from "lucide-react";
 import { AgentItem } from "@channels/components/agents/AgentItem";
 import {
   channelTasksDiff,
@@ -22,15 +13,8 @@ import { channelMutations } from "@channels/mutations";
 import { ArtifactPill } from "@workspace/components/outputs/ArtifactPill";
 import { SessionMetadataBadges } from "@sessions/components/location/SessionMetadataBadges";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
 import { Checklist } from "@/shared/ui/checklist";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
 import { SectionHeading } from "@/shared/ui/section-heading";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { ShowMore, useShowMore } from "@/shared/ui/show-more";
@@ -39,6 +23,7 @@ import { cn } from "@/shared/utils";
 import { useChannelPane } from "../ChannelPaneContext";
 import { channelTaskItems, TaskDiff } from "../channelTaskItems";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
+import { RowMenu } from "./RowMenu";
 
 /** What the overview shows: the Channel's context, team members, tasks, artifacts, and routines. */
 export function ChannelOverviewContent({
@@ -46,6 +31,7 @@ export function ChannelOverviewContent({
   artifacts,
   routines,
   onArtifactOpen,
+  onManageArtifacts,
   onEditMember,
   onRemoveMember,
   onAddAgent,
@@ -56,6 +42,7 @@ export function ChannelOverviewContent({
   artifacts: ChannelArtifact[];
   routines: ChannelRoutine[];
   onArtifactOpen: (artifact: ChannelArtifact) => void;
+  onManageArtifacts: () => void;
   onEditMember: (member: ChannelMember) => void;
   onRemoveMember: (member: ChannelMember) => void;
   onAddAgent: () => void;
@@ -66,6 +53,7 @@ export function ChannelOverviewContent({
   const sortedMembers = [...members].sort((left, right) => left.name.localeCompare(right.name));
   const completedCount = channel.tasks.filter(({ status }) => status === "done").length;
   const diff = channelTasksDiff(channel.tasks);
+  const sharedArtifacts = artifacts.filter(({ archived }) => !archived);
 
   return (
     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-panel p-4">
@@ -147,10 +135,24 @@ export function ChannelOverviewContent({
         )}
       </OverviewSection>
 
-      <OverviewSection title="Artifacts" count={artifacts.length}>
-        {artifacts.length > 0 ? (
+      <OverviewSection
+        title="Artifacts"
+        count={sharedArtifacts.length}
+        detail={
+          artifacts.length > 0 && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={onManageArtifacts}
+            >
+              Manage
+            </button>
+          )
+        }
+      >
+        {sharedArtifacts.length > 0 ? (
           <div role="list" aria-label={`Artifacts in #${channel.name}`} className="flex flex-col">
-            {artifacts.map((artifact) => (
+            {sharedArtifacts.map((artifact) => (
               <ArtifactPill
                 key={artifact.id}
                 file={artifact.file}
@@ -162,7 +164,9 @@ export function ChannelOverviewContent({
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground italic">No artifacts shared yet.</p>
+          <p className="text-sm text-muted-foreground italic">
+            {artifacts.length > 0 ? "Every artifact is archived." : "No artifacts shared yet."}
+          </p>
         )}
       </OverviewSection>
 
@@ -239,31 +243,6 @@ function ChannelPurpose({ purpose }: { purpose: string }) {
       </p>
       {toggle && <ShowMore {...toggle} />}
     </div>
-  );
-}
-
-/** A row's "⋯" menu. The lead can't be edited or removed, so its menu has no actions and stays
- *  disabled, keeping every row the same shape. */
-function RowMenu({ name, children }: { name: string; children?: ReactNode }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={!children}
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={`Actions for ${name}`}
-            title={`Actions for ${name}`}
-          />
-        }
-      >
-        <MoreHorizontal />
-      </DropdownMenuTrigger>
-      {children && <DropdownMenuContent align="end">{children}</DropdownMenuContent>}
-    </DropdownMenu>
   );
 }
 

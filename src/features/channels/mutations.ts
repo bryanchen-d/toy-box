@@ -1,15 +1,18 @@
 import { mutationOptions } from "@tanstack/react-query";
-import type {
-  CreateChannelMemberInput,
-  CreateChannelInput,
-  EditChannelInput,
-  PostChannelMessageInput,
-  UpdateChannelMemberInput,
+import {
+  applyChannelArtifactArrangement,
+  type ArrangeChannelArtifactsInput,
+  type CreateChannelMemberInput,
+  type CreateChannelInput,
+  type EditChannelInput,
+  type PostChannelMessageInput,
+  type UpdateChannelMemberInput,
 } from "@channels/model";
 import { channelQueries, type ChannelQueryData } from "@channels/queries";
 import { reduceChannelState } from "@channels/model/reducer";
 import { applyChannelListEvent, invalidateChannelListQuery } from "@channels/queryCache";
 import {
+  arrangeChannelArtifacts,
   createChannel,
   createChannelMember,
   deleteChannel,
@@ -60,6 +63,34 @@ export const channelMutations = {
     mutationOptions({
       mutationFn: (routineId: string) => deleteChannelRoutine({ data: { channelId, routineId } }),
     }),
+  /** Arranges at once; the committed `artifacts` event then confirms or corrects it. */
+  arrangeArtifacts: (channelId: string) => {
+    const key = channelQueries.detail(channelId).queryKey;
+    return mutationOptions({
+      mutationFn: (arrangement: Omit<ArrangeChannelArtifactsInput, "channelId">) =>
+        arrangeChannelArtifacts({ data: { channelId, ...arrangement } }),
+      onMutate: (arrangement, { client }) => {
+        const previous = client.getQueryData<ChannelQueryData | null>(key)?.artifacts;
+        if (!previous) return undefined;
+        const arranged = applyChannelArtifactArrangement(previous, arrangement);
+        client.setQueryData<ChannelQueryData | null>(
+          key,
+          (state) => state && { ...state, artifacts: arranged },
+        );
+        // Structural sharing stores its own copy, which identifies this arrangement.
+        const artifacts = client.getQueryData<ChannelQueryData | null>(key)?.artifacts;
+        return { previous, artifacts };
+      },
+      onError: (_error, _arrangement, arranged, { client }) => {
+        // Only an arrangement nothing has replaced since is still this one to undo.
+        client.setQueryData<ChannelQueryData | null>(key, (state) =>
+          state && arranged && state.artifacts === arranged.artifacts
+            ? { ...state, artifacts: arranged.previous }
+            : state,
+        );
+      },
+    });
+  },
   markRead: () =>
     mutationOptions({
       mutationFn: (input: { channelId: string; sequence: number }) =>

@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import type {
+  ArrangeChannelArtifactsInput,
   Channel,
   ChannelAgentStatus,
   ChannelList,
@@ -114,6 +115,11 @@ export async function editChannelTasksFromLead(
   input: EditChannelTasksInput,
 ): Promise<void> {
   const change = await new ChannelDatabase(await getStateDatabase()).editTasks(sessionId, input);
+  publishChannelChange(change);
+}
+
+export async function arrangeChannelArtifacts(input: ArrangeChannelArtifactsInput): Promise<void> {
+  const change = await new ChannelDatabase(await getStateDatabase()).arrangeArtifacts(input);
   publishChannelChange(change);
 }
 

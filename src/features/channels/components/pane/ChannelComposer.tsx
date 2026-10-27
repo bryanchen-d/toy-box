@@ -17,12 +17,10 @@ import {
   type PostChannelMessageInput,
 } from "@channels/model";
 import { channelMutations } from "@channels/mutations";
-import type { WorkspaceFile } from "@files/model";
+import { workspaceFileId } from "@files/model";
 import { ComposerTray } from "@workspace/components/outputs/ComposerTray";
-import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { useSavedDraft } from "@workspace/hooks/useSavedDraft";
 import type { DraftKey } from "@workspace/model/state/drafts";
-import { createEditorPaneId } from "@workspace/model/panes";
 import { Composer, ComposerSendButton } from "@/shared/composers/Composer";
 import { useComposerDraft } from "@/shared/composers/useComposerDraft";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -69,16 +67,17 @@ export function ChannelComposer({
   onSubmit: (message: Pick<PostChannelMessageInput, "content" | "attachments">) => Promise<unknown>;
   onShowRequest?: () => void;
 }) {
-  const { revealFile, focusedPaneAtom } = useWorkspaceSurface();
   const channel = state?.channel;
   const diff = channelTasksDiff(channel?.tasks ?? []);
   const inThread = threadSequence !== undefined;
   const request = state?.request;
   const needsReply = channel ? channelHasPendingRequest(channel) : false;
-  const { lead, members, agents } = useChannelPane();
-  const artifacts = state?.artifacts
-    .map(({ file, title, sharedAt }) => ({ file, label: title, time: Date.parse(sharedAt) }))
-    .reverse();
+  const { lead, members, agents, openArtifact, openArtifacts } = useChannelPane();
+  // The arrangement already puts new shares first; archived artifacts stay off the tray.
+  const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived }) =>
+    archived ? [] : [{ file, label: title, time: Date.parse(sharedAt) }],
+  );
+  const { mutate: arrangeArtifacts } = useMutation(channelMutations.arrangeArtifacts(channelId));
   const draft = useComposerDraft({
     ...useSavedDraft(channelDraftKey(channelId, threadSequence)),
     onSend: onSubmit,
@@ -107,11 +106,6 @@ export function ChannelComposer({
     focus: draft.focus,
   }));
 
-  function openArtifact(file: WorkspaceFile) {
-    if (revealFile) revealFile(file);
-    else focusedPaneAtom.set(createEditorPaneId(file));
-  }
-
   return (
     <Composer
       draft={draft}
@@ -131,6 +125,10 @@ export function ChannelComposer({
             checklistHeaderDetail={diff && <TaskDiff diff={diff} />}
             extraOutput={channel?.preview && <WorkspacePreview preview={channel.preview} />}
             onOpenArtifact={openArtifact}
+            onArchiveArtifact={(file) =>
+              arrangeArtifacts({ artifactIds: [workspaceFileId(file)], archived: true })
+            }
+            onManageArtifacts={openArtifacts}
           />
         )
       }

@@ -1,18 +1,25 @@
-// The composer tray docks to the input. Its first row holds what the owner produced: artifacts
-// newest first, a checklist, and the owner's extra output. Once any output exists, empty artifact
-// and checklist slots preserve that row's shape. Owners stack anything else, such as queued
-// messages, below it, and the tray hides when nothing renders.
+// The composer tray docks to the input. Its first row holds what the owner produced: artifacts in
+// the owner's order, a checklist, and the owner's extra output. Once any output exists, empty
+// artifact and checklist slots preserve that row's shape. Owners stack anything else, such as
+// queued messages, below it, and the tray hides when nothing renders.
 
 import { useState, type ReactNode } from "react";
 import { defaultFilter } from "cmdk";
-import { Files, Loader2 } from "lucide-react";
+import { Archive, Files, Loader2, SlidersHorizontal } from "lucide-react";
 import { useEditorDisplay } from "@files/components/editor/kinds";
 import { workspaceFileId, type WorkspaceFile } from "@files/model";
 import { createFileServeUrl } from "@files/model/paths";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { createEditorPaneId } from "@workspace/model/panes";
 import type { ChecklistItem } from "@/shared/ui/checklist";
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/shared/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/shared/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@/shared/ui/preview-card";
 import { RelativeTime } from "@/shared/ui/relative-time";
@@ -27,7 +34,7 @@ import {
 import { ChecklistPopup } from "./ChecklistPopup";
 import { PagePreview } from "./PagePreview";
 
-// The newest artifact joins the row once the composer has room; two more follow when wide.
+// The first artifact joins the row once the composer has room; two more follow when wide.
 const INLINE_ARTIFACT_CLASS_NAMES = ["@max-md:hidden", "@max-2xl:hidden", "@max-2xl:hidden"];
 
 /** A file its owner presents as output. */
@@ -47,9 +54,11 @@ export function ComposerTray({
   checklistHeaderDetail,
   extraOutput,
   onOpenArtifact,
+  onArchiveArtifact,
+  onManageArtifacts,
   children,
 }: {
-  /** Newest first. */
+  /** In the owner's order, such as newest first. */
   artifacts: readonly ComposerArtifact[];
   /** What an artifact's time means in its preview, such as "Updated" or "Shared". */
   artifactTimeLabel: string;
@@ -61,6 +70,10 @@ export function ComposerTray({
   /** Opens an artifact that its owner doesn't publish. By default, focusing its editor pane brings
    *  a published artifact forward. */
   onOpenArtifact?: (file: WorkspaceFile) => void;
+  /** Files an artifact away from the tray, offered beside each one in the full list. */
+  onArchiveArtifact?: (file: WorkspaceFile) => void;
+  /** Opens the owner's own surface for arranging its artifacts, offered below the full list. */
+  onManageArtifacts?: () => void;
   children?: ReactNode;
 }) {
   const { focusedPaneAtom } = useWorkspaceSurface();
@@ -84,7 +97,12 @@ export function ComposerTray({
               />
             ))}
             {artifacts.length > 0 ? (
-              <ArtifactList artifacts={artifacts} onOpen={openArtifact} />
+              <ArtifactList
+                artifacts={artifacts}
+                onOpen={openArtifact}
+                onArchive={onArchiveArtifact && (({ file }) => onArchiveArtifact(file))}
+                onManage={onManageArtifacts}
+              />
             ) : (
               <span className={emptyOutputPillClassName}>
                 <Files className="size-3.5 shrink-0" />0 artifacts
@@ -161,9 +179,13 @@ function ArtifactPeek({
 function ArtifactList({
   artifacts,
   onOpen,
+  onArchive,
+  onManage,
 }: {
   artifacts: readonly ComposerArtifact[];
   onOpen: (artifact: ComposerArtifact) => void;
+  onArchive?: (artifact: ComposerArtifact) => void;
+  onManage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const count = artifacts.length;
@@ -192,18 +214,35 @@ function ArtifactList({
             <CommandEmpty className="py-6 text-center text-sm text-muted-foreground italic">
               No matching artifacts
             </CommandEmpty>
-            {artifacts.map((artifact) => (
-              <ArtifactListItem
-                key={workspaceFileId(artifact.file)}
-                artifact={artifact}
-                onSelect={() => {
-                  setOpen(false);
-                  onOpen(artifact);
-                }}
-              />
-            ))}
+            {/* cmdk sorts an item's wrapper only within a group. */}
+            <CommandGroup className="p-0">
+              {artifacts.map((artifact) => (
+                <ArtifactListItem
+                  key={workspaceFileId(artifact.file)}
+                  artifact={artifact}
+                  onSelect={() => {
+                    setOpen(false);
+                    onOpen(artifact);
+                  }}
+                  onArchive={onArchive && (() => onArchive(artifact))}
+                />
+              ))}
+            </CommandGroup>
           </CommandList>
         </Command>
+        {onManage && (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground outline-none hover:bg-accent/40 hover:text-foreground focus-visible:bg-accent/40"
+            onClick={() => {
+              setOpen(false);
+              onManage();
+            }}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Manage artifacts
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -217,17 +256,23 @@ function filterByKeywords(_value: string, search: string, keywords?: string[]) {
 function ArtifactListItem({
   artifact,
   onSelect,
+  onArchive,
 }: {
   artifact: ComposerArtifact;
   onSelect: () => void;
+  onArchive?: () => void;
 }) {
   const { file, time } = artifact;
   const { name, Icon } = useEditorDisplay(file);
   const { open, busy } = useArtifactState(file);
   const label = artifact.label ?? name;
-
-  return (
-    <CommandItem value={workspaceFileId(file)} keywords={[label, file.path]} onSelect={onSelect}>
+  const item = (
+    <CommandItem
+      value={workspaceFileId(file)}
+      keywords={[label, file.path]}
+      onSelect={onSelect}
+      className={cn(onArchive && "pe-9")}
+    >
       {busy ? <Loader2 className="animate-spin" /> : <Icon />}
       <ScrollableFade
         className={cn("flex-1 whitespace-nowrap", open && "font-medium text-foreground")}
@@ -239,5 +284,23 @@ function ArtifactListItem({
         date={new Date(time)}
       />
     </CommandItem>
+  );
+  if (!onArchive) return item;
+
+  // A sibling of the option rather than inside it, so archiving never also selects it. The wrapper
+  // hides with the option when filtering leaves it out.
+  return (
+    <div className="group/artifact relative [&:not(:has([cmdk-item]))]:hidden">
+      {item}
+      <button
+        type="button"
+        aria-label={`Archive ${label}`}
+        title="Archive"
+        className="absolute end-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/artifact:opacity-100 group-has-data-[selected=true]/artifact:opacity-100 pointer-coarse:opacity-100"
+        onClick={onArchive}
+      >
+        <Archive className="size-3.5" />
+      </button>
+    </div>
   );
 }

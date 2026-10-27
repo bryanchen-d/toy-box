@@ -4,6 +4,7 @@ import {
   isChannelSystemMessage,
   channelTasksSchema,
   applyChannelTaskEdits,
+  applyChannelArtifactArrangement,
   channelTasksComplete,
   channelSystemMessageContentSchema,
   CHANNEL_LEAD_PROFILE,
@@ -14,6 +15,7 @@ import {
   type ChannelMessageActor,
   type ChannelMemberChanges,
   type ChannelAgentStatus,
+  type ArrangeChannelArtifactsInput,
   type ChannelArtifact,
   type ChannelList,
   channelMemberIdentity,
@@ -478,15 +480,19 @@ export class ChannelDatabase {
     return inStateTransaction(this.db, async (db) => {
       const [row] = await db<ChannelArtifactRow[]>`
         INSERT INTO channel_artifacts (
-          channel_id, kind, session_id, path, title, created_at
+          channel_id, kind, session_id, path, title, created_at, position
         ) VALUES (
           ${input.channelId}, ${input.file.kind},
           ${input.file.kind === "session" ? input.file.sessionId : null},
-          ${input.file.path}, ${input.title}, ${new Date().toISOString()}
+          ${input.file.path}, ${input.title}, ${new Date().toISOString()},
+          (
+            SELECT COALESCE(MIN(position), 0) - 1 FROM channel_artifacts
+            WHERE channel_id = ${input.channelId}
+          )
         )
         ON CONFLICT DO UPDATE SET title = excluded.title
         WHERE channel_artifacts.title <> excluded.title
-        RETURNING kind, session_id, path, title, created_at
+        RETURNING kind, session_id, path, title, created_at, archived
       `;
       if (!row)
         return {
@@ -502,6 +508,34 @@ export class ChannelDatabase {
         artifact: { file: artifact.file, title: artifact.title },
       });
       return { ...(await recordChannelChange(db, channel, [change])), artifact };
+    });
+  }
+
+  /** Quietly rearranges the user's artifacts; an arrangement that changes nothing is a no-op. */
+  async arrangeArtifacts({ channelId, ...arrangement }: ArrangeChannelArtifactsInput) {
+    return inStateTransaction(this.db, async (db) => {
+      const current = await listArtifacts(db, channelId);
+      const artifacts = applyChannelArtifactArrangement(current, arrangement);
+      if (artifacts.every((artifact, index) => artifact === current[index])) {
+        return { channelId, events: [] };
+      }
+      for (const [position, { file, archived }] of artifacts.entries()) {
+        await db`
+          UPDATE channel_artifacts SET position = ${position}, archived = ${archived ? 1 : 0}
+          WHERE channel_id = ${channelId} AND kind = ${file.kind} AND path = ${file.path}
+            AND session_id IS ${file.kind === "session" ? file.sessionId : null}
+        `;
+      }
+      return {
+        channelId,
+        events: [
+          {
+            type: "artifacts" as const,
+            artifacts,
+            revision: await advanceRevision(db, channelId),
+          },
+        ],
+      };
     });
   }
 
@@ -879,9 +913,9 @@ async function hydrateMessages(
 
 async function listArtifacts(db: Bun.SQL, channelId: string): Promise<ChannelArtifact[]> {
   const rows = await db<ChannelArtifactRow[]>`
-    SELECT kind, session_id, path, title, created_at FROM channel_artifacts
+    SELECT kind, session_id, path, title, created_at, archived FROM channel_artifacts
     WHERE channel_id = ${channelId}
-    ORDER BY created_at, kind, session_id, path
+    ORDER BY position
   `;
   return rows.map(artifactFromRow);
 }
@@ -930,7 +964,7 @@ type ChannelReactionRow = {
   reaction: ChannelReaction["reaction"];
 };
 
-type ChannelArtifactRow = { path: string; title: string; created_at: string } & (
+type ChannelArtifactRow = { path: string; title: string; created_at: string; archived: number } & (
   | { kind: "session"; session_id: string }
   | { kind: "machine"; session_id: null }
 );
@@ -1017,7 +1051,13 @@ async function assertMemberNameAvailable(
 function artifactFromRow(row: ChannelArtifactRow): ChannelArtifact {
   const file =
     row.kind === "session" ? sessionFile(row.session_id, row.path) : machineFile(row.path);
-  return { id: workspaceFileId(file), file, title: row.title, sharedAt: row.created_at };
+  return {
+    id: workspaceFileId(file),
+    file,
+    title: row.title,
+    sharedAt: row.created_at,
+    ...(row.archived ? { archived: true } : {}),
+  };
 }
 
 function messageFromRow(row: ChannelMessageRow, reactions: ChannelReaction[]): ChannelMessage {

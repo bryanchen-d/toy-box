@@ -845,19 +845,112 @@ describe("channel database", () => {
 
     expect(await channels.listArtifacts(channel.id)).toEqual([
       {
-        id: "machine:/workspace/plan.md",
-        file: machineFile("/workspace/plan.md"),
-        title: "Release plan",
-        sharedAt: expect.any(String),
-      },
-      {
         id: "session:designer-session:plan.md",
         file: sessionFile("designer-session", "plan.md"),
         title: "Design plan",
         sharedAt: expect.any(String),
       },
+      {
+        id: "machine:/workspace/plan.md",
+        file: machineFile("/workspace/plan.md"),
+        title: "Release plan",
+        sharedAt: expect.any(String),
+      },
     ]);
     expect((await channels.getSnapshot(channel.id, 100))?.messages).toHaveLength(3);
+  });
+
+  test("the user's artifact arrangement is durable, quiet, and new shares come first", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Artifacts", ...CHANNEL_DEFAULTS });
+    const share = (path: string) =>
+      channels.shareArtifact({
+        channelId: channel.id,
+        file: machineFile(path),
+        title: path,
+        actor: { type: "user" },
+      });
+    const titles = async () =>
+      (await channels.listArtifacts(channel.id)).map(({ title, archived }) =>
+        archived ? `${title} (archived)` : title,
+      );
+    for (const path of ["/plan.md", "/spec.md", "/notes.md"]) await share(path);
+    expect(await titles()).toEqual(["/notes.md", "/spec.md", "/plan.md"]);
+    const { latestSequence } = (await channels.getChannel(channel.id))!;
+    const revision = (await channels.getRoster(channel.id))!.revision;
+
+    const moved = await channels.arrangeArtifacts({
+      channelId: channel.id,
+      artifactIds: ["machine:/plan.md"],
+      beforeArtifactId: "machine:/notes.md",
+    });
+    expect(moved.events).toEqual([
+      {
+        type: "artifacts",
+        revision: revision + 1,
+        artifacts: await channels.listArtifacts(channel.id),
+      },
+    ]);
+    await channels.arrangeArtifacts({
+      channelId: channel.id,
+      artifactIds: ["machine:/spec.md"],
+      archived: true,
+    });
+    expect(await titles()).toEqual(["/plan.md", "/notes.md", "/spec.md (archived)"]);
+    expect(
+      (
+        await channels.arrangeArtifacts({
+          channelId: channel.id,
+          artifactIds: ["machine:/notes.md"],
+          beforeArtifactId: "machine:/spec.md",
+          archived: false,
+        })
+      ).events,
+    ).toEqual([]);
+
+    await share("/review.md");
+    await share("/plan.md");
+    expect(await titles()).toEqual(["/review.md", "/plan.md", "/notes.md", "/spec.md (archived)"]);
+    // A set moves together in the given order and archives in one revision.
+    const bulk = await channels.arrangeArtifacts({
+      channelId: channel.id,
+      artifactIds: ["machine:/notes.md", "machine:/review.md"],
+      beforeArtifactId: null,
+      archived: true,
+    });
+    expect(bulk.events).toHaveLength(1);
+    expect(await titles()).toEqual([
+      "/plan.md",
+      "/spec.md (archived)",
+      "/notes.md (archived)",
+      "/review.md (archived)",
+    ]);
+    expect((await channels.getSnapshot(channel.id, 100))?.artifacts).toEqual(
+      await channels.listArtifacts(channel.id),
+    );
+    // Arranging stays out of the transcript and catalog activity; only the share adds a message.
+    expect((await channels.getChannel(channel.id))?.latestSequence).toBe(latestSequence + 1);
+  });
+
+  test("arranging an artifact the channel hasn't shared changes nothing", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Artifacts", ...CHANNEL_DEFAULTS });
+    await channels.shareArtifact({
+      channelId: channel.id,
+      file: machineFile("/plan.md"),
+      title: "Plan",
+      actor: { type: "user" },
+    });
+    const before = await channels.getSnapshot(channel.id, 100);
+    for (const arrangement of [
+      { artifactIds: ["machine:/plan.md", "machine:/missing.md"], archived: true },
+      { artifactIds: ["machine:/plan.md"], beforeArtifactId: "machine:/missing.md" },
+    ]) {
+      await expect(
+        channels.arrangeArtifacts({ channelId: channel.id, ...arrangement }),
+      ).rejects.toThrow("Arrange artifacts shared in this channel.");
+    }
+    expect(await channels.getSnapshot(channel.id, 100)).toEqual(before);
   });
 
   test("deleting a member retains sender attribution in prior messages", async () => {

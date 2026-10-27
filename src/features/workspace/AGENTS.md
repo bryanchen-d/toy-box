@@ -158,7 +158,9 @@ feature state rendered inside a pane.
 `ChecklistPopup.tsx`, and `PagePreview.tsx` for Session and Channel output presentation;
 `PagePreview` is the sandboxed thumbnail that HTML artifacts and a Channel's preview share. They combine Files identity and
 previews with the current surface's pane focus and file-worker activity. Callers supply their
-artifacts, checklist, and additional controls.
+artifacts in their own order, checklist, and additional controls; an owner that lets the user
+archive artifacts supplies `onArchiveArtifact` and leaves archived ones out, and one with its own
+arrangement surface supplies `onManageArtifacts`.
 
 One sparse browser cookie retains non-default `WorkspaceLayout` values across reloads and SSR.
 `sidebarCollapsed` is the shared visibility fact: it produces the desktop rail or reveals the

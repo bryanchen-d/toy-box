@@ -405,6 +405,49 @@ test("sharing an artifact preserves its public URL and original share time when 
   ]);
 });
 
+test("new shares come first, while retitling keeps an artifact's place and archive state", () => {
+  const share = (sequence: number, path: string, title = path) =>
+    system(sequence, {
+      type: "artifact_shared",
+      actor: { type: "user" },
+      artifact: { file: machineFile(path), title },
+    });
+  const shared = [share(102, "/plan.md"), share(103, "/spec.md")].reduce(
+    reduceChannelState,
+    snapshot(),
+  );
+  expect(shared.artifacts.map(({ title }) => title)).toEqual(["/spec.md", "/plan.md"]);
+  const archived = reduceChannelState(shared, {
+    type: "artifacts",
+    revision: 104,
+    artifacts: [shared.artifacts[0]!, { ...shared.artifacts[1]!, archived: true }],
+  });
+  const retitled = reduceChannelState(archived, share(105, "/plan.md", "Plan"));
+  expect(retitled.artifacts).toMatchObject([
+    { title: "/spec.md" },
+    { title: "Plan", archived: true },
+  ]);
+});
+
+test("arranging artifacts replaces them quietly", () => {
+  const previous = snapshot();
+  const artifacts = [
+    {
+      id: "machine:/plan.md",
+      file: machineFile("/plan.md"),
+      title: "Plan",
+      sharedAt: "2026-10-03T20:00:00.000Z",
+      archived: true as const,
+    },
+  ];
+  const next = reduceChannelState(previous, { type: "artifacts", revision: 102, artifacts });
+  expect(next.artifacts).toBe(artifacts);
+  expect(next.revision).toBe(102);
+  expect(next.channel).toBe(previous.channel);
+  expect(next.messages).toBe(previous.messages);
+  expect(reduceChannelState(next, { type: "artifacts", revision: 102, artifacts: [] })).toBe(next);
+});
+
 test("routine messages add, change in place, and delete routines", () => {
   const standup = { id: "standup", title: "CI", schedule: "0 9 * * 1-5", prompt: "Check CI" };
   const review = { ...standup, id: "review", title: "Review", prompt: "Review the week" };

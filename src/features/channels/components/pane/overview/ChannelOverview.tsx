@@ -51,11 +51,10 @@ export function ChannelOverview({
 }) {
   const {
     openFile,
-    revealFile,
     channelOverviewPinned = false,
     setChannelOverviewPinned,
   } = useWorkspaceSurface();
-  const { mention } = useChannelPane();
+  const { mention, openArtifact: revealArtifact, openArtifacts } = useChannelPane();
   const overviewRef = useRef<HTMLDivElement>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [dialog, setDialog] = useState<OverviewDialog>();
@@ -89,7 +88,7 @@ export function ChannelOverview({
 
   function openArtifact(artifact: ChannelArtifact) {
     closeSheet();
-    revealFile?.(artifact.file);
+    revealArtifact(artifact.file);
   }
 
   function openDialog(next: OverviewDialog) {
@@ -134,6 +133,10 @@ export function ChannelOverview({
       artifacts={artifacts}
       routines={routines}
       onArtifactOpen={openArtifact}
+      onManageArtifacts={() => {
+        closeSheet();
+        openArtifacts();
+      }}
       onEditMember={(member) => openDialog({ type: "edit_member", member })}
       onRemoveMember={(member) => openDialog({ type: "remove_member", member })}
       onAddAgent={() => {

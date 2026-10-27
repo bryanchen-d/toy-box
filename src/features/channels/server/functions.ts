@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { zodValidator } from "@tanstack/zod-adapter";
 import type { Channel, ChannelList, ChannelMessage } from "@channels/model";
 import {
+  arrangeChannelArtifactsInputSchema,
   channelIdentitySchema,
   createChannelMemberInputSchema,
   createChannelInputSchema,
@@ -52,6 +53,10 @@ export const runChannelRoutine = createServerFn({ method: "POST" })
   .handler(({ data }): Promise<boolean> =>
     channels.runChannelRoutine(data.channelId, data.routineId),
   );
+
+export const arrangeChannelArtifacts = createServerFn({ method: "POST" })
+  .validator(zodValidator(arrangeChannelArtifactsInputSchema))
+  .handler(({ data }): Promise<void> => channels.arrangeChannelArtifacts(data));
 
 export const markChannelRead = createServerFn({ method: "POST" })
   .validator(zodValidator(markChannelReadInputSchema))
