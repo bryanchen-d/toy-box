@@ -38,8 +38,9 @@ the workspace consumes the same provider-owned catalog and configuration.
   provider's models and broadcast `providers.changed` to refresh client catalogs and versions.
   Running native processes retain their version until restarted. Restart the server and reload
   the page after installing or removing a provider. Enabled providers are selected outside
-  the cache, so toggling one never rediscovers the others. Session catalogs are read independently
-  on every request. A provider that cannot discover its catalog contributes no entries and remains
+  the cache, so toggling one never rediscovers the others. Session catalogs share only overlapping
+  reads per provider; settled reads are discarded, so later requests discover fresh histories.
+  A provider that cannot discover its catalog contributes no entries and remains
   visible in Settings. Disabling removes discovery and closes its open session panes; it does not
   delete history or stop server work already running.
 - [`server/copilot/`](server/copilot/AGENTS.md) implements the contract through the

@@ -16,6 +16,7 @@ export const sessionProviders: readonly SessionProvider[] = [
 ];
 
 const modelsByProvider = sharedMap<Promise<ModelInfo[]>>("provider-models");
+const pendingSessionsByProvider = sharedMap<Promise<Session[]>>("provider-session-discovery");
 
 export function getSessionProvider(id: string): SessionProvider {
   const provider = sessionProviders.find((candidate) => candidate.id === id);
@@ -58,16 +59,28 @@ function readModels(provider: SessionProvider): Promise<ModelInfo[]> {
 
 /** Catalog IDs belong to the native providers; Sessions maps them to public IDs. */
 export function listSessions(): Promise<Session[]> {
-  return collectAvailable(async (provider) =>
-    (await provider.listSessions()).map((session) => ({
-      ...session,
-      provider: { id: provider.id },
-    })),
-  );
+  return collectAvailable(readSessions);
+}
+
+async function readSessions(provider: SessionProvider): Promise<Session[]> {
+  const pending = pendingSessionsByProvider.get(provider.id);
+  if (pending) return pending;
+
+  const sessions = provider
+    .listSessions()
+    .then((sessions) => sessions.map((session) => ({ ...session, provider: { id: provider.id } })))
+    .finally(() => {
+      if (pendingSessionsByProvider.get(provider.id) === sessions) {
+        pendingSessionsByProvider.delete(provider.id);
+      }
+    });
+  pendingSessionsByProvider.set(provider.id, sessions);
+  return sessions;
 }
 
 export async function stopProviders(): Promise<void> {
   modelsByProvider.clear();
+  pendingSessionsByProvider.clear();
   await Promise.allSettled(sessionProviders.map((provider) => provider.stop()));
 }
 

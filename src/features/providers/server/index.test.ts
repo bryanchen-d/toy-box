@@ -3,6 +3,7 @@ import { copilotProvider } from "./copilot/provider";
 import { codexProvider } from "./codex/provider";
 import * as cli from "./cli";
 import type { ModelInfo } from "../model";
+import type { Session } from "@sessions/model";
 import * as workspaceSettings from "@workspace/server/state/settings";
 import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
@@ -16,6 +17,7 @@ import {
 } from "./index";
 
 const MODEL: ModelInfo = { id: "model", name: "Available model", provider: "codex" };
+const SESSION: Session = { id: "native-session", createdAt: new Date(0), updatedAt: new Date(0) };
 
 beforeEach(() => {
   spyOn(workspaceSettings, "getSettings").mockResolvedValue({
@@ -99,6 +101,119 @@ test("concurrent discovery is shared and the catalog stays cached for the server
   expect(await listModels()).toEqual(expected);
   expect(read).toHaveBeenCalledTimes(1);
 });
+
+test("overlapping session discovery shares one native read, then discovers fresh histories", async () => {
+  spyOn(cli, "isInstalled").mockImplementation((id) => id === "codex");
+  const discovery = Promise.withResolvers<Session[]>();
+  const read = spyOn(codexProvider, "listSessions").mockReturnValue(discovery.promise);
+  const requests = Array.from({ length: 5 }, () => listSessions());
+  await Promise.resolve();
+  discovery.resolve([SESSION]);
+  const expected = [{ ...SESSION, provider: { id: "codex" } }];
+  expect(await Promise.all(requests)).toEqual(Array.from({ length: 5 }, () => expected));
+  expect(read).toHaveBeenCalledTimes(1);
+
+  const fresh = { ...SESSION, id: "new-native-session" };
+  read.mockResolvedValue([fresh]);
+  expect(await listSessions()).toEqual([{ ...fresh, provider: { id: "codex" } }]);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+test("failed overlapping session discovery is isolated, logged, and retried", async () => {
+  const error = new Error("Please authenticate");
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  spyOn(cli, "isInstalled").mockImplementation((id) => id === "copilot" || id === "codex");
+  const discovery = Promise.withResolvers<Session[]>();
+  const copilotRead = spyOn(copilotProvider, "listSessions")
+    .mockReturnValueOnce(discovery.promise)
+    .mockResolvedValue([{ ...SESSION, id: "copilot-session" }]);
+  const codexRead = spyOn(codexProvider, "listSessions").mockResolvedValue([SESSION]);
+  const requests = [listSessions(), listSessions()];
+  await Promise.resolve();
+  discovery.reject(error);
+  const expected = [{ ...SESSION, provider: { id: "codex" } }];
+  expect(await Promise.all(requests)).toEqual([expected, expected]);
+  expect(copilotRead).toHaveBeenCalledTimes(1);
+  expect(codexRead).toHaveBeenCalledTimes(1);
+  expect(log.mock.calls).toEqual([
+    [`Unable to discover ${copilotProvider.name}:`, error],
+    [`Unable to discover ${copilotProvider.name}:`, error],
+  ]);
+
+  expect(await listSessions()).toEqual([
+    { ...SESSION, id: "copilot-session", provider: { id: "copilot" } },
+    ...expected,
+  ]);
+  expect(copilotRead).toHaveBeenCalledTimes(2);
+  expect(codexRead).toHaveBeenCalledTimes(2);
+});
+
+test("synchronous session discovery failures still leave other providers visible", async () => {
+  const error = new Error("Unable to start discovery");
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  spyOn(cli, "isInstalled").mockImplementation((id) => id === "copilot" || id === "codex");
+  spyOn(copilotProvider, "listSessions").mockImplementation(() => {
+    throw error;
+  });
+  spyOn(codexProvider, "listSessions").mockResolvedValue([SESSION]);
+  expect(await listSessions()).toEqual([{ ...SESSION, provider: { id: "codex" } }]);
+  expect(log).toHaveBeenCalledWith(`Unable to discover ${copilotProvider.name}:`, error);
+});
+
+test("enablement and installation gate each request during shared session discovery", async () => {
+  const disabledProviders: string[] = [];
+  spyOn(workspaceSettings, "getSettings").mockImplementation(async () => ({
+    ...DEFAULT_SETTINGS,
+    disabledProviders,
+  }));
+  const installed = spyOn(cli, "isInstalled").mockImplementation((id) => id === "codex");
+  const discovery = Promise.withResolvers<Session[]>();
+  const read = spyOn(codexProvider, "listSessions").mockReturnValue(discovery.promise);
+  const first = listSessions();
+  await Promise.resolve();
+
+  disabledProviders.push("codex");
+  expect(await listSessions()).toEqual([]);
+  disabledProviders.length = 0;
+  installed.mockReturnValue(false);
+  expect(await listSessions()).toEqual([]);
+  installed.mockImplementation((id) => id === "codex");
+  const concurrent = listSessions();
+  await Promise.resolve();
+  discovery.resolve([SESSION]);
+  const expected = [{ ...SESSION, provider: { id: "codex" } }];
+  expect(await Promise.all([first, concurrent])).toEqual([expected, expected]);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test.each([false, true])(
+  "old session discovery cannot evict a pending read after shutdown (fails: %s)",
+  async (fails) => {
+    spyOn(console, "error").mockImplementation(() => {});
+    spyOn(cli, "isInstalled").mockImplementation((id) => id === "codex");
+    const old = Promise.withResolvers<Session[]>();
+    const current = Promise.withResolvers<Session[]>();
+    const read = spyOn(codexProvider, "listSessions")
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValue(current.promise);
+    const first = listSessions();
+    await Promise.resolve();
+    await stopProviders();
+    const next = listSessions();
+    await Promise.resolve();
+
+    if (fails) old.reject(new Error("Stopped"));
+    else old.resolve([SESSION]);
+    expect(await first).toEqual(fails ? [] : [{ ...SESSION, provider: { id: "codex" } }]);
+    const concurrent = listSessions();
+    await Promise.resolve();
+    const fresh = { ...SESSION, id: "fresh-session" };
+    current.resolve([fresh]);
+    const expected = [{ ...fresh, provider: { id: "codex" } }];
+    expect(await Promise.all([next, concurrent])).toEqual([expected, expected]);
+    expect(read).toHaveBeenCalledTimes(2);
+  },
+);
 
 test("enablement gates discovery and toggling reuses each provider's model cache", async () => {
   const disabledProviders = ["claude"];
