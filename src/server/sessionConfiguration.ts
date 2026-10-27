@@ -100,6 +100,7 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
           model,
           configuration.directory,
           configuration.additionalInstructions,
+          configuration.tools.map(({ name, alwaysAvailable }) => [name, alwaysAvailable]),
         ]),
       };
     }

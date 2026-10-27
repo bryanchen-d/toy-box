@@ -3,6 +3,7 @@ import { describe, expect, jest, mock, onTestFinished, spyOn, test } from "bun:t
 import { homedir } from "node:os";
 import type { SessionConnection } from "@providers/server/provider";
 import { ChannelDatabase } from "@channels/server/database";
+import * as channelAgent from "@channels/server/agent";
 import { WorkerDatabase } from "@workers/server/database";
 import * as state from "@/server/database";
 import * as sdk from "../providers";
@@ -303,6 +304,42 @@ describe("Session-owned configuration lifetime", () => {
       });
     },
   );
+
+  test("channel tool availability changes reconnect only between executions", async () => {
+    const { sessionId, handles, resume } = await setup(true);
+    const getConfiguration = channelAgent.getChannelAgentConfiguration;
+    const configuration = spyOn(channelAgent, "getChannelAgentConfiguration").mockImplementation(
+      async (worker) => {
+        const current = await getConfiguration(worker);
+        return {
+          ...current,
+          tools: current.tools.map((tool) => ({ ...tool, alwaysAvailable: undefined })),
+        };
+      },
+    );
+    const receipt = await createSession(sessionId, { content: "Start" }, { sessionType: "worker" });
+    configuration.mockImplementation(getConfiguration);
+    await deliverSessionMessage(sessionId, { content: "Still running", immediate: true });
+    expect(resume).not.toHaveBeenCalled();
+    expect(handles[0]!.disconnect).not.toHaveBeenCalled();
+
+    SessionStream.get(sessionId)!.finish();
+    await receipt.waitForCompletion();
+    await deliverSessionMessage(sessionId, { content: "Continue" });
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(resume.mock.calls[0]![1].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "read_channel", alwaysAvailable: true }),
+        expect.objectContaining({ name: "send_channel_message", alwaysAvailable: true }),
+        expect.objectContaining({ name: "set_agent_status", alwaysAvailable: true }),
+        expect.objectContaining({ name: "finish_agent_turn", alwaysAvailable: true }),
+      ]),
+    );
+    SessionStream.get(sessionId)!.finish();
+    await deliverSessionMessage(sessionId, { content: "Again" });
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
 
   test("Channel agents refresh changed configuration only between executions", async () => {
     const { sessionId, db, create, resume, handles } = await setup(true);

@@ -206,6 +206,10 @@ test("resumed threads apply the current workspace, model, and session skills", a
         parameters: z.object({ value: z.string() }),
         handler: ({ value }) => value,
       }),
+      defineTool("protocol", {
+        alwaysAvailable: true,
+        handler: () => "Done",
+      }),
     ],
     instructions: "Session instructions",
     skillDirectories: [root],
@@ -245,6 +249,11 @@ test("resumed threads apply the current workspace, model, and session skills", a
           name: "echo",
           deferLoading: true,
           inputSchema: { properties: { value: { type: "string" } } },
+        },
+        {
+          type: "function",
+          name: "protocol",
+          deferLoading: false,
         },
       ],
     },

@@ -162,6 +162,7 @@ async function nativeConfiguration(
 ): Promise<SessionConfig> {
   const tools: CopilotTool<any>[] = configuration.tools.map((tool) => ({
     ...tool,
+    defer: tool.alwaysAvailable ? "never" : undefined,
     skipPermission: true,
     handler: async (args, invocation) => {
       const result = normalizeToolResult(

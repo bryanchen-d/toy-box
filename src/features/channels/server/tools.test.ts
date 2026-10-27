@@ -1,6 +1,18 @@
 import { expect, test } from "bun:test";
 import { channelLeadTools, channelMemberTools, channelTools } from "./tools";
 
+test.each([
+  ["lead", channelLeadTools],
+  ["member", channelMemberTools],
+] as const)("%s channel protocol tools are available without discovery", (_role, tools) => {
+  expect(
+    tools
+      .filter((tool) => tool.alwaysAvailable)
+      .map((tool) => tool.name)
+      .sort(),
+  ).toEqual(["finish_agent_turn", "read_channel", "send_channel_message", "set_agent_status"]);
+});
+
 test("only leads receive nonterminal task and routine tools", () => {
   for (const name of ["update_channel", "edit_channel_tasks", "set_routine", "delete_routine"]) {
     const tool = channelLeadTools.find((tool) => tool.name === name);

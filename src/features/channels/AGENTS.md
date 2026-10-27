@@ -187,6 +187,12 @@ fixed identity and responsibilities from the Channel rather than editable Worker
 Channel agents, it alone creates members and updates the directory, public purpose, tasks, and
 preview.
 
+A lead and member always receive `read_channel`, `send_channel_message`, `set_agent_status`,
+and `finish_agent_turn` without tool discovery. These declarations set Sessions' `alwaysAvailable`
+policy; optional channel tools retain native discovery. Tool names and availability participate in
+the configuration key, so a changed policy reconnects an idle agent on its next wake without
+recreating its Session, membership, or read position.
+
 A directory is optional. Channels records a provided directory without creating it. When the work
 needs one and none was provided, the lead can create and assign it through `update_channel`.
 

@@ -88,7 +88,10 @@ test("creation uses the canonical ID and configures the working directory", asyn
     model,
     directory: "/repo",
     allowUserQuestions: false,
-    tools: [],
+    tools: [
+      { name: "protocol", alwaysAvailable: true, handler: () => "Done" },
+      { name: "optional", handler: () => "Done" },
+    ],
     instructions: "",
     skillDirectories: [],
   });
@@ -99,6 +102,10 @@ test("creation uses the canonical ID and configures the working directory", asyn
       workingDirectory: "/repo",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
       hooks: { onPostToolUse: saveGeneratedImages },
+      tools: [
+        expect.objectContaining({ name: "protocol", defer: "never" }),
+        expect.objectContaining({ name: "optional", defer: undefined }),
+      ],
     }),
   );
   expect(connection.provider).toEqual({
@@ -130,7 +137,10 @@ test("resume requests the configured model and computer use from the native sess
       },
       directory: "/repo",
       allowUserQuestions: false,
-      tools: [],
+      tools: [
+        { name: "protocol", alwaysAvailable: true, handler: () => "Done" },
+        { name: "optional", handler: () => "Done" },
+      ],
       instructions: "",
       skillDirectories: [],
     },
@@ -144,6 +154,10 @@ test("resume requests the configured model and computer use from the native sess
       contextTier: "long_context",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
       hooks: { onPostToolUse: saveGeneratedImages },
+      tools: [
+        expect.objectContaining({ name: "protocol", defer: "never" }),
+        expect.objectContaining({ name: "optional", defer: undefined }),
+      ],
     }),
   );
 });

@@ -115,7 +115,7 @@ export const codexProvider: SessionProvider = {
               type: "object",
               properties: {},
             }) as JsonValue,
-            deferLoading: true,
+            deferLoading: !tool.alwaysAvailable,
           })),
         },
       ],

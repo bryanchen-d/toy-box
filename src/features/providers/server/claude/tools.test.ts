@@ -18,13 +18,16 @@ test("SDK tools preserve recursive schemas, validation, public identity, and ter
         return args.value;
       },
     },
-    { name: "finish", isTerminal: true, handler: () => "Done" },
+    { name: "finish", alwaysAvailable: true, isTerminal: true, handler: () => "Done" },
   ]);
   const client = new Client({ name: "test", version: "1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   try {
     await Promise.all([server.instance.connect(serverTransport), client.connect(clientTransport)]);
-    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(["echo", "finish"]);
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(["echo", "finish"]);
+    expect(tools[0]?._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
+    expect(tools[1]?._meta?.["anthropic/alwaysLoad"]).toBe(true);
     const args = { value: { nested: ["value", null] }, allowed: true };
     expect(
       await client.callTool({

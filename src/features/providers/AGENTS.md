@@ -57,6 +57,10 @@ into the Sessions registry, runtime, persistence, or resource layout.
 
 Channel-owned Worker sessions receive composed Agent identity instructions and Channel tools like
 any other Session configuration. Providers receive no Agent-specific protocol or metadata.
+Sessions tool declarations can mark a tool `alwaysAvailable` to include its schema without
+discovery. Copilot maps this to `defer: "never"` on create and resume, Codex to
+`deferLoading: false` on its durable tool declaration, and Claude to
+`anthropic/alwaysLoad` tool metadata. Unmarked tools retain each provider's normal discovery policy.
 
 All providers project into Sessions' `SessionEvent` and use its shared reducer. This model
 dependency does not give providers ownership of `SessionState`.
@@ -95,3 +99,7 @@ check the list whenever a provider is upgraded:
   without saving them and has no output path (seen through CLI 1.0.100-1). A post-tool hook saves
   them and reports the path so agents can attach them. Remove when Copilot writes them to disk
   itself.
+- Copilot channel protocol (`../channels/server/tools.ts`): deferred external tools can become
+  unavailable on later turns after compaction (reproduced with CLI 1.0.102 and 1.0.104).
+  The four essential channel tools opt out through `alwaysAvailable`. Reconsider deferral only
+  once discovery works reliably after compaction, on later turns, and after resume.

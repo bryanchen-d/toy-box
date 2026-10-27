@@ -15,8 +15,8 @@ here. No additional OpenAI npm SDK or Toy Box login is required.
 - `connection.ts` owns one native thread attachment, model selection, turn identity,
   steering, interruption, question batches, tool invocation, and ordered delivery.
   Browser subscriptions never own this connection or stop its execution.
-- `provider.ts` registers the supplied tools once as deferred native functions in the
-  `toy_box` namespace. Codex retains their definitions on resume; the connection
+- `provider.ts` registers the supplied tools once as native functions in the
+  `toy_box` namespace, deferred unless marked `alwaysAvailable`. Codex retains their definitions on resume; the connection
   handles `item/tool/call` over the same stdio transport. One turn-owned abort
   controller cancels its handlers when interrupted, completed, or disconnected.
 - `projector.ts` exposes one native event-to-SessionEvents function for live notifications

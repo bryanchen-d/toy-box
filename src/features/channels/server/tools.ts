@@ -154,7 +154,10 @@ const waitForChannelAgentsTool = defineTool("wait_for_channel_agents", {
   },
 });
 
+// Workaround (Copilot CLI 1.0.102/1.0.104): keep protocol tools loaded until
+// deferred calls reliably survive compaction and resume.
 const readChannelForAgentTool = defineTool("read_channel", {
+  alwaysAvailable: true,
   description:
     "Reads the channel ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z.object(readThreadParameter),
@@ -184,6 +187,7 @@ const sendLeadMessageParameters = sendChannelMessageParameters.extend({
 });
 
 const sendChannelMessageTool = defineTool("send_channel_message", {
+  alwaysAvailable: true,
   description:
     "Publishes a Markdown channel message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, and video paths in attachments. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
   parameters: sendChannelMessageParameters,
@@ -217,6 +221,7 @@ const reactToChannelMessageTool = defineTool("react_to_channel_message", {
 });
 
 const setChannelStatusTool = defineTool("set_agent_status", {
+  alwaysAvailable: true,
   description:
     "Sets this agent's brief channel status without posting a message, waking agents, or ending the turn.",
   parameters: setChannelAgentStatusInputSchema,
@@ -291,6 +296,7 @@ const finishLeadTurnParameters = finishChannelAgentTurnParameters
   );
 
 const finishChannelAgentTurnTool = defineTool("finish_agent_turn", {
+  alwaysAvailable: true,
   description:
     "Ends this private agent turn and clears its active channel status. waitingFor leaves a brief waiting status.",
   parameters: finishChannelAgentTurnParameters,

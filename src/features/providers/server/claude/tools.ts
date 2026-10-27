@@ -12,7 +12,11 @@ export function createClaudeTools(
   for (const definition of definitions)
     instance.registerTool(
       definition.name,
-      { description: definition.description, inputSchema: definition.parameters ?? z.object({}) },
+      {
+        description: definition.description,
+        inputSchema: definition.parameters ?? z.object({}),
+        ...(definition.alwaysAvailable ? { _meta: { "anthropic/alwaysLoad": true } } : {}),
+      },
       async (args, { signal, _meta }) => {
         const result = normalizeToolResult(
           await definition.handler(args, {

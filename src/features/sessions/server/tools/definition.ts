@@ -14,6 +14,8 @@ export type Tool<T = unknown> = {
   description?: string;
   parameters?: z.ZodType<T>;
   handler: (args: T, invocation: ToolInvocation) => unknown;
+  /** Include the tool's schema without requiring discovery. */
+  alwaysAvailable?: true;
   /** A successful result completes the current turn. */
   isTerminal?: boolean;
 };
