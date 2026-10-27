@@ -164,7 +164,8 @@ arrangement surface supplies `onManageArtifacts`.
 
 One sparse browser cookie retains non-default `WorkspaceLayout` values across reloads and SSR.
 `sidebarCollapsed` is the shared visibility fact: it produces the desktop rail or reveals the
-mobile workspace, whose no-root fallback is Inbox.
+mobile workspace, whose no-root fallback is Inbox. The main surface also hands Channel panes the
+overview pin and each Channel aside kind's resized share, keyed by kinds Channels names.
 
 [`components/layout/HyperSession.tsx`](components/layout/HyperSession.tsx) is an independent
 mini-workspace around a managed session. It has its own roots, focus, and publication graph while

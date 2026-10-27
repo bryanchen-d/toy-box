@@ -421,6 +421,12 @@ to the whole shelf while searching. A selection of visible artifacts archives, r
 to the top together, and Sort arranges the Shared shelf once by newest, oldest, or name. A drag
 reorders locally until its optimistic arrangement replaces the list.
 
+In a wide pane, chat and the aside form one resizable panel group divided by the shared
+`ResizableHandle`; a narrow pane hides chat and the divider, so the aside fills it. Each aside
+kind is its own panel with its own share of the pane, 50% for the canvas and 35% otherwise until
+resized within 25–75%. The divider commits the share a drag or keyboard step leaves, and the
+Workspace surface remembers it per kind in the layout cookie, as it does the overview pin.
+
 `useChannel.postMessage` returns the persisted message, or rejects on delivery
 failure. The composer returns that promise to its draft lifecycle for restoration
 on failure and renders `postError`. Apps must not treat delivery as agent completion.

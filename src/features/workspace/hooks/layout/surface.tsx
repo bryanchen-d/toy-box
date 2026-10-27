@@ -42,6 +42,9 @@ const { StoreProvider, useStoreContext: useWorkspaceSurface } = createStoreConte
     /** Whether Channel overviews stay pinned open, where the surface remembers it. */
     channelOverviewPinned?: boolean;
     setChannelOverviewPinned?: (pinned: boolean) => void;
+    /** Each Channel aside kind's resized share of a wide pane, where the surface remembers it. */
+    channelAsideSizes?: Readonly<Record<string, number>>;
+    setChannelAsideSize?: (kind: string, size: number) => void;
   }
 >();
 export { useWorkspaceSurface };
@@ -64,6 +67,8 @@ export function WorkspaceSurfaceProvider({
   onOpenScreen,
   channelOverviewPinned,
   onChannelOverviewPinnedChange,
+  channelAsideSizes,
+  onChannelAsideSizeChange,
   children,
 }: {
   surface: WorkspaceSurface;
@@ -74,6 +79,8 @@ export function WorkspaceSurfaceProvider({
   onOpenScreen?: (screenId: string) => Promise<void>;
   channelOverviewPinned?: boolean;
   onChannelOverviewPinnedChange?: (pinned: boolean) => void;
+  channelAsideSizes?: Readonly<Record<string, number>>;
+  onChannelAsideSizeChange?: (kind: string, size: number) => void;
   children: ReactNode;
 }) {
   const workspaceSurface = workspaceSurfaces[surface];
@@ -156,6 +163,8 @@ export function WorkspaceSurfaceProvider({
         revealScreen,
         channelOverviewPinned,
         setChannelOverviewPinned: onChannelOverviewPinnedChange,
+        channelAsideSizes,
+        setChannelAsideSize: onChannelAsideSizeChange,
       }}
     >
       {children}

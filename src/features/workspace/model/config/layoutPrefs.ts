@@ -18,12 +18,20 @@ export const SIDEBAR_MAX_WIDTH = 480;
 const TERMINAL_MIN_SIZE = 15;
 const TERMINAL_MAX_SIZE = 80;
 
+// A Channel aside's share of a wide pane, as a percentage, so chat keeps a usable share too.
+export const CHANNEL_ASIDE_MIN_SIZE = 25;
+export const CHANNEL_ASIDE_MAX_SIZE = 75;
+
 export function clampSidebarWidth(value: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
 }
 
 function clampTerminalSize(value: number): number {
   return Math.min(TERMINAL_MAX_SIZE, Math.max(TERMINAL_MIN_SIZE, value));
+}
+
+function clampChannelAsideSize(value: number): number {
+  return Math.min(CHANNEL_ASIDE_MAX_SIZE, Math.max(CHANNEL_ASIDE_MIN_SIZE, value));
 }
 
 const sidebarPanelsSchema = z.object({
@@ -45,6 +53,10 @@ const workspaceLayoutSchema = z.object({
     .object({ x: z.number().finite(), y: z.number().finite() })
     .default(DEFAULT_HYPER_POSITION),
   channelOverviewPinned: z.boolean().default(false),
+  /** Each Channel aside kind's resized share of a wide pane; unresized kinds keep their default. */
+  channelAsideSizes: z
+    .record(z.string(), z.number().finite().transform(clampChannelAsideSize))
+    .default({}),
 });
 
 export type WorkspaceLayout = z.output<typeof workspaceLayoutSchema>;
@@ -92,6 +104,9 @@ export function serializeWorkspaceLayout(layout: WorkspaceLayout): string {
       ? { hyperPosition: layout.hyperPosition }
       : {}),
     ...(layout.channelOverviewPinned ? { channelOverviewPinned: true } : {}),
+    ...(Object.keys(layout.channelAsideSizes).length > 0
+      ? { channelAsideSizes: layout.channelAsideSizes }
+      : {}),
   };
 
   return `${LAYOUT_COOKIE}=${encodeURIComponent(JSON.stringify(stored))}; Path=/; Max-Age=${LAYOUT_COOKIE_MAX_AGE}; SameSite=Lax`;

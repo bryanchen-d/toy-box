@@ -67,10 +67,7 @@ export function ChannelThread({
   }, [isLoaded, replyCount]);
 
   return (
-    <section
-      aria-label="Thread"
-      className="flex min-h-0 min-w-0 flex-col bg-panel @3xl/channel:border-l"
-    >
+    <section aria-label="Thread" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-3 pr-24">
         <MessageSquareReply className="size-4 shrink-0 text-muted-foreground" />
         <h2 className="min-w-0 truncate text-sm font-medium">Thread</h2>

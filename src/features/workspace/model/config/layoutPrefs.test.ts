@@ -10,6 +10,7 @@ const defaultLayout = {
   hyperOpen: false,
   hyperPosition: { x: 24, y: 24 },
   channelOverviewPinned: false,
+  channelAsideSizes: {},
 };
 
 function cookieFor(value: unknown): string {
@@ -38,6 +39,7 @@ describe("workspace layout", () => {
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
       channelOverviewPinned: true,
+      channelAsideSizes: { thread: 40 },
     });
 
     expect(cookieValue(cookie)).toEqual({
@@ -49,6 +51,7 @@ describe("workspace layout", () => {
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
       channelOverviewPinned: true,
+      channelAsideSizes: { thread: 40 },
     });
     expect(readWorkspaceLayout(`other=value; ${cookie}`)).toEqual({
       sidebarWidth: 320,
@@ -59,16 +62,24 @@ describe("workspace layout", () => {
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
       channelOverviewPinned: true,
+      channelAsideSizes: { thread: 40 },
     });
   });
 
   test("validates stored layout and clamps dimensions", () => {
-    expect(readWorkspaceLayout(cookieFor({ sidebarWidth: 9999, terminalSize: 999 }))).toMatchObject(
-      {
-        sidebarWidth: 480,
-        terminalSize: 80,
-      },
-    );
+    expect(
+      readWorkspaceLayout(
+        cookieFor({
+          sidebarWidth: 9999,
+          terminalSize: 999,
+          channelAsideSizes: { canvas: 99, thread: 5 },
+        }),
+      ),
+    ).toMatchObject({
+      sidebarWidth: 480,
+      terminalSize: 80,
+      channelAsideSizes: { canvas: 75, thread: 25 },
+    });
     expect(readWorkspaceLayout("toybox_layout=%")).toEqual(defaultLayout);
   });
 });

@@ -316,6 +316,7 @@ function WorkspacePage() {
   const [isChannelOverviewPinned, setIsChannelOverviewPinned] = useState(
     initialLayout.channelOverviewPinned,
   );
+  const [channelAsideSizes, setChannelAsideSizes] = useState(initialLayout.channelAsideSizes);
 
   const hasModels = useHasModels();
   const { data: channelList } = useQuery(channelQueries.list());
@@ -562,6 +563,7 @@ function WorkspacePage() {
     hyperOpen: hyper.isOpen,
     hyperPosition: hyperSession?.position ?? initialLayout.hyperPosition,
     channelOverviewPinned: isChannelOverviewPinned,
+    channelAsideSizes,
   });
   useEffect(() => {
     document.cookie = layoutCookie;
@@ -761,6 +763,10 @@ function WorkspacePage() {
         onOpenScreen={openScreen}
         channelOverviewPinned={isChannelOverviewPinned}
         onChannelOverviewPinnedChange={setIsChannelOverviewPinned}
+        channelAsideSizes={channelAsideSizes}
+        onChannelAsideSizeChange={(kind, size) =>
+          setChannelAsideSizes((sizes) => ({ ...sizes, [kind]: size }))
+        }
       >
         <WorkspaceLayout
           hydrated={hydrated}

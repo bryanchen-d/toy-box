@@ -25,13 +25,12 @@ export function ChannelCanvas({
   const loading = <PaneMessage title="Loading canvas" detail="Loading the shared app..." loading />;
 
   return (
-    <section
-      aria-label="Channel canvas"
-      className="flex min-h-0 min-w-0 flex-col @3xl/channel:border-l"
-    >
-      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 pr-24">
+    <section aria-label="Channel canvas" className="flex h-full min-h-0 min-w-0 flex-col">
+      {/* The canvas adds its own toggle to the pane's actions, so it clears four of them. */}
+      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 pr-32">
         <PanelsTopLeft className="size-4 shrink-0 text-muted-foreground" />
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{artifact.title}</h2>
+        <h2 className="min-w-0 truncate text-sm font-medium">{artifact.title}</h2>
+        {/* Beside the title, clear of the pane's own actions in the top-right corner. */}
         <Button
           type="button"
           variant="ghost"
