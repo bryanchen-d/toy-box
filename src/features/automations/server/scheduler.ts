@@ -7,8 +7,12 @@ import { runAutomation } from "./index";
 
 const POLL_INTERVAL_MS = 30_000;
 
-export function startScheduler(): void {
-  setInterval(() => void runSchedulerTick(), POLL_INTERVAL_MS).unref?.();
+export function startScheduler(): VoidFunction {
+  const timer = setInterval(() => void runSchedulerTick(), POLL_INTERVAL_MS);
+  timer.unref?.();
+  return () => {
+    clearInterval(timer);
+  };
 }
 
 export async function runSchedulerTick(): Promise<void> {
