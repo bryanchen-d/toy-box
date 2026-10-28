@@ -1,13 +1,13 @@
 import {
+  useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
-  useState,
   type MutableRefObject,
 } from "react";
+import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import * as m from "motion/react-m";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import type { Message as SessionTranscriptMessage, SessionStatus } from "../../model";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ScrollToBottomButton } from "@/shared/ui/scroll-to-bottom-button";
@@ -15,23 +15,7 @@ import { TranscriptPlaceholder } from "./TranscriptPlaceholder";
 import { Message } from "./messages/Message";
 import { queuedMessageLayoutId } from "../composer/QueuedMessageList";
 import { ReasoningDisplay, StatusIndicator } from "./SessionStatus";
-import {
-  createMessageWindow,
-  reconcileMessageWindow,
-  revealPreviousMessageWindow,
-} from "./virtualization";
-
-type PendingMessageAnchor = {
-  messageIndex: number;
-  viewportOffset: number;
-};
-
-function isRenderableMessage(message: SessionTranscriptMessage): boolean {
-  return (
-    message.role !== "assistant" ||
-    Boolean(message.content || message.error || (message.toolCalls?.length ?? 0) > 0)
-  );
-}
+import { createTranscriptRows } from "./rows";
 
 export function SessionMessageList({
   messages,
@@ -51,28 +35,14 @@ export function SessionMessageList({
   if (messages.length === 0) return <TranscriptPlaceholder />;
 
   return (
-    <StickToBottom
-      className="h-full bg-panel relative"
-      resize={isStreaming ? "smooth" : "instant"}
-      initial={false}
-    >
-      <VirtualizedMessageList
-        messages={messages}
-        isStreaming={isStreaming}
-        isWaiting={isWaiting}
-        status={status}
-        reasoningContent={reasoningContent}
-        scrollToBottomRef={scrollToBottomRef}
-      />
-      <SessionScrollToBottomButton />
-    </StickToBottom>
-  );
-}
-
-function SessionScrollToBottomButton() {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-  return (
-    <ScrollToBottomButton isAtBottom={isAtBottom} onScrollToBottom={() => void scrollToBottom()} />
+    <VirtualizedMessageList
+      messages={messages}
+      isStreaming={isStreaming}
+      isWaiting={isWaiting}
+      status={status}
+      reasoningContent={reasoningContent}
+      scrollToBottomRef={scrollToBottomRef}
+    />
   );
 }
 
@@ -91,169 +61,107 @@ function VirtualizedMessageList({
   reasoningContent: string;
   scrollToBottomRef: MutableRefObject<(() => void) | null>;
 }) {
-  const {
-    contentRef: stickToBottomContentRef,
-    isAtBottom,
-    scrollRef,
-    scrollToBottom,
-    stopScroll,
-  } = useStickToBottomContext();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const historySentinelRef = useRef<HTMLDivElement>(null);
-  const pendingAnchorRef = useRef<PendingMessageAnchor | null>(null);
-  const [messageWindow, setMessageWindow] = useState(() => createMessageWindow(messages.length));
-
-  // Reconcile before commit so an append or replacement never paints with stale bounds.
-  let renderedWindow = messageWindow;
-  if (messageWindow.messageCount !== messages.length) {
-    renderedWindow = reconcileMessageWindow(messageWindow, messages.length, isAtBottom);
-    setMessageWindow(renderedWindow);
-  }
-
-  const startIndex = renderedWindow.startIndex;
-  const hasEarlierMessages = startIndex > 0;
-  const previousStartIndexRef = useRef(startIndex);
-
-  useEffect(() => {
-    scrollToBottomRef.current = scrollToBottom;
-  }, [scrollToBottom, scrollToBottomRef]);
-
-  // The library's first ResizeObserver scroll happens after paint; position
-  // the list synchronously to avoid a visible jump on long sessions.
-  useLayoutEffect(() => {
-    const scrollEl = scrollRef.current;
-    const contentEl = contentRef.current;
-    if (!scrollEl || !contentEl) return;
-
-    scrollEl.scrollTop = scrollEl.scrollHeight;
-    contentEl.style.opacity = "1";
-    void scrollToBottom({ animation: "instant", ignoreEscapes: true });
-  }, [scrollRef, scrollToBottom]);
-
-  const revealPreviousMessages = useEffectEvent(() => {
-    if (messageWindow.startIndex === 0 || pendingAnchorRef.current) return;
-
-    const scrollEl = scrollRef.current;
-    const contentEl = contentRef.current;
-    if (!scrollEl || !contentEl) return;
-
-    // The sentinel can intersect before a touch/programmatic scroll event has
-    // escaped the bottom lock. History anchoring owns this resize transition.
-    stopScroll();
-
-    const anchorEl = contentEl.querySelector<HTMLElement>("[data-message-index]");
-    if (anchorEl) {
-      pendingAnchorRef.current = {
-        messageIndex: Number(anchorEl.dataset.messageIndex),
-        viewportOffset: anchorEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top,
-      };
-    }
-
-    setMessageWindow((current) => revealPreviousMessageWindow(current));
+  const scrollRef = useRef<HTMLElement>(null);
+  const rows = useMemo(() => createTranscriptRows(messages), [messages]);
+  // TanStack caches measurements and append anchors by this callback's identity.
+  const getItemKey = useCallback((index: number) => rows[index].key, [rows]);
+  const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    getItemKey,
+    estimateSize: () => 112,
+    overscan: 6,
+    paddingStart: 16,
+    paddingEnd: 16,
+    gap: 12,
+    anchorTo: "end",
+    followOnAppend: true,
+    scrollEndThreshold: 40,
+    observeElementRect: (instance, onChange) =>
+      observeElementRect(instance, (rect) => {
+        // The DOM already has the new viewport height; test the previous
+        // virtual geometry before handing the resize to the scroll owner.
+        const wasAtEnd =
+          instance.scrollRect !== null &&
+          instance.getTotalSize() - (instance.scrollOffset ?? 0) - instance.scrollRect.height <=
+            instance.options.scrollEndThreshold;
+        onChange(rect);
+        if (wasAtEnd) instance.scrollToEnd();
+      }),
   });
 
-  // Reveal the previous window before its sentinel reaches the visible scroll viewport.
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    const sentinelEl = historySentinelRef.current;
-    if (!hasEarlierMessages || !scrollEl || !sentinelEl) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) revealPreviousMessages();
-      },
-      {
-        root: scrollEl,
-        rootMargin: "600px 0px 0px",
-      },
-    );
-    observer.observe(sentinelEl);
-    return () => observer.disconnect();
-  }, [hasEarlierMessages, scrollRef]);
-
-  // Anchor prepended history in place, or keep an advancing tail window pinned before paint.
   useLayoutEffect(() => {
-    const scrollEl = scrollRef.current;
-    const contentEl = contentRef.current;
-    const previousStartIndex = previousStartIndexRef.current;
-    previousStartIndexRef.current = startIndex;
-    if (!scrollEl || !contentEl) return;
+    virtualizer.scrollToEnd();
+  }, [virtualizer]);
 
-    const pendingAnchor = pendingAnchorRef.current;
-    pendingAnchorRef.current = null;
-    if (pendingAnchor) {
-      const anchorEl = contentEl.querySelector<HTMLElement>(
-        `[data-message-index="${pendingAnchor.messageIndex}"]`,
-      );
-      if (!anchorEl) return;
-
-      const nextViewportOffset =
-        anchorEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
-      scrollEl.scrollTop += nextViewportOffset - pendingAnchor.viewportOffset;
-      return;
-    }
-
-    // Crossing the window boundary removes old rows above the viewport. Keep
-    // the latest output pinned before paint when the reader was already there.
-    if (startIndex > previousStartIndex && isAtBottom) {
-      void scrollToBottom({ animation: "instant", ignoreEscapes: true });
-    }
-  }, [isAtBottom, scrollRef, scrollToBottom, startIndex]);
+  useEffect(() => {
+    const scrollToBottom = () => virtualizer.scrollToEnd();
+    scrollToBottomRef.current = scrollToBottom;
+    return () => {
+      if (scrollToBottomRef.current === scrollToBottom) scrollToBottomRef.current = null;
+    };
+  }, [scrollToBottomRef, virtualizer]);
 
   return (
-    <ScrollableFade ref={scrollRef} axis="vertical" rootClassName="size-full">
-      <div ref={stickToBottomContentRef} className="@container space-y-4 overflow-x-hidden p-4">
-        <div
-          ref={contentRef}
-          className="space-y-3"
-          data-message-window-start-index={startIndex}
-          style={{ opacity: 0 }}
-        >
-          {hasEarlierMessages && (
-            <div ref={historySentinelRef} className="h-px" aria-hidden="true" />
-          )}
-
-          {messages.slice(startIndex).map((message, index) => {
-            const absoluteIndex = startIndex + index;
-            if (!isRenderableMessage(message)) return null;
-
-            const isLast = absoluteIndex === messages.length - 1;
-            const content = (
+    <div className="h-full bg-panel relative">
+      <ScrollableFade
+        ref={scrollRef}
+        axis="vertical"
+        rootClassName="size-full"
+        style={{ overflowAnchor: "none" }}
+      >
+        <div className="@container relative mx-4" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index];
+            const message = row.message;
+            const content = message && (
               <Message
                 message={message}
                 isStreaming={isStreaming}
                 isBusy={isStreaming && status !== "background"}
-                isLast={isLast}
+                isLast={row.messageIndex === messages.length - 1}
               />
             );
             return (
               <div
-                // eslint-disable-next-line react/no-array-index-key -- messages append in order and streaming updates replace content in place
-                key={`${message.role}-${absoluteIndex}`}
-                data-message-index={absoluteIndex}
+                key={item.key}
+                ref={virtualizer.measureElement}
+                data-index={item.index}
+                data-message-index={row.messageIndex}
+                className="absolute top-0 left-0 w-full"
+                style={{ transform: `translateY(${item.start}px)` }}
               >
-                {message.role === "user" && message.clientId ? (
-                  // A user message shares identity with the queued row it came from, so it
-                  // travels up from the composer when sent. A fixed layout dependency limits
-                  // animation to that arrival, never later updates or scrolling.
-                  <m.div
-                    layoutId={queuedMessageLayoutId(message.clientId)}
-                    layout="position"
-                    layoutDependency={message.clientId}
-                  >
-                    {content}
-                  </m.div>
+                {message ? (
+                  message.role === "user" && message.clientId ? (
+                    <m.div
+                      layoutId={queuedMessageLayoutId(message.clientId)}
+                      layout="position"
+                      layoutDependency={message.clientId}
+                    >
+                      {content}
+                    </m.div>
+                  ) : (
+                    content
+                  )
                 ) : (
-                  content
+                  <div className="space-y-3">
+                    {isStreaming && reasoningContent && (
+                      <ReasoningDisplay content={reasoningContent} />
+                    )}
+                    {isStreaming && !isWaiting && status !== "idle" && (
+                      <StatusIndicator status={status} />
+                    )}
+                  </div>
                 )}
               </div>
             );
           })}
-
-          {isStreaming && reasoningContent && <ReasoningDisplay content={reasoningContent} />}
-          {isStreaming && !isWaiting && status !== "idle" && <StatusIndicator status={status} />}
         </div>
-      </div>
-    </ScrollableFade>
+      </ScrollableFade>
+      <ScrollToBottomButton
+        isAtBottom={virtualizer.isAtEnd()}
+        onScrollToBottom={() => virtualizer.scrollToEnd()}
+      />
+    </div>
   );
 }

@@ -290,6 +290,13 @@ input has already blurred.
 [`UserMessage`](../../shared/messages/UserMessage.tsx), whose actions separate themselves from
 the shared [`CopyControl`](../../shared/messages/CopyControl.tsx) only when they render.
 
+`SessionMessageList` uses TanStack Virtual for bounded, dynamically measured rows across the
+complete transcript. It alone owns scroll geometry, end anchoring, and append following;
+viewport resizes retain an already-following tail. Activity rows follow the last rendered
+message so reasoning/status cannot mask newly visible output. Keep the virtualizer's mutable getters
+uncached when changing this component; verify scroll-only updates in the compiled browser.
+This bounds mounted rows, not the snapshot payload or the canonical messages array.
+
 Assistant Markdown keeps Streamdown's
 HTML and protocol sanitization but omits URL hardening so relative links remain semantic anchors;
 links that resolve to an already-published session artifact focus that artifact's editor pane.
