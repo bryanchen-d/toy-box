@@ -113,3 +113,9 @@ try {
 ```
 
 Clear the override before testing real hidden/visible transitions.
+
+For concurrent integrated test documents, `page.context().newPage()` inherits the
+owning agent's permitted storage affinity. Creating a separate browser context
+can be rejected, and repeated `openBrowserPage` calls may replace older owned
+pages; verify that both documents remain alive before claiming multi-client UI
+coverage. Restore each document's visibility override and close only test pages.
