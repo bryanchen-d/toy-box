@@ -21,13 +21,15 @@ import {
   cancelQueuedMessage as cancelRuntimeQueuedMessage,
   createSession as createRuntimeSession,
   deliverSessionMessage,
-  getSessionSnapshot,
+  getSessionView,
+  getSessionOutputs,
+  getSessionHistoryPage,
   rewindSession as rewindRuntimeSession,
   steerQueuedMessage as steerRuntimeQueuedMessage,
   streamSession as streamSessionEvents,
   waitForSessions,
 } from "@sessions/server/runtime";
-import type { SessionCompletion, SessionSkill, SessionState } from "../model";
+import type { SessionCompletion, SessionSkill } from "../model";
 import {
   answerSessionQuestionInputSchema,
   sessionLaunchSchema,
@@ -40,6 +42,7 @@ import {
   resolveSessionContextInputSchema,
   rewindSessionInputSchema,
   sessionInputSchema,
+  sessionHistoryInputSchema,
   streamSessionRequestSchema,
   waitForSessionInputSchema,
 } from "../model/protocol";
@@ -85,13 +88,18 @@ export const resolveSessionContext = createServerFn({ method: "POST" })
   .validator(zodValidator(resolveSessionContextInputSchema))
   .handler(({ data }) => resolveGitContext(data.directory));
 
-/** A session's reduced transcript snapshot, served from the cheapest source
- *  that is still truthful: the live stream's in-memory state, then the
- *  cold-path ladder (snapshot cache, then read-only provider history replay,
- *  which repopulates the cache for the next open). */
+/** Bounded browser view over the full canonical runtime or idle snapshot. */
 export const querySession = createServerFn({ method: "POST" })
   .middleware([withSessionId])
-  .handler(({ data }): Promise<SessionState> => getSessionSnapshot(data.sessionId));
+  .handler(({ data }) => getSessionView(data.sessionId));
+
+export const querySessionOutputs = createServerFn({ method: "POST" })
+  .middleware([withSessionId])
+  .handler(({ data }) => getSessionOutputs(data.sessionId));
+
+export const querySessionHistory = createServerFn({ method: "POST" })
+  .validator(zodValidator(sessionHistoryInputSchema))
+  .handler(({ data }) => getSessionHistoryPage(data.sessionId, data.start));
 
 /** Wait for the announced, live, or latest persisted execution of one session. */
 export const waitForSession = createServerFn({ method: "POST" })
@@ -179,9 +187,10 @@ export const abortSession = createServerFn({ method: "POST" })
 /** Rewind an idle local session to immediately before one root user message. */
 export const rewindSession = createServerFn({ method: "POST" })
   .validator(zodValidator(rewindSessionInputSchema))
-  .handler(({ data }): Promise<SessionState> =>
-    rewindRuntimeSession(data.sessionId, data.timestamp),
-  );
+  .handler(async ({ data }) => {
+    await rewindRuntimeSession(data.sessionId, data.timestamp);
+    return getSessionView(data.sessionId);
+  });
 
 export const deleteSession = createServerFn({ method: "POST" })
   .middleware([withSessionId])

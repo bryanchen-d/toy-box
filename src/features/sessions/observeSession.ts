@@ -1,5 +1,5 @@
 import type { CustomFetch } from "@tanstack/react-start";
-import type { SessionEvent, SessionState } from "./model";
+import type { SessionEvent } from "./model";
 import {
   isSessionObservationError,
   SessionObservationError,
@@ -46,7 +46,7 @@ function createSessionFetch(): CustomFetch {
 }
 
 /** One observation lifetime, including snapshot-first recovery from transport loss. */
-export async function observeSession(
+export async function observeSession<Snapshot extends { lastSeenEventId?: number }>(
   initialRequest: StreamSessionRequest,
   {
     signal,
@@ -61,8 +61,8 @@ export async function observeSession(
       request: StreamSessionRequest,
       transport: { signal: AbortSignal; fetch: CustomFetch },
     ) => Promise<AsyncIterable<SessionEvent> | undefined>;
-    refresh: () => Promise<SessionState>;
-    adopt: (snapshot: SessionState) => void;
+    refresh: () => Promise<Snapshot>;
+    adopt: (snapshot: Snapshot) => void;
     apply: (event: SessionEvent) => void;
     onError: (error: unknown) => void;
   },

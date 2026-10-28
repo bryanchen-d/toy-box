@@ -1,24 +1,38 @@
 import type { Message } from "../../model";
 
 type TranscriptRow =
-  | { key: string; message: Message; messageIndex: number }
+  | { key: string; message: Message | undefined; messageIndex: number }
   | { key: string; message?: never; messageIndex?: never };
 
-export function createTranscriptRows(messages: readonly Message[]): TranscriptRow[] {
-  const rows: TranscriptRow[] = [];
-  for (const [messageIndex, message] of messages.entries()) {
-    if (
-      message.role === "assistant" &&
-      !message.content &&
-      !message.error &&
-      !message.toolCalls?.length
-    ) {
-      continue;
+export function createTranscriptRows(
+  messageCount: number,
+  getMessage: (index: number) => Message | undefined,
+  hiddenIndices: readonly number[],
+) {
+  const count = messageCount - hiddenIndices.length;
+  const messageIndexAt = (index: number) => {
+    let messageIndex = index;
+    for (const hidden of hiddenIndices) {
+      if (hidden > messageIndex) break;
+      messageIndex++;
     }
-    rows.push({ key: `${message.role}-${messageIndex}`, message, messageIndex });
-  }
-  // A hidden assistant can become visible without changing the message count.
-  // Follow the last rendered message so that transition also advances the tail.
-  rows.push({ key: `activity-${rows.at(-1)?.key ?? "empty"}` });
-  return rows;
+    return messageIndex;
+  };
+  return {
+    length: count + 1,
+    at(index: number): TranscriptRow {
+      if (index < 0) index += count + 1;
+      if (index === count) {
+        // Follow the last rendered identity, not raw count: an empty assistant
+        // gaining its first text/tool must advance the activity anchor too.
+        return { key: `activity-${count ? messageIndexAt(count - 1) : "empty"}` };
+      }
+      const messageIndex = messageIndexAt(index);
+      return {
+        key: `message-${messageIndex}`,
+        messageIndex,
+        message: getMessage(messageIndex),
+      };
+    },
+  };
 }

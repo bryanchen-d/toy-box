@@ -17,59 +17,49 @@ import { queuedMessageLayoutId } from "../composer/QueuedMessageList";
 import { ReasoningDisplay, StatusIndicator } from "./SessionStatus";
 import { createTranscriptRows } from "./rows";
 
-export function SessionMessageList({
-  messages,
-  isStreaming,
-  isWaiting,
-  status,
-  reasoningContent,
-  scrollToBottomRef,
-}: {
-  messages: SessionTranscriptMessage[];
+type SessionMessageListProps = {
+  messageCount: number;
+  getMessage: (index: number) => SessionTranscriptMessage | undefined;
+  hiddenMessageIndices: readonly number[];
+  onRangeChange: (start: number, end: number) => void;
+  historyError: Error | null | undefined;
   isStreaming: boolean;
   isWaiting: boolean;
   status: SessionStatus;
   reasoningContent: string;
   scrollToBottomRef: MutableRefObject<(() => void) | null>;
-}) {
-  if (messages.length === 0) return <TranscriptPlaceholder />;
+};
 
-  return (
-    <VirtualizedMessageList
-      messages={messages}
-      isStreaming={isStreaming}
-      isWaiting={isWaiting}
-      status={status}
-      reasoningContent={reasoningContent}
-      scrollToBottomRef={scrollToBottomRef}
-    />
-  );
+export function SessionMessageList(props: SessionMessageListProps) {
+  if (props.messageCount === 0) return <TranscriptPlaceholder />;
+  return <VirtualizedMessageList {...props} />;
 }
 
 function VirtualizedMessageList({
-  messages,
+  messageCount,
+  getMessage,
+  hiddenMessageIndices,
+  onRangeChange,
+  historyError,
   isStreaming,
   isWaiting,
   status,
   reasoningContent,
   scrollToBottomRef,
-}: {
-  messages: SessionTranscriptMessage[];
-  isStreaming: boolean;
-  isWaiting: boolean;
-  status: SessionStatus;
-  reasoningContent: string;
-  scrollToBottomRef: MutableRefObject<(() => void) | null>;
-}) {
+}: SessionMessageListProps) {
   const scrollRef = useRef<HTMLElement>(null);
-  const rows = useMemo(() => createTranscriptRows(messages), [messages]);
+  const rows = useMemo(
+    () => createTranscriptRows(messageCount, getMessage, hiddenMessageIndices),
+    [messageCount, getMessage, hiddenMessageIndices],
+  );
   // TanStack caches measurements and append anchors by this callback's identity.
-  const getItemKey = useCallback((index: number) => rows[index].key, [rows]);
+  const getItemKey = useCallback((index: number) => rows.at(index).key, [rows]);
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     getItemKey,
     estimateSize: () => 112,
+    initialOffset: () => rows.length * (112 + 12),
     overscan: 6,
     paddingStart: 16,
     paddingEnd: 16,
@@ -89,6 +79,13 @@ function VirtualizedMessageList({
         if (wasAtEnd) instance.scrollToEnd();
       }),
   });
+  const items = virtualizer.getVirtualItems();
+  const first = items[0] && rows.at(items[0].index).messageIndex;
+  const last = items.at(-1);
+  const end = last && (rows.at(last.index).messageIndex ?? messageCount - 1);
+  useEffect(() => {
+    if (first !== undefined && end !== undefined) onRangeChange(first, end);
+  }, [first, end, onRangeChange]);
 
   useLayoutEffect(() => {
     virtualizer.scrollToEnd();
@@ -111,15 +108,15 @@ function VirtualizedMessageList({
         style={{ overflowAnchor: "none" }}
       >
         <div className="@container relative mx-4" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((item) => {
-            const row = rows[item.index];
+          {items.map((item) => {
+            const row = rows.at(item.index);
             const message = row.message;
             const content = message && (
               <Message
                 message={message}
                 isStreaming={isStreaming}
                 isBusy={isStreaming && status !== "background"}
-                isLast={row.messageIndex === messages.length - 1}
+                isLast={row.messageIndex === messageCount - 1}
               />
             );
             return (
@@ -143,6 +140,15 @@ function VirtualizedMessageList({
                   ) : (
                     content
                   )
+                ) : row.messageIndex !== undefined ? (
+                  <div
+                    className="min-h-24 py-4 text-sm text-muted-foreground"
+                    role={historyError ? "alert" : undefined}
+                  >
+                    {historyError
+                      ? `Unable to load history: ${historyError.message}`
+                      : "Loading messages..."}
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {isStreaming && reasoningContent && (

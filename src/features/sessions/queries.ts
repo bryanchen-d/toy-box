@@ -5,6 +5,8 @@ import {
   getSessionsState,
   listSkills,
   querySession,
+  querySessionOutputs,
+  querySessionHistory,
   resolveSessionContext,
 } from "./server/functions";
 
@@ -36,9 +38,37 @@ export const sessionQueries = {
 
   details: () => [...sessionQueries.all(), "detail"] as const,
 
+  entity: (sessionId: string) => [...sessionQueries.details(), sessionId] as const,
+
+  historyKey: (sessionId: string) => [...sessionQueries.entity(sessionId), "history"] as const,
+
+  history: (sessionId: string, start: number) =>
+    queryOptions({
+      queryKey: [...sessionQueries.historyKey(sessionId), start] as const,
+      queryFn: ({ signal }) =>
+        querySessionHistory({ data: { sessionId, start }, signal, fetch: sessionFetch }),
+      gcTime: 0,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    }),
+
+  outputs: (sessionId: string) =>
+    queryOptions({
+      queryKey: [...sessionQueries.entity(sessionId), "outputs"] as const,
+      queryFn: ({ signal }) =>
+        querySessionOutputs({ data: { sessionId }, signal, fetch: sessionFetch }),
+      gcTime: 0,
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    }),
+
   detail: (sessionId: string) =>
     queryOptions({
-      queryKey: [...sessionQueries.details(), sessionId] as const,
+      queryKey: sessionQueries.entity(sessionId),
       queryFn: ({ signal }) => querySession({ data: { sessionId }, signal, fetch: sessionFetch }),
       staleTime: 0, // Always refetch when entering a session to get latest messages
       refetchOnWindowFocus: "always",

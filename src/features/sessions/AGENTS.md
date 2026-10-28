@@ -88,7 +88,7 @@ directory and worktree choice; worktrees retain their own state.
 
 ## Client access and lifecycle
 
-`queries.ts` is the declarative read API for the durable session list, one transcript snapshot,
+`queries.ts` is the declarative read API for the durable session list, a bounded browser view,
 and directory-, role-, and provider-scoped skills. `mutations.ts` is the request/response operation API for
 creation, first-turn launch, delivery, queue control, abort, rewind, rename, deletion, and worktree actions. It
 owns only the cache transitions that make those operations immediate and rolls optimistic changes
@@ -161,6 +161,33 @@ same ID to running, so its timestamp and directory appear before provider creati
 Creation failure reconciles catalog and workspace state from the server.
 Providers' `useModels.ts` composes the model catalog with the workspace default. `useWarmSessionSnapshots.ts`
 retains explicitly pinned snapshots without creating UI output or a second cache.
+
+`model/view.ts` projects the browser's `SessionView`: the most recent 50 canonical messages,
+their absolute offset, the full message count, all canonical metadata, complete edit summaries,
+the indices of omitted empty assistants, and the last nonempty spoken text (at most 1,000
+characters). The lightweight empty-row index avoids fetching history just to discover that
+those rows do not render. `model/editDiffs.ts` owns the
+shared pure edit-summary policy. Browser streaming uses the canonical reducer over that recent
+window and bounds it after every event; old-tool completions refresh authoritative summaries.
+Those completions read only `SessionOutputs` (diffs, capped voice text, and cursor) through a
+Query-owned child of the detail key; they never download the recent transcript again. Tool starts
+update rows without fetching output summaries. Snapshot/recovery reads still adopt the complete view.
+The runtime reuses immutable edit/patch parses through weak keys without extending tool lifetimes.
+Full server, SDK, history replay, and headless reads still use complete `SessionState`.
+Cold native history replay remains full. Idle cache reads project before making their private
+copy, preserving freshness, artifacts, context usage, and retention policy without cloning the
+whole transcript for a hot browser read.
+
+`useSessionHistory.ts` subscribes to random-access 50-message Query pages for the virtual
+viewport. It selects only pages containing non-hidden messages in the rendered range, at most
+one page per requested rendered message (including overscan), rather than capping sparse ranges
+at six raw pages. Leaving a range releases its page immediately; hidden panes subscribe to none.
+Canonical indices identify unloaded rows as well as loaded rows, so direct
+scrollbar jumps do not walk intermediate pages. Already-reduced pages merge directly, while
+live old-row edits use the same canonical reducer. A read racing such an edit retries unless
+its cursor already incorporates it. Recovery resets visible older pages as well as adopting
+the latest view. Entity retirement cancels the entire detail-key family without Query revert
+and removes history/output reads, preventing late reads from restoring deleted or replaced data.
 
 ## Presentation
 

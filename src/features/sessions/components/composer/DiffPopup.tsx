@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { cn } from "@/shared/utils";
 import type { DiffStats } from "@/shared/diffStats";
-import type { FileDiffSummary } from "../transcript/editDiffs";
+import type { FileDiffSummary } from "../../model/editDiffs";
 import { outputPillClassName } from "@workspace/components/outputs/ArtifactPill";
 
 export function DiffPopup({ total, byFile }: { total: DiffStats; byFile: FileDiffSummary[] }) {

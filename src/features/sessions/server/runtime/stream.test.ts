@@ -1,5 +1,6 @@
 import type { SessionConnection } from "@providers/server/provider";
-import { describe, expect, mock, onTestFinished, test } from "bun:test";
+import { describe, expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import * as realSessionProviders from "../providers";
 import {
   deliverSessionMessage,
   registerPendingSessionCompletion,
@@ -1706,6 +1707,83 @@ describe("createSession", () => {
     creating.reject(new Error("Provider unavailable"));
     await expect(created).rejects.toThrow("Provider unavailable");
     expect(await snapshot).toBe(persisted);
+  });
+
+  test("a runtime started during async idle reads wins for full, recent and history reads", async () => {
+    const sessionId = "snapshot-read-start-race";
+    cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
+    const pending = Promise.withResolvers<SessionState>();
+    spyOn(realSessionProviders, "getSessionDirectory").mockResolvedValue("C:\\fake");
+    mockStreamRuntimeModules({
+      snapshotCache: {
+        loadSessionSnapshot: async (_id: string, project?: (state: SessionState) => unknown) => {
+          const state = await pending.promise;
+          return project ? project(state) : state;
+        },
+      },
+    });
+    const runtime = await import("./index");
+    const reads = [
+      runtime.getSessionSnapshot(sessionId),
+      runtime.getSessionView(sessionId),
+      runtime.getSessionHistoryPage(sessionId, 0),
+    ];
+    await settle();
+    SessionStream.getOrCreate(sessionId, makeFakeSession(), {
+      messages: [{ role: "assistant", content: "Active truth" }],
+    });
+    pending.resolve(
+      createInitialSessionState({
+        messages: [{ role: "assistant", content: "Stale native history" }],
+      }),
+    );
+    for (const result of await Promise.all(reads)) {
+      expect(result.messages).toEqual([{ role: "assistant", content: "Active truth" }]);
+    }
+  });
+
+  test("output refresh has no transcript body and includes off-window edits and voice text", async () => {
+    const sessionId = "summary-only-read";
+    cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
+    mockStreamRuntimeModules();
+    spyOn(realSessionProviders, "getSessionDirectory").mockResolvedValue("C:\\fake");
+    const state = createInitialSessionState({
+      messages: [
+        { role: "user", content: "Voice text outside the recent window" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "off-window-edit",
+              name: "edit",
+              arguments: { path: "old.txt" },
+              result: {
+                success: true,
+                content: "ok",
+                details: "--- a/old.txt\n+++ b/old.txt\n@@ -1 +1,2 @@\n-old\n+new\n+line",
+              },
+            },
+          ],
+        },
+        ...Array.from({ length: 100 }, (): SessionState["messages"][number] => ({
+          role: "system",
+          content: { type: "channel_message", senderName: "Sender" },
+        })),
+      ],
+    });
+    const stream = SessionStream.getOrCreate(sessionId, makeFakeSession(), state);
+    const { getSessionOutputs } = await import("./index");
+    const outputs = await getSessionOutputs(sessionId);
+    expect(Object.keys(outputs).sort()).toEqual([
+      "editDiffs",
+      "lastSeenEventId",
+      "lastVoiceMessage",
+    ]);
+    expect(outputs.editDiffs.total).toEqual({ added: 2, removed: 1 });
+    expect(outputs.editDiffs.byToolCallId.get("off-window-edit")).toEqual(outputs.editDiffs.total);
+    expect(outputs.lastVoiceMessage).toBe("Voice text outside the recent window");
+    expect(stream.getSessionState().messages).toHaveLength(102);
   });
 });
 

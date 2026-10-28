@@ -3,6 +3,7 @@ import * as providers from "../providers";
 import { deleteSessionFiles, writeSessionArtifact } from "../artifacts";
 import type { SessionEvent, SessionState } from "@sessions/model";
 import { createInitialSessionState } from "@sessions/model/reducer";
+import { projectSessionHistory, projectSessionView } from "@sessions/model/view";
 import {
   cacheSnapshot,
   evictCachedSnapshot,
@@ -93,6 +94,93 @@ describe.serial("snapshot cache", () => {
     evictCachedSnapshot("snapshot-cache-test-evicted");
 
     expect(hasCachedSnapshot("snapshot-cache-test-evicted")).toBe(false);
+  });
+
+  test("hot projected reads clone only selected messages and preserve private metadata copies", async () => {
+    const id = "snapshot-projected-copy";
+    spyOn(providers, "isHistoryCurrent").mockResolvedValue(true);
+    onTestFinished(() => {
+      mock.restore();
+      evictCachedSnapshot(id);
+    });
+    const original = createInitialSessionState({
+      messages: Array.from({ length: 5271 }, (_, index) => ({ role: "user", content: `${index}` })),
+      todos: [{ id: "task", title: "Original", status: "done" }],
+      contextUsage: { tokens: 123, tokenWindow: 456 },
+    });
+    cacheSnapshot(id, original);
+    const clone = spyOn(globalThis, "structuredClone");
+    const view = (await getCachedSnapshot(id, projectSessionView))!;
+    expect(clone.mock.calls).toHaveLength(1);
+    expect(clone.mock.calls[0]?.[0]).toMatchObject({ messageCount: 5271, messageOffset: 5221 });
+    expect(view.messages).toHaveLength(50);
+    view.messages[0] = { role: "user", content: "Mutated" };
+    view.todos[0]!.title = "Mutated";
+    const again = (await getCachedSnapshot(id, projectSessionView))!;
+    expect(again.messages[0]?.content).toBe("5221");
+    expect(again.todos[0]?.title).toBe("Original");
+    expect(again.contextUsage).toEqual({ tokens: 123, tokenWindow: 456 });
+    expect((await getCachedSnapshot(id))?.messages).toHaveLength(5271);
+  });
+
+  test("concurrent cold projected reads share replay but never share returned values", async () => {
+    const id = "snapshot-projected-cold";
+    const pending = Promise.withResolvers<SessionEvent[]>();
+    const history = spyOn(providers, "readSessionHistory").mockReturnValue(pending.promise);
+    spyOn(providers, "isHistoryCurrent").mockResolvedValue(true);
+    onTestFinished(() => {
+      mock.restore();
+      evictCachedSnapshot(id);
+    });
+    const first = loadSessionSnapshot(id, (state) => projectSessionHistory(state, 0));
+    const second = loadSessionSnapshot(id, (state) => projectSessionHistory(state, 0));
+    await Bun.sleep(0);
+    expect(history).toHaveBeenCalledTimes(1);
+    pending.resolve([{ type: "user_message", content: "Original" }]);
+    const [a, b] = await Promise.all([first, second]);
+    a.messages[0] = { role: "user", content: "Changed" };
+    expect(b.messages[0]?.content).toBe("Original");
+  });
+
+  test("eviction fences an in-flight replay from restoring the deleted cache entry", async () => {
+    const id = "snapshot-projected-evicted";
+    const pending = Promise.withResolvers<SessionEvent[]>();
+    spyOn(providers, "readSessionHistory").mockReturnValue(pending.promise);
+    onTestFinished(() => {
+      mock.restore();
+      evictCachedSnapshot(id);
+    });
+    const read = loadSessionSnapshot(id, projectSessionView);
+    await Bun.sleep(0);
+    evictCachedSnapshot(id);
+    pending.resolve([{ type: "user_message", content: "Obsolete" }]);
+    await read;
+    expect(hasCachedSnapshot(id)).toBe(false);
+  });
+
+  test("a completed turn captured during native replay wins even after its runtime is gone", async () => {
+    const id = "snapshot-completed-turn-race";
+    const pending = Promise.withResolvers<SessionEvent[]>();
+    spyOn(providers, "readSessionHistory").mockReturnValue(pending.promise);
+    spyOn(providers, "isHistoryCurrent").mockResolvedValue(true);
+    onTestFinished(() => {
+      mock.restore();
+      evictCachedSnapshot(id);
+    });
+    const read = loadSessionSnapshot(id, projectSessionView);
+    await Bun.sleep(0);
+    cacheSnapshot(
+      id,
+      createInitialSessionState({
+        messages: [{ role: "assistant", content: "Completed while history was reading" }],
+        lastSeenEventId: 99,
+      }),
+    );
+    pending.resolve([{ type: "assistant_message", content: "Old native history" }]);
+    expect(await read).toMatchObject({
+      messages: [{ role: "assistant", content: "Completed while history was reading" }],
+      lastSeenEventId: 99,
+    });
   });
 
   test("rotates out the oldest entry beyond the cap", () => {

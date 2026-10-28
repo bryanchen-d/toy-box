@@ -128,8 +128,15 @@ export const sessionMutations = {
   rewindSession: (sessionId: string, timestamp: string) =>
     mutationOptions({
       mutationFn: () => requestSessionRewind({ data: { sessionId, timestamp } }),
-      onSuccess: (snapshot, _variables, _onMutateResult, { client }) =>
-        client.setQueryData(sessionQueries.detail(sessionId).queryKey, snapshot),
+      onSuccess: async (snapshot, _variables, _onMutateResult, { client }) => {
+        await client.cancelQueries(
+          { queryKey: sessionQueries.entity(sessionId) },
+          { revert: false },
+        );
+        client.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
+        client.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
+        client.setQueryData(sessionQueries.detail(sessionId).queryKey, snapshot);
+      },
     }),
 
   mergeWorktree: (sessionId: string) =>

@@ -22,29 +22,63 @@ export type CachedSnapshotEntry = {
 
 const snapshotCache = sharedMap<CachedSnapshotEntry>("session-snapshot-cache");
 const retainedSessionIds = sharedSet<string>("retained-session-snapshots");
+const pendingReads = sharedMap<Promise<SessionState>>("session-snapshot-reads");
 
 /** Load an idle session snapshot from cache, or replay provider history and cache it. */
-export async function loadSessionSnapshot(sessionId: string): Promise<SessionState> {
+export function loadSessionSnapshot(sessionId: string): Promise<SessionState>;
+export function loadSessionSnapshot<T>(
+  sessionId: string,
+  project: (state: SessionState) => T,
+): Promise<T>;
+export async function loadSessionSnapshot<T>(
+  sessionId: string,
+  project: (state: SessionState) => T | SessionState = (state) => state,
+): Promise<T | SessionState> {
   // Native histories omit context usage, so a rebuild keeps the last one reported live.
   const contextUsage = snapshotCache.get(sessionId)?.snapshot.contextUsage;
-  const cachedSnapshot = await getCachedSnapshot(sessionId);
-  if (cachedSnapshot) return cachedSnapshot;
+  const cachedSnapshot = await getCachedSnapshot(sessionId, project);
+  if (cachedSnapshot !== undefined) return cachedSnapshot;
 
-  const events = await readSessionHistory(sessionId);
-  const artifacts = await listSessionArtifacts(sessionId);
-  const snapshot: SessionState = {
-    ...replaySessionHistory(events),
-    artifacts,
-    ...(contextUsage ? { contextUsage } : {}),
-  };
-
-  cacheSnapshot(sessionId, snapshot);
-  return snapshot;
+  let pending = pendingReads.get(sessionId);
+  let capturedByRead: CachedSnapshotEntry | undefined;
+  if (!pending) {
+    pending = (async () => {
+      const events = await readSessionHistory(sessionId);
+      const artifacts = await listSessionArtifacts(sessionId);
+      return {
+        ...replaySessionHistory(events),
+        artifacts,
+        ...(contextUsage ? { contextUsage } : {}),
+      };
+    })();
+    pendingReads.set(sessionId, pending);
+    void pending.then(
+      (snapshot) => {
+        if (pendingReads.get(sessionId) === pending) {
+          cacheSnapshot(sessionId, snapshot);
+          capturedByRead = snapshotCache.get(sessionId);
+        }
+      },
+      () => {
+        if (pendingReads.get(sessionId) === pending) pendingReads.delete(sessionId);
+      },
+    );
+  }
+  const snapshot = await pending;
+  const current = snapshotCache.get(sessionId);
+  if (current && current !== capturedByRead) {
+    // A turn can start AND finish during native replay. Its captured state wins
+    // even though no active runtime remains for the caller's final live check.
+    const latest = await getCachedSnapshot(sessionId, project);
+    return latest !== undefined ? latest : loadSessionSnapshot(sessionId, project);
+  }
+  return structuredClone(project(snapshot));
 }
 
 /** Rebuild one idle snapshot from authoritative provider history without changing retention. */
 export async function refreshSessionSnapshot(sessionId: string): Promise<SessionState> {
   snapshotCache.delete(sessionId);
+  pendingReads.delete(sessionId);
   return loadSessionSnapshot(sessionId);
 }
 
@@ -71,6 +105,7 @@ export async function retainSessionSnapshots(sessionIds: readonly string[]): Pro
 
 /** Cache a private copy of a reduced session snapshot. */
 export function cacheSnapshot(sessionId: string, snapshot: SessionState): void {
+  pendingReads.delete(sessionId);
   snapshotCache.delete(sessionId);
   snapshotCache.set(sessionId, { snapshot: structuredClone(snapshot), capturedAt: Date.now() });
 
@@ -84,13 +119,21 @@ export function cacheSnapshot(sessionId: string, snapshot: SessionState): void {
 }
 
 /** Return a fresh cached snapshot copy, evicting stale entries. */
-export async function getCachedSnapshot(sessionId: string): Promise<SessionState | undefined> {
+export function getCachedSnapshot(sessionId: string): Promise<SessionState | undefined>;
+export function getCachedSnapshot<T>(
+  sessionId: string,
+  project: (state: SessionState) => T,
+): Promise<T | undefined>;
+export async function getCachedSnapshot<T>(
+  sessionId: string,
+  project: (state: SessionState) => T | SessionState = (state) => state,
+): Promise<T | SessionState | undefined> {
   const entry = snapshotCache.get(sessionId);
   if (!entry) return undefined;
 
-  if (
-    !isCachedSnapshotFresh(entry, await isHistoryCurrent(sessionId, entry.capturedAt), Date.now())
-  ) {
+  const historyCurrent = await isHistoryCurrent(sessionId, entry.capturedAt);
+  if (snapshotCache.get(sessionId) !== entry) return getCachedSnapshot(sessionId, project);
+  if (!isCachedSnapshotFresh(entry, historyCurrent, Date.now())) {
     snapshotCache.delete(sessionId);
     return undefined;
   }
@@ -99,14 +142,13 @@ export async function getCachedSnapshot(sessionId: string): Promise<SessionState
   snapshotCache.delete(sessionId);
   snapshotCache.set(sessionId, entry);
   const artifacts = await listSessionArtifacts(sessionId);
-  return {
-    ...structuredClone(entry.snapshot),
-    artifacts,
-  };
+  if (snapshotCache.get(sessionId) !== entry) return getCachedSnapshot(sessionId, project);
+  return structuredClone(project({ ...entry.snapshot, artifacts }));
 }
 
 /** Forget a session's snapshot entirely, including any retention it was granted. */
 export function evictCachedSnapshot(sessionId: string): void {
+  pendingReads.delete(sessionId);
   snapshotCache.delete(sessionId);
   retainedSessionIds.delete(sessionId);
 }

@@ -16,7 +16,7 @@ import type {
   SessionsState,
 } from "./model";
 import { createEmptySessionsState, sessionQueries } from "./queries";
-import { createInitialSessionState } from "./model/reducer";
+import { createInitialSessionView } from "./model/view";
 
 /** Replace the cached session before requesting its recreation on the server. */
 export async function recreateSessionInCache(
@@ -36,6 +36,8 @@ export async function recreateSessionInCache(
       { revert: false },
     ),
   ]);
+  queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
+  queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
 
   const timestamp = new Date().toISOString();
   updateSessionsState(queryClient, (state) =>
@@ -49,7 +51,7 @@ export async function recreateSessionInCache(
   );
   queryClient.setQueryData(
     sessionQueries.detail(sessionId).queryKey,
-    createInitialSessionState({
+    createInitialSessionView({
       model: message.model,
       status: "thinking",
       messages: [
@@ -162,11 +164,11 @@ export async function invalidateSessionQueries(
   queryClient: QueryClient,
   sessionId: string,
 ): Promise<void> {
+  void queryClient.cancelQueries({ queryKey: sessionQueries.entity(sessionId) }, { revert: false });
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: sessionQueries.stateKey(), exact: true }),
     queryClient.invalidateQueries({
       queryKey: sessionQueries.detail(sessionId).queryKey,
-      exact: true,
     }),
   ]);
 }
@@ -176,12 +178,13 @@ function retireSessionDetail(queryClient: QueryClient, sessionId: string): void 
   void queryClient.cancelQueries(
     {
       queryKey: sessionQueries.detail(sessionId).queryKey,
-      exact: true,
     },
     { revert: false },
   );
+  queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
+  queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
   queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, (previous) =>
-    previous ? createInitialSessionState() : undefined,
+    previous ? createInitialSessionView() : undefined,
   );
 }
 

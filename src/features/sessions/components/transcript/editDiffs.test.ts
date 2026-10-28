@@ -1,10 +1,41 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, onTestFinished, spyOn, test } from "bun:test";
 import type { Message } from "../../model";
-import { computeSessionDiffs } from "./editDiffs";
+import { computeSessionDiffs, createSessionDiffsProjector } from "../../model/editDiffs";
+import * as fileDiffs from "../../model/fileDiffs";
 
 const cwd = "/Users/lostintangent/Desktop/toy-box";
 
 describe("computeSessionDiffs", () => {
+  test("server projection reuses immutable tools while returned summaries stay independent", () => {
+    const parse = spyOn(fileDiffs, "getToolCallFileDiffs");
+    onTestFinished(() => parse.mockRestore());
+    const project = createSessionDiffsProjector();
+    const tool = {
+      id: "edit",
+      name: "edit",
+      arguments: { path: "file" },
+      result: {
+        success: true,
+        content: "ok",
+        details: "--- a/file\n+++ b/file\n@@ -1 +1,2 @@\n-old\n+new\n+line",
+      },
+    };
+    const first = project([{ role: "assistant", content: "", toolCalls: [tool] }]);
+    first.byToolCallId.get("edit")!.added = 999;
+    const next = project([{ role: "assistant", content: "Unrelated delta", toolCalls: [tool] }]);
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(next.total).toEqual({ added: 2, removed: 1 });
+    expect(next.byToolCallId.get("edit")).toEqual(next.total);
+    expect(
+      project([
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ ...tool, result: { ...tool.result, success: false } }],
+        },
+      ]).total,
+    ).toEqual({ added: 0, removed: 0 });
+  });
   test("summarizes successful edit and patch file diffs", () => {
     const messages: Message[] = [
       {

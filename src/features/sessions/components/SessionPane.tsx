@@ -14,16 +14,13 @@ import {
 import { SessionMetadataBadges } from "./location/SessionMetadataBadges";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { useModels } from "@providers/useModels";
-import { EditDiffsProvider, useEditDiffs } from "./transcript/editDiffs";
+import { EditDiffsProvider } from "./transcript/editDiffs";
 import { SessionComposer } from "./composer/SessionComposer";
 import { CurrentSessionProvider, type SessionPaneMode } from "./CurrentSessionContext";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
 import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
 import { SessionMessageList } from "./transcript/MessageList";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
-
-// Cap the transcript text handed to a voice call so context stays cheap to send.
-const VOICE_CONTEXT_MAX_CHARS = 1000;
 
 type SessionPaneProps = {
   sessionId: string;
@@ -95,7 +92,13 @@ export function SessionPane({
   // The hook owns reduced session state. The default model and location seed a
   // draft's first turn; directory also scopes skill discovery.
   const {
-    messages,
+    messageCount,
+    getMessage,
+    hiddenMessageIndices,
+    onHistoryRangeChange,
+    historyError,
+    editDiffs,
+    lastVoiceMessage,
     queuedMessages,
     isStreaming,
     status,
@@ -217,22 +220,7 @@ export function SessionPane({
     scrollToBottomRef.current?.();
   }
 
-  const editDiffs = useEditDiffs(messages, effectiveDirectory);
   const isSessionNotFound = !isDraft && error?.message?.includes("Session not found");
-
-  // The most recent spoken turn, handed to the voice composer so a call opens
-  // already aware of what the user is working on. Voice is hidden while the
-  // session streams, so derive its context only after the turn completes.
-  let lastVoiceMessage: string | undefined;
-  if (!isStreaming) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      if ((message.role === "user" || message.role === "assistant") && message.content.trim()) {
-        lastVoiceMessage = message.content.trim().slice(0, VOICE_CONTEXT_MAX_CHARS);
-        break;
-      }
-    }
-  }
 
   // Show skeleton only on initial load. Draft sessions skip it since they
   // start empty; background refetches update messages in place.
@@ -248,7 +236,7 @@ export function SessionPane({
               // Logical padding overrides the picker's padding-inline in the desktop deck.
               <SessionLocationPicker {...locationPickerProps} className="md:pe-0" />
             )}
-            <SessionMetadataBadges messageCount={messages.length} />
+            <SessionMetadataBadges messageCount={messageCount} />
           </div>
         </PaneActions>
       )}
@@ -267,7 +255,11 @@ export function SessionPane({
           <CurrentSessionProvider value={{ sessionId, cwd: effectiveDirectory, mode }}>
             <EditDiffsProvider value={editDiffs.byToolCallId}>
               <SessionMessageList
-                messages={messages}
+                messageCount={messageCount}
+                getMessage={getMessage}
+                hiddenMessageIndices={hiddenMessageIndices}
+                onRangeChange={onHistoryRangeChange}
+                historyError={historyError}
                 isStreaming={isStreaming}
                 isWaiting={workspaceSessionStatus === "waiting"}
                 status={status}

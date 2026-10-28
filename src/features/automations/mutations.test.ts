@@ -1,10 +1,11 @@
 import { describe, expect, onTestFinished, test } from "bun:test";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
-import type { SessionsState, SessionState } from "@sessions/model";
+import type { SessionsState } from "@sessions/model";
+import type { SessionView } from "@sessions/model/view";
 import { createEmptySessionsState, sessionQueries } from "@sessions/queries";
 import { workspaceQueries } from "@workspace/queries";
 import { createEmptyWorkspaceState, type WorkspaceState } from "@workspace/model/state/reducer";
-import { createInitialSessionState } from "@sessions/model/reducer";
+import { createInitialSessionView } from "@sessions/model/view";
 import type { Automation, AutomationOptions } from "./model";
 import { automationMutations } from "./mutations";
 import { automationQueries } from "./queries";
@@ -71,7 +72,7 @@ describe("automation client behavior", () => {
     const request = Promise.withResolvers<{ sessionId: string; started: boolean }>();
     const dispatched = Promise.withResolvers<void>();
     queryClient.setQueryData(sessionQueries.detail(automation.id).queryKey, {
-      ...createInitialSessionState(),
+      ...createInitialSessionView(),
       messages: [{ role: "assistant", content: "Previous run" }],
       lastSeenEventId: 100,
     });
@@ -98,7 +99,7 @@ describe("automation client behavior", () => {
       }),
     ]);
 
-    const streamed: SessionState = {
+    const streamed: SessionView = {
       ...optimistic,
       messages: [...optimistic.messages, { role: "assistant", content: "Live response" }],
     };
@@ -113,7 +114,7 @@ describe("automation client behavior", () => {
     async (outcome) => {
       const queryClient = createQueryClient(automation);
       queryClient.setQueryData(sessionQueries.detail(automation.id).queryKey, {
-        ...createInitialSessionState(),
+        ...createInitialSessionView(),
         messages: [{ role: "assistant", content: "Old transcript" }],
       });
       const sessions = {
@@ -129,14 +130,14 @@ describe("automation client behavior", () => {
         ],
       } satisfies SessionsState;
       const snapshot = {
-        ...createInitialSessionState(),
+        ...createInitialSessionView(),
         messages: [
           {
             role: "assistant",
             content: outcome === "failed" ? "Previous run" : "Latest server response",
           },
         ],
-      } satisfies SessionState;
+      } satisfies SessionView;
       const unsubscribeSessions = new QueryObserver(queryClient, {
         queryKey: sessionQueries.stateKey(),
         queryFn: async () => sessions,
@@ -174,10 +175,10 @@ describe("automation client behavior", () => {
       const queryClient = createQueryClient(automation, { status, since: 1 });
       const sessions = readSessions(queryClient);
       const snapshot = {
-        ...createInitialSessionState(),
+        ...createInitialSessionView(),
         messages: [{ role: "assistant", content: "Current transcript" }],
         status: "thinking",
-      } satisfies SessionState;
+      } satisfies SessionView;
       queryClient.setQueryData(sessionQueries.detail(automation.id).queryKey, snapshot);
       await new MutationObserver(queryClient, {
         ...automationMutations.run(automation),
@@ -233,6 +234,6 @@ function readSessions(queryClient: QueryClient): SessionsState {
   return queryClient.getQueryData<SessionsState>(sessionQueries.stateKey())!;
 }
 
-function readSessionSnapshot(queryClient: QueryClient): SessionState | undefined {
-  return queryClient.getQueryData<SessionState>(sessionQueries.detail(automation.id).queryKey);
+function readSessionSnapshot(queryClient: QueryClient): SessionView | undefined {
+  return queryClient.getQueryData<SessionView>(sessionQueries.detail(automation.id).queryKey);
 }

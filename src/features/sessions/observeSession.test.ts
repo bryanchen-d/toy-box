@@ -4,10 +4,9 @@ import { createDefaultSerovalPlugins } from "@tanstack/router-core/ssr/client";
 import { isCancelledError, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { observeSession, sessionFetch } from "./observeSession";
 import { readSessionEvents } from "./readSessionEvents";
-import { createInitialSessionState } from "./model/reducer";
-import { applySessionEvent } from "./model/reducer";
+import { createInitialSessionView, applySessionViewEvent, type SessionView } from "./model/view";
 import { createSessionEventBus } from "./server/runtime/eventBus";
-import type { SessionEvent, SessionState } from "./model";
+import type { SessionEvent } from "./model";
 import { SessionObservationError, type StreamSessionRequest } from "./model/protocol";
 import { sessionQueries } from "./queries";
 import { applyWorkspaceEventToSessionQueries, recreateSessionInCache } from "./queryCache";
@@ -50,7 +49,7 @@ test.each(["setup", "read"])(
           },
           refresh: async () => {
             refreshes++;
-            return createInitialSessionState();
+            return createInitialSessionView();
           },
           adopt: () => {
             throw new Error("must not adopt");
@@ -88,7 +87,7 @@ test.each(["adopt", "apply", "refresh"])(
           signal: controller.signal,
           refresh: async () => {
             if (phase === "refresh") throw failure;
-            return createInitialSessionState();
+            return createInitialSessionView();
           },
           stream: async () => {
             if (++subscriptions === 1 && phase !== "apply") throw loss;
@@ -158,7 +157,7 @@ test("recovers a constant-live observation from an adopted snapshot, never resen
   const requests: StreamSessionRequest[] = [];
   const order: string[] = [];
   const applied: SessionEvent[] = [];
-  const snapshot = createInitialSessionState({ lastSeenEventId: 42 });
+  const snapshot = createInitialSessionView({ lastSeenEventId: 42 });
   try {
     const received = await observeSession(
       { sessionId: "test", message: { content: "once", clientId: "first" } },
@@ -215,7 +214,7 @@ test("abort (including hidden/unmounted panes) stops retry timers immediately", 
       },
       refresh: async () => {
         refreshes++;
-        return createInitialSessionState();
+        return createInitialSessionView();
       },
       adopt: () => {
         throw new Error("must not adopt");
@@ -243,7 +242,7 @@ test("an aborted snapshot cannot publish or reconnect, and passive mode survives
       },
       refresh: async () => {
         controller.abort();
-        return createInitialSessionState({ lastSeenEventId: 77 });
+        return createInitialSessionView({ lastSeenEventId: 77 });
       },
       adopt: () => {
         throw new Error("must not adopt");
@@ -365,7 +364,7 @@ test("two panes share one Query-owned snapshot; aborting one preserves the other
   const client = new QueryClient();
   const a = new AbortController();
   const b = new AbortController();
-  let release!: (snapshot: SessionState) => void;
+  let release!: (snapshot: SessionView) => void;
   let querySignal!: AbortSignal;
   let reads = 0;
   const query = {
@@ -373,7 +372,7 @@ test("two panes share one Query-owned snapshot; aborting one preserves the other
     queryFn: ({ signal }: { signal: AbortSignal }) => {
       reads++;
       querySignal = signal;
-      return new Promise<SessionState>((resolve) => {
+      return new Promise<SessionView>((resolve) => {
         release = resolve;
       });
     },
@@ -425,14 +424,14 @@ test("two panes share one Query-owned snapshot; aborting one preserves the other
     await bothRefreshing;
     const newer = client.setQueryData(
       query.queryKey,
-      createInitialSessionState({ lastSeenEventId: 41 }),
+      createInitialSessionView({ lastSeenEventId: 41 }),
     );
     a.abort();
     expect(await first).toBe(false);
     unsubscribeA();
     expect(querySignal.aborted).toBe(false);
     expect(client.getQueryData(query.queryKey)).toBe(newer);
-    release(createInitialSessionState({ lastSeenEventId: 42 }));
+    release(createInitialSessionView({ lastSeenEventId: 42 }));
     expect(await second).toBe(false);
     expect(reads).toBe(1);
     expect(adopted).toEqual(["b"]);
@@ -451,8 +450,8 @@ test.each(["deleted", "replaced"])(
     const client = new QueryClient();
     const controller = new AbortController();
     const key = sessionQueries.detail("retired").queryKey;
-    client.setQueryData(key, createInitialSessionState({ lastSeenEventId: 7 }));
-    let release!: (snapshot: SessionState) => void;
+    client.setQueryData(key, createInitialSessionView({ lastSeenEventId: 7 }));
+    let release!: (snapshot: SessionView) => void;
     let querySignal!: AbortSignal;
     let adopted = 0;
     let reads = 0;
@@ -472,7 +471,7 @@ test.each(["deleted", "replaced"])(
             queryFn: ({ signal }) => {
               reads++;
               querySignal = signal;
-              return new Promise<SessionState>((resolve) => {
+              return new Promise<SessionView>((resolve) => {
                 release = resolve;
                 ready();
               });
@@ -510,7 +509,7 @@ test.each(["deleted", "replaced"])(
       expect(querySignal.aborted).toBe(true);
       expect(isCancelledError(await pending)).toBe(true);
       controller.abort();
-      release(createInitialSessionState({ lastSeenEventId: 100 }));
+      release(createInitialSessionView({ lastSeenEventId: 100 }));
       await Bun.sleep(0);
       expect(client.getQueryData(key)).toBe(retired);
       expect(adopted).toBe(0);
@@ -554,7 +553,7 @@ test.each(["error", "eof"])(
           if (requests.length > 1) expect(adopted).toBe(true);
           return readSessionEvents(new Response(body(requests.length > 1)));
         },
-        refresh: async () => createInitialSessionState({ lastSeenEventId: 9 }),
+        refresh: async () => createInitialSessionView({ lastSeenEventId: 9 }),
         adopt: () => {
           adopted = true;
         },
@@ -572,15 +571,15 @@ test.each(["error", "eof"])(
 
 test("expired replay heals through the existing reducer before passive cursor resume", async () => {
   const bus = createSessionEventBus(1);
-  let state = createInitialSessionState();
+  let state = createInitialSessionView();
   const emit = (event: SessionEvent) => {
-    state = applySessionEvent(state, bus.publish(event));
+    state = applySessionViewEvent(state, bus.publish(event));
   };
   emit({ type: "delta", content: "before" });
   const cursor = state.lastSeenEventId;
   emit({ type: "delta", content: " missed" });
   emit({ type: "delta", content: " during disconnect" });
-  let visible = createInitialSessionState({ lastSeenEventId: cursor });
+  let visible = createInitialSessionView({ lastSeenEventId: cursor });
   let attempts = 0;
   await observeSession(
     { sessionId: "test", mode: "passive", afterEventId: cursor },
@@ -605,7 +604,7 @@ test("expired replay heals through the existing reducer before passive cursor re
         visible = snapshot;
       },
       apply: (event) => {
-        visible = applySessionEvent(visible, event);
+        visible = applySessionViewEvent(visible, event);
       },
       onError: () => {},
     },
@@ -656,8 +655,8 @@ test("a queued event cannot publish after observation is aborted", async () => {
 
 test("an already-aborted snapshot wait leaves the shared read alive without adopting it", async () => {
   const controller = new AbortController();
-  const shared = Promise.withResolvers<SessionState>();
-  const snapshot = createInitialSessionState();
+  const shared = Promise.withResolvers<SessionView>();
+  const snapshot = createInitialSessionView();
   let adopted = false;
   onTestFinished(() => shared.resolve(snapshot));
   const observation = observeSession(

@@ -15,8 +15,9 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelConfiguration } from "@providers/model";
-import { applySessionEvent, createInitialSessionState } from "./model/reducer";
-import type { Session, SessionEvent, SessionLaunch, SessionState, UserMessage } from "./model";
+import { applySessionViewEvent, createInitialSessionView, type SessionView } from "./model/view";
+import type { Session, SessionEvent, SessionLaunch, UserMessage } from "./model";
+import { useSessionHistory } from "./useSessionHistory";
 import type { SessionSubscriptionMode, StreamSessionRequest } from "./model/protocol";
 import { sessionMutations } from "./mutations";
 import { sessionQueries } from "./queries";
@@ -70,6 +71,7 @@ export function useSession(
 ) {
   const queryClient = useQueryClient();
   const sessionQuery = sessionQueries.detail(sessionId);
+  const outputsQuery = sessionQueries.outputs(sessionId);
   const isDraft = session !== undefined && !session.provider;
   const isSessionLive = isWorkspaceSessionLive(workspaceSessionStatus);
   const isSessionUnread = workspaceSessionStatus === "unread";
@@ -83,7 +85,7 @@ export function useSession(
   // published to React immediately for discrete events or once per frame for
   // rapid text and tool output deltas.
   const [publishedSession, setPublishedSession] = useState(() =>
-    createInitialSessionState(
+    createInitialSessionView(
       session?.artifactPath
         ? { artifacts: [{ path: session.artifactPath, updatedAt: session.createdAt.getTime() }] }
         : {},
@@ -103,6 +105,12 @@ export function useSession(
     ...sessionQuery,
     enabled: isVisible && !isDraft && !isStreaming,
   });
+  const history = useSessionHistory(
+    sessionId,
+    publishedSession,
+    isVisible && hasLoadedSessionState && !isDraft,
+  );
+  const outputRefreshRef = useRef({ version: 0, pending: false });
 
   /** Flush any pending batched update and publish the latest reduced state. */
   const publishState = () => {
@@ -134,6 +142,9 @@ export function useSession(
     reasoningContent,
     model,
     contextUsage,
+    messageCount,
+    editDiffs,
+    lastVoiceMessage,
   } = publishedSession;
 
   // During connection handshake we still want a spinner even if no events arrived yet.
@@ -143,7 +154,11 @@ export function useSession(
   // Event application
   // ---------------------------------------------------------------------------
   const applyEvent = (event: SessionEvent) => {
-    sessionRef.current = applySessionEvent(sessionRef.current, event);
+    sessionRef.current = applySessionViewEvent(sessionRef.current, event);
+    history.apply(event);
+    if (event.type === "tool_end") {
+      void refreshOutputs();
+    }
 
     if (
       event.type === "delta" ||
@@ -154,6 +169,56 @@ export function useSession(
     } else {
       publishState();
     }
+  };
+
+  // Tool results may target unloaded rows. Read their authoritative summaries
+  // without retaining old tool objects or replaying a second state machine.
+  const refreshOutputs = async () => {
+    const refresh = outputRefreshRef.current;
+    refresh.version++;
+    if (refresh.pending) return;
+    refresh.pending = true;
+    const controller = abortControllerRef.current;
+    let requestedVersion = refresh.version;
+    const read = async () => {
+      while (
+        controller &&
+        !controller.signal.aborted &&
+        abortControllerRef.current === controller
+      ) {
+        const version = refresh.version;
+        requestedVersion = version;
+        await queryClient.invalidateQueries({
+          queryKey: outputsQuery.queryKey,
+          exact: true,
+          refetchType: "none",
+        });
+        const outputs = await queryClient.fetchQuery(outputsQuery);
+        if (controller.signal.aborted || abortControllerRef.current !== controller) return;
+        if (version !== refresh.version) continue;
+        sessionRef.current = {
+          ...sessionRef.current,
+          editDiffs: outputs.editDiffs,
+          lastVoiceMessage: outputs.lastVoiceMessage,
+        };
+        publishState();
+        return;
+      }
+    };
+    await read()
+      .catch((error: unknown) => {
+        if (!controller?.signal.aborted) console.error("Session outputs refresh failed:", error);
+      })
+      .finally(() => {
+        refresh.pending = false;
+        if (
+          requestedVersion !== refresh.version &&
+          abortControllerRef.current &&
+          !abortControllerRef.current.signal.aborted
+        ) {
+          void refreshOutputs();
+        }
+      });
   };
 
   /** The client-selected Session model. Takes effect immediately in the UI
@@ -167,15 +232,18 @@ export function useSession(
   // Stream lifecycle
   // ---------------------------------------------------------------------------
   const invalidateSessionSnapshot = () =>
-    queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey });
+    queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey, exact: true });
 
-  const adoptSnapshot = (snapshot: SessionState) => {
+  const adoptSnapshot = (snapshot: SessionView) => {
+    // A summary read started before recovery must not overwrite adopted outputs.
+    outputRefreshRef.current.version++;
     sessionRef.current = {
       ...snapshot,
       model: snapshot.model ?? sessionRef.current.model,
     };
     publishState();
     setHasLoadedSessionState(true);
+    history.refresh();
   };
 
   const streamEvents = async (request: StreamSessionRequest) => {
@@ -396,13 +464,16 @@ export function useSession(
 
   // Keep reduced state until an authoritative read settles; stopping observation
   // must not flush an older pane over another reader or a replacement draft.
+  const adoptQuerySnapshot = useEffectEvent((snapshot: SessionView) => {
+    if (isDraft) endSubscription();
+    adoptSnapshot(snapshot);
+  });
   useEffect(() => {
     if (
-      !isStreaming &&
       sessionSnapshot &&
-      (isDraft || (isVisible && !isFetchingSnapshot && !error))
+      (isDraft || (!isStreaming && isVisible && !isFetchingSnapshot && !error))
     ) {
-      adoptSnapshot(sessionSnapshot);
+      adoptQuerySnapshot(sessionSnapshot);
     }
   }, [error, isDraft, isFetchingSnapshot, isStreaming, isVisible, sessionSnapshot]);
 
@@ -448,6 +519,13 @@ export function useSession(
   return {
     // Session state
     messages,
+    messageCount,
+    getMessage: history.getMessage,
+    hiddenMessageIndices: history.hiddenMessageIndices,
+    onHistoryRangeChange: history.onRangeChange,
+    historyError: history.error,
+    editDiffs,
+    lastVoiceMessage,
     queuedMessages,
     isStreaming,
     status,

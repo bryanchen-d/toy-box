@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "../../model";
 import { createTranscriptRows } from "./rows";
+import { createInitialSessionView } from "../../model/view";
+
+function rowsFor(messages: Message[]) {
+  const view = createInitialSessionView({ messages });
+  const rows = createTranscriptRows(
+    messages.length,
+    (index) => messages[index],
+    view.hiddenMessageIndices,
+  );
+  return Array.from({ length: rows.length }, (_, index) => rows.at(index));
+}
 
 describe("transcript rows", () => {
   test("omits empty assistants without losing absolute message identity", () => {
@@ -15,20 +26,20 @@ describe("transcript rows", () => {
         toolCalls: [{ id: "tool", name: "read", arguments: {} }],
       },
     ];
-    expect(createTranscriptRows(messages)).toEqual([
-      { key: "user-0", message: messages[0], messageIndex: 0 },
-      { key: "assistant-2", message: messages[2], messageIndex: 2 },
-      { key: "assistant-3", message: messages[3], messageIndex: 3 },
-      { key: "assistant-4", message: messages[4], messageIndex: 4 },
-      { key: "activity-assistant-4" },
+    expect(rowsFor(messages)).toEqual([
+      { key: "message-0", message: messages[0], messageIndex: 0 },
+      { key: "message-2", message: messages[2], messageIndex: 2 },
+      { key: "message-3", message: messages[3], messageIndex: 3 },
+      { key: "message-4", message: messages[4], messageIndex: 4 },
+      { key: "activity-4" },
     ]);
   });
 
   test("streaming text keeps its key while appends advance the activity key", () => {
-    const before = createTranscriptRows([{ role: "assistant", content: "Start" }]);
-    const delta = createTranscriptRows([{ role: "assistant", content: "Start of output" }]);
+    const before = rowsFor([{ role: "assistant", content: "Start" }]);
+    const delta = rowsFor([{ role: "assistant", content: "Start of output" }]);
     expect(delta.map((row) => row.key)).toEqual(before.map((row) => row.key));
-    const appended = createTranscriptRows([
+    const appended = rowsFor([
       { role: "assistant", content: "Start of output" },
       { role: "assistant", content: "Next" },
     ]);
@@ -37,9 +48,7 @@ describe("transcript rows", () => {
   });
 
   test("keeps an activity host when every assistant is empty", () => {
-    expect(createTranscriptRows([{ role: "assistant", content: "" }])).toEqual([
-      { key: "activity-empty" },
-    ]);
+    expect(rowsFor([{ role: "assistant", content: "" }])).toEqual([{ key: "activity-empty" }]);
   });
 
   test("preserves structured system messages", () => {
@@ -47,8 +56,8 @@ describe("transcript rows", () => {
       role: "system",
       content: { type: "channel_message", senderName: "Sender" },
     };
-    expect(createTranscriptRows([message])[0]).toEqual({
-      key: "system-0",
+    expect(rowsFor([message])[0]).toEqual({
+      key: "message-0",
       message,
       messageIndex: 0,
     });
@@ -58,7 +67,7 @@ describe("transcript rows", () => {
     "advances activity identity when a hidden assistant gains %s without another message",
     (kind) => {
       const prompt: Message = { role: "user", content: "Prompt" };
-      const pending = createTranscriptRows([prompt, { role: "assistant", content: "" }]);
+      const pending = rowsFor([prompt, { role: "assistant", content: "" }]);
       const visible: Message =
         kind === "text"
           ? { role: "assistant", content: "Answer" }
@@ -67,8 +76,15 @@ describe("transcript rows", () => {
               content: "",
               toolCalls: [{ id: "tool", name: "read", arguments: {} }],
             };
-      const updated = createTranscriptRows([prompt, visible]);
+      const updated = rowsFor([prompt, visible]);
       expect(updated.at(-1)?.key).not.toBe(pending.at(-1)?.key);
     },
   );
+
+  test("unloaded rows keep their canonical key when demand-loaded", () => {
+    const unloaded = createTranscriptRows(5271, () => undefined, []);
+    const loaded = createTranscriptRows(5271, () => ({ role: "assistant", content: "Loaded" }), []);
+    expect(unloaded.at(2500).key).toBe(loaded.at(2500).key);
+    expect(unloaded.length).toBe(5272);
+  });
 });

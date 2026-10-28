@@ -3,6 +3,13 @@
 // optionally doing either. Every mutation acquires the same live runtime.
 
 import { listSessionArtifacts, writeSessionArtifact } from "../artifacts";
+import { getSessionDirectory } from "../providers";
+import {
+  projectSessionHistory,
+  projectSessionOutputs,
+  projectSessionView,
+} from "@sessions/model/view";
+import { createSessionDiffsProjector } from "@sessions/model/editDiffs";
 import type { SessionQuestionAnswer, StreamSessionRequest } from "@sessions/model/protocol";
 import type {
   SessionCompletion,
@@ -29,6 +36,7 @@ type PendingSessionCompletion = {
 };
 
 const SETTLED_SESSION_COMPLETION_RETENTION_MS = 5 * 60_000;
+const projectSessionDiffs = createSessionDiffsProjector();
 
 // Sessions announced before their live stream exists remain waitable by ID.
 const pendingSessionCompletions = sharedMap<PendingSessionCompletion>(
@@ -99,7 +107,39 @@ function waitForSession(sessionId: string, timeoutMs?: number): Promise<SessionC
 /** Read the current canonical state, whether the session is live, starting, or persisted. */
 export async function getSessionSnapshot(sessionId: string): Promise<SessionState> {
   const stream = await currentSessionStream(sessionId);
-  return stream ? stream.getSessionState() : loadSessionSnapshot(sessionId);
+  if (stream) return stream.getSessionState();
+  const snapshot = await loadSessionSnapshot(sessionId);
+  return (await currentSessionStream(sessionId))?.getSessionState() ?? snapshot;
+}
+
+/** Project before copying idle state; async native reads must never replace active truth. */
+async function readSessionProjection<T>(
+  sessionId: string,
+  project: (state: SessionState) => T,
+): Promise<T> {
+  const stream = await currentSessionStream(sessionId);
+  if (stream) return structuredClone(project(stream.getSessionState()));
+  const view = await loadSessionSnapshot(sessionId, project);
+  const active = await currentSessionStream(sessionId);
+  return active ? structuredClone(project(active.getSessionState())) : view;
+}
+
+export async function getSessionView(sessionId: string) {
+  const cwd = await getSessionDirectory(sessionId);
+  return readSessionProjection(sessionId, (state) =>
+    projectSessionView(state, cwd, projectSessionDiffs(state.messages, cwd)),
+  );
+}
+
+export async function getSessionOutputs(sessionId: string) {
+  const cwd = await getSessionDirectory(sessionId);
+  return readSessionProjection(sessionId, (state) =>
+    projectSessionOutputs(state, cwd, projectSessionDiffs(state.messages, cwd)),
+  );
+}
+
+export function getSessionHistoryPage(sessionId: string, start: number) {
+  return readSessionProjection(sessionId, (state) => projectSessionHistory(state, start));
 }
 
 export function isSessionRunning(sessionId: string): boolean {

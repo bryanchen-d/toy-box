@@ -29,6 +29,10 @@ export const sessionInputSchema = z.object({
   sessionId: z.string(),
 });
 
+export const sessionHistoryInputSchema = sessionInputSchema.extend({
+  start: z.number().int().nonnegative(),
+});
+
 export const waitForSessionInputSchema = sessionInputSchema.extend({
   timeoutMs: z.number().int().nonnegative().max(300_000).optional(),
 });

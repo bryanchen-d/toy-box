@@ -1,7 +1,8 @@
 import { describe, expect, onTestFinished, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
-import type { Session, SessionState } from "./model";
-import { applySessionEvent, createInitialSessionState } from "./model/reducer";
+import type { Session } from "./model";
+import { applySessionViewEvent, createInitialSessionView, type SessionView } from "./model/view";
+import { projectSessionHistory, projectSessionOutputs } from "./model/view";
 import type { SessionsState } from "./model";
 import { createEmptySessionsState, selectNonWorkerSessions, sessionQueries } from "./queries";
 import {
@@ -34,6 +35,74 @@ function readState(queryClient: QueryClient): SessionsState {
 }
 
 describe("session query cache", () => {
+  test.each(["delete", "recreate"])(
+    "%s cancels and retires every pending history range and shared output read",
+    async (action) => {
+      const client = new QueryClient();
+      onTestFinished(() => client.clear());
+      const id = "history-retirement";
+      const view = createInitialSessionView({
+        messages: [{ role: "user", content: "Old" }],
+      });
+      client.setQueryData(sessionQueries.detail(id).queryKey, view);
+      const pending = Promise.withResolvers<ReturnType<typeof projectSessionHistory>>();
+      const reads = [0, 2500].map((start) =>
+        client
+          .fetchQuery({
+            ...sessionQueries.history(id, start),
+            gcTime: Infinity,
+            queryFn: async ({ signal }) => {
+              signal.throwIfAborted();
+              return pending.promise;
+            },
+          })
+          .then(
+            () => "resolved",
+            () => "cancelled",
+          ),
+      );
+      const pendingOutputs = Promise.withResolvers<ReturnType<typeof projectSessionOutputs>>();
+      let outputReads = 0;
+      const outputsQuery = {
+        ...sessionQueries.outputs(id),
+        gcTime: Infinity,
+        queryFn: async ({ signal }: { signal: AbortSignal }) => {
+          outputReads++;
+          signal.throwIfAborted();
+          return pendingOutputs.promise;
+        },
+      };
+      for (let reader = 0; reader < 2; reader++) {
+        reads.push(
+          client.fetchQuery(outputsQuery).then(
+            () => "resolved",
+            () => "cancelled",
+          ),
+        );
+      }
+      expect(outputReads).toBe(1);
+      if (action === "delete") {
+        applyWorkspaceEventToSessionQueries(client, { type: "session.deleted", sessionId: id });
+      } else {
+        await recreateSessionInCache(client, id, { content: "New", clientId: "new" });
+      }
+      expect(await Promise.all(reads)).toEqual([
+        "cancelled",
+        "cancelled",
+        "cancelled",
+        "cancelled",
+      ]);
+      pending.resolve(projectSessionHistory(view, 0));
+      pendingOutputs.resolve(projectSessionOutputs(view));
+      await Bun.sleep(0);
+      expect(client.getQueriesData({ queryKey: sessionQueries.historyKey(id) })).toEqual([]);
+      expect(client.getQueryData(sessionQueries.outputs(id).queryKey)).toBeUndefined();
+      expect(client.getQueryData(sessionQueries.detail(id).queryKey)?.messageCount).toBe(
+        action === "delete" ? 0 : 1,
+      );
+    },
+  );
+
   test("first-turn promotion and renaming retain the session's identity and initial artifact", () => {
     const queryClient = new QueryClient();
     const sessionId = "toy-box-upserted-session";
@@ -264,7 +333,7 @@ describe("session query cache", () => {
     const otherSessionId = "toy-box-untouched";
     seedState(queryClient, { sessions: [createSession(sessionId)] });
     for (const id of [sessionId, otherSessionId]) {
-      queryClient.setQueryData(sessionQueries.detail(id).queryKey, createInitialSessionState());
+      queryClient.setQueryData(sessionQueries.detail(id).queryKey, createInitialSessionView());
     }
     applyWorkspaceEventToSessionQueries(queryClient, {
       type: "session.touched",
@@ -324,7 +393,7 @@ describe("session replacement and deletion cache boundary", () => {
       },
     });
     const previous = {
-      ...createInitialSessionState({
+      ...createInitialSessionView({
         messages: [{ role: "assistant", content: "Previous run" }],
         artifacts: [{ path: "old.md", updatedAt: 1 }],
         model: { provider: "copilot", name: "previous-model" },
@@ -333,7 +402,7 @@ describe("session replacement and deletion cache boundary", () => {
     };
     client.setQueryData(queryKey, previous);
     const catalog = Promise.withResolvers<SessionsState>();
-    const history = Promise.withResolvers<SessionState>();
+    const history = Promise.withResolvers<SessionView>();
     const oldCatalog = readState(client);
     const reads = Promise.allSettled([
       client.fetchQuery({ queryKey: sessionQueries.stateKey(), queryFn: () => catalog.promise }),
@@ -363,7 +432,7 @@ describe("session replacement and deletion cache boundary", () => {
       ownership: {},
       worktrees: {},
     });
-    const optimistic = client.getQueryData<SessionState>(queryKey)!;
+    const optimistic = client.getQueryData<SessionView>(queryKey)!;
     expect(optimistic).toMatchObject({
       model: message.model,
       status: "thinking",
@@ -382,7 +451,7 @@ describe("session replacement and deletion cache boundary", () => {
     history.resolve(previous);
     await reads;
     expect(readState(client)).toEqual(replacement);
-    expect(client.getQueryData<SessionState>(queryKey)).toEqual(optimistic);
+    expect(client.getQueryData<SessionView>(queryKey)).toEqual(optimistic);
     client.clear();
   });
 
@@ -402,11 +471,11 @@ describe("session replacement and deletion cache boundary", () => {
         sessionType: "standard",
       },
     });
-    const acknowledged = client.getQueryData<SessionState>(queryKey)!;
+    const acknowledged = client.getQueryData<SessionView>(queryKey)!;
     expect(acknowledged.messages).toEqual([
       expect.objectContaining({ clientId: "first-message", content: "Cached prompt" }),
     ]);
-    const streamed = applySessionEvent(acknowledged, {
+    const streamed = applySessionViewEvent(acknowledged, {
       type: "user_message",
       clientId: "first-message",
       content: "Authoritative prompt",
@@ -435,7 +504,7 @@ describe("session replacement and deletion cache boundary", () => {
       },
     });
     const previous = {
-      ...createInitialSessionState({
+      ...createInitialSessionView({
         messages: [{ role: "assistant", content: "Previous run" }],
         artifacts: [{ path: "old.md", updatedAt: 1 }],
         model: { provider: "copilot", name: "previous-model" },
@@ -456,7 +525,7 @@ describe("session replacement and deletion cache boundary", () => {
         sessionType: "automation",
       },
     });
-    const retired = client.getQueryData<SessionState>(queryKey)!;
+    const retired = client.getQueryData<SessionView>(queryKey)!;
     expect(retired.messages).toEqual([]);
     expect(retired.artifacts).toEqual([]);
     expect(retired.model).toBeUndefined();
@@ -477,7 +546,7 @@ describe("session replacement and deletion cache boundary", () => {
 
     history.resolve(previous);
     await read.catch(() => {});
-    expect(client.getQueryData<SessionState>(queryKey)).toEqual(retired);
+    expect(client.getQueryData<SessionView>(queryKey)).toEqual(retired);
     client.clear();
   });
 

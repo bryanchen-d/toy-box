@@ -1,18 +1,10 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SessionMessageList } from "../MessageList";
+import { AssistantMessage } from "./AssistantMessage";
+import { StatusIndicator } from "../SessionStatus";
 
 test("a live background session displays a static background status instead of responding", () => {
-  const markup = renderToStaticMarkup(
-    <SessionMessageList
-      messages={[{ role: "assistant", content: "Done" }]}
-      isStreaming
-      isWaiting={false}
-      status="background"
-      reasoningContent=""
-      scrollToBottomRef={{ current: null }}
-    />,
-  );
+  const markup = renderToStaticMarkup(<StatusIndicator status="background" />);
   expect(markup).toContain("Background tasks running");
   expect(markup).toContain("lucide-layers");
   expect(markup).not.toContain("Responding");
@@ -22,20 +14,15 @@ test.each(["", "Partial answer"])(
   "renders an error card alongside assistant content %j",
   (content) => {
     const markup = renderToStaticMarkup(
-      <SessionMessageList
-        messages={[
-          {
-            role: "assistant",
-            content,
-            error:
-              "**Usage limit exceeded.** Visit https://example.com/usage or [get help](https://example.com/help).",
-          },
-        ]}
+      <AssistantMessage
+        message={{
+          role: "assistant",
+          content,
+          error:
+            "**Usage limit exceeded.** Visit https://example.com/usage or [get help](https://example.com/help).",
+        }}
         isStreaming={false}
-        isWaiting={false}
-        status="idle"
-        reasoningContent=""
-        scrollToBottomRef={{ current: null }}
+        isLast
       />,
     );
     expect(markup).toContain('role="alert"');

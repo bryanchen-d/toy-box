@@ -1,6 +1,6 @@
 import { describe, expect, onTestFinished, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { createInitialSessionState } from "./model/reducer";
+import { createInitialSessionView } from "./model/view";
 import { sessionQueries } from "./queries";
 import { warmSessionSnapshotQuery } from "./useWarmSessionSnapshots";
 
@@ -10,7 +10,7 @@ describe("warm session snapshot retention", () => {
     let requests = 0;
     const queryFn = async () => {
       requests++;
-      return createInitialSessionState();
+      return createInitialSessionView();
     };
     const options = { ...warmSessionSnapshotQuery("pinned-session", false), queryFn };
     const pin = new QueryObserver(queryClient, options);
@@ -51,7 +51,7 @@ describe("warm session snapshot retention", () => {
     let requests = 0;
     const queryFn = async () => {
       requests++;
-      return createInitialSessionState();
+      return createInitialSessionView();
     };
     const options = { ...warmSessionSnapshotQuery("pinned-session", false), queryFn };
     const pin = new QueryObserver(queryClient, options);

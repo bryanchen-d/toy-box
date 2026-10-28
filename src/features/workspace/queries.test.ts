@@ -6,7 +6,7 @@ import { applyWorkspaceEvent, createWorkspaceQuerySource, workspaceQueries } fro
 import { createEmptyWorkspaceState, type WorkspaceState } from "./model/state/reducer";
 import { providerQueries } from "@providers/queries";
 import { sessionQueries, createEmptySessionsState } from "@sessions/queries";
-import { createInitialSessionState } from "@sessions/model/reducer";
+import { createInitialSessionView } from "@sessions/model/view";
 import type { SessionsState } from "@sessions/model";
 import type { AppInstance, AppList } from "@apps/model";
 import { appQueries } from "@apps/queries";
@@ -74,7 +74,7 @@ describe("workspace query cache", () => {
       client.setQueryData(workspaceQueries.stateKey(), initial);
       client.setQueryData(modelKey, { providers: [], models: [] });
       client.setQueryData(sessionKey, createEmptySessionsState());
-      client.setQueryData(historyKey, createInitialSessionState());
+      client.setQueryData(historyKey, createInitialSessionView());
       applyWorkspaceEvent(client, {
         type: "settings.changed",
         settings: { ...initial.settings, accentColor: "#123abc" },
@@ -102,7 +102,7 @@ describe("workspace query cache", () => {
       client.setQueryData(modelKey, { providers: [], models: [] });
       client.setQueryData(versionKey, { claude: "1.0.0" });
       client.setQueryData(sessionKey, createEmptySessionsState());
-      client.setQueryData(historyKey, createInitialSessionState());
+      client.setQueryData(historyKey, createInitialSessionView());
 
       applyWorkspaceEvent(client, { type: "providers.changed" });
 
@@ -122,7 +122,7 @@ describe("workspace query cache", () => {
     const providerKey = providerQueries.catalog().queryKey;
     const historyKey = sessionQueries.detail("old-pin").queryKey;
     client.setQueryData(providerKey, { providers: [], models: [] });
-    client.setQueryData(historyKey, createInitialSessionState());
+    client.setQueryData(historyKey, createInitialSessionView());
 
     for (const pinnedSessionIds of [["old-pin"], []]) {
       client.setQueryData(sessionKey, createEmptySessionsState());

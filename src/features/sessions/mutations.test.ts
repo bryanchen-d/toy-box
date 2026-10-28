@@ -2,8 +2,8 @@ import { describe, expect, onTestFinished, test } from "bun:test";
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { workspaceQueries } from "@workspace/queries";
 import { createEmptyWorkspaceState, type WorkspaceState } from "@workspace/model/state/reducer";
-import type { Session, SessionState } from "./model";
-import { createInitialSessionState } from "./model/reducer";
+import type { Session } from "./model";
+import { createInitialSessionView, projectSessionHistory, type SessionView } from "./model/view";
 import { sessionMutations } from "./mutations";
 import type { SessionsState } from "./model";
 import { createEmptySessionsState, sessionQueries } from "./queries";
@@ -129,10 +129,19 @@ describe("session mutation options", () => {
 
   test("replaces the detail cache with the authoritative rewind snapshot", async () => {
     const queryClient = createQueryClient();
-    const rewoundSnapshot: SessionState = {
-      ...createInitialSessionState(),
+    const rewoundSnapshot = createInitialSessionView({
       messages: [{ role: "user", content: "retained" }],
-    };
+    });
+    const pending = Promise.withResolvers<ReturnType<typeof projectSessionHistory>>();
+    const oldPage = queryClient
+      .fetchQuery({
+        ...sessionQueries.history(sessionId, 2500),
+        queryFn: () => pending.promise,
+      })
+      .then(
+        () => "resolved",
+        () => "cancelled",
+      );
     const mutation = new MutationObserver(queryClient, {
       ...sessionMutations.rewindSession(sessionId, "2026-08-14T20:00:00.000Z"),
       mutationFn: async () => rewoundSnapshot,
@@ -141,8 +150,14 @@ describe("session mutation options", () => {
     await mutation.mutate();
 
     expect(
-      queryClient.getQueryData<SessionState>(sessionQueries.detail(sessionId).queryKey),
+      queryClient.getQueryData<SessionView>(sessionQueries.detail(sessionId).queryKey),
     ).toEqual(rewoundSnapshot);
+    expect(await oldPage).toBe("cancelled");
+    pending.resolve(projectSessionHistory(createInitialSessionView(), 0));
+    await Bun.sleep(0);
+    expect(queryClient.getQueriesData({ queryKey: sessionQueries.historyKey(sessionId) })).toEqual(
+      [],
+    );
   });
 
   test("refreshes durable session state after successful worktree operations", async () => {
@@ -213,7 +228,7 @@ describe("session mutation options", () => {
 
 function createQueryClient(): QueryClient {
   const queryClient = new QueryClient();
-  queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, createInitialSessionState());
+  queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, createInitialSessionView());
   onTestFinished(() => queryClient.clear());
   return queryClient;
 }

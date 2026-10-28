@@ -32,7 +32,7 @@ import type { ChecklistItem } from "@/shared/ui/checklist";
 import { sessionFile } from "@files/model";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { useSavedDraft } from "@workspace/hooks/useSavedDraft";
-import type { FileDiffSummary } from "../transcript/editDiffs";
+import type { FileDiffSummary } from "../../model/editDiffs";
 import { useViewport } from "@/shared/hooks/useViewport";
 import { cn } from "@/shared/utils";
 
