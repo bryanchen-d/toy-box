@@ -119,3 +119,19 @@ owning agent's permitted storage affinity. Creating a separate browser context
 can be rejected, and repeated `openBrowserPage` calls may replace older owned
 pages; verify that both documents remain alive before claiming multi-client UI
 coverage. Restore each document's visibility override and close only test pages.
+
+### Performance evidence
+
+Distinguish history size on disk, live JavaScript heap, native allocations,
+resident memory, and private committed memory; none alone proves a leak or one
+large payload. Compare the same process after warm-up, repeated work, and idle
+settling, and do not add overlapping engine/allocator counters.
+Measure long-lived streams while they remain open: completion can release the
+very reference graph or pending-promise reactions being investigated.
+Use OS CPU deltas over elapsed time for idle/load comparisons, not profile time
+deltas that may include idle gaps.
+
+Use an owned runtime with isolated HOME, state, and cache, disabling real
+providers before startup; enable only test fakes for execution scenarios.
+Keep diagnostic GC, inspector startup, and aggregate profiling in that owned
+process rather than signaling or restarting an existing owner's server.
