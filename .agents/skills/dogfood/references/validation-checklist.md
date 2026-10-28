@@ -92,3 +92,24 @@ For major refactors, capture:
 - `playwright-cli` refs are snapshot-specific; refresh snapshot before interaction.
 - Prefer validating with at least two active sessions (`tabA`, `tabB`) for realtime changes.
 - If behavior differs between hidden/visible flows, explicitly test page visibility transitions.
+
+## Learnings
+
+Integrated browser pages can remain `hidden` even after `page.bringToFront()`, so a
+session skeleton with no detail/SSE requests may be the intended visibility gate.
+Check document and pane visibility before diagnosing a loading regression.
+For an owned test page, emulate an active page through CDP rather than spoofing
+`document.visibilityState`, and restore the override in cleanup:
+
+```js
+const cdp = await page.context().newCDPSession(page);
+try {
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  // Run visible-page checks here.
+} finally {
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+  await cdp.detach();
+}
+```
+
+Clear the override before testing real hidden/visible transitions.
