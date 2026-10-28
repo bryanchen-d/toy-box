@@ -20,6 +20,7 @@ import type { Session, SessionEvent, SessionLaunch, SessionState, UserMessage } 
 import type { SessionSubscriptionMode, StreamSessionRequest } from "./model/protocol";
 import { sessionMutations } from "./mutations";
 import { sessionQueries } from "./queries";
+import { observeSession } from "./observeSession";
 import {
   cancelSessionsStateQuery,
   invalidateSessionsStateQuery,
@@ -93,7 +94,11 @@ export function useSession(
   const wasVisibleRef = useRef(isVisible);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasLoadedSessionState, setHasLoadedSessionState] = useState(isDraft);
-  const { data: sessionSnapshot, error } = useQuery({
+  const {
+    data: sessionSnapshot,
+    error,
+    isFetching: isFetchingSnapshot,
+  } = useQuery({
     ...sessionQuery,
     enabled: isVisible && !isDraft && !isStreaming,
   });
@@ -163,26 +168,36 @@ export function useSession(
   const invalidateSessionSnapshot = () =>
     queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey });
 
+  const adoptSnapshot = (snapshot: SessionState) => {
+    sessionRef.current = {
+      ...snapshot,
+      model: snapshot.model ?? sessionRef.current.model,
+    };
+    publishState();
+    setHasLoadedSessionState(true);
+  };
+
   const streamEvents = async (request: StreamSessionRequest) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsStreaming(true);
 
     const consume = async () => {
-      const events = await streamSession({
-        data: request,
+      const receivedEvent = await observeSession(request, {
         signal: controller.signal,
+        stream: (data, transport) => streamSession({ data, ...transport }),
+        refresh: async () => {
+          if (request.message) {
+            // A failed first response leaves creation uncertain, not failed.
+            await repairWorkspaceStateQuery(queryClient);
+            await invalidateSessionsStateQuery(queryClient);
+          }
+          return queryClient.fetchQuery(sessionQuery);
+        },
+        adopt: adoptSnapshot,
+        apply: applyEvent,
+        onError: (error) => console.error("Subscription error:", error),
       });
-      let receivedEvent = false;
-      if (events) {
-        const iterator = events[Symbol.asyncIterator]();
-        while (!controller.signal.aborted) {
-          const next = await iterator.next();
-          if (next.done) break;
-          receivedEvent = true;
-          applyEvent(next.value);
-        }
-      }
 
       if (controller.signal.aborted) return;
 
@@ -191,10 +206,6 @@ export function useSession(
       if (!receivedEvent) {
         applyEvent({ type: "end", reason: "idle" });
       }
-
-      // Keep the snapshot aligned with live state so reenabling its query
-      // cannot briefly replay stale linked-session state.
-      queryClient.setQueryData<SessionState>(sessionQuery.queryKey, sessionRef.current);
 
       // Do not change workspace session status here. The runtime publishes
       // the terminal idle/unread transition when the execution truly finishes. A
@@ -351,14 +362,12 @@ export function useSession(
       await streamEvents(request);
     } catch (error) {
       console.error("Streaming error:", error);
-      applyEvent({ type: "end", reason: "error" });
+      await repairWorkspaceStateQuery(queryClient);
       if (isDraft) {
         // Creation may have failed before or after creating native history. Read
         // the authoritative lifecycle rather than guessing whether to undo it.
-        await repairWorkspaceStateQuery(queryClient);
         await invalidateSessionsStateQuery(queryClient);
       } else {
-        applyWorkspaceEvent(queryClient, { type: "session.idle", sessionId });
         await invalidateSessionSnapshot();
       }
     }
@@ -383,20 +392,17 @@ export function useSession(
     [],
   );
 
-  // Live state wins while connected. Otherwise adopt the cached snapshot, including
-  // a replacement draft with its optimistic first message.
+  // Keep reduced state until an authoritative read settles; stopping observation
+  // must not flush an older pane over another reader or a replacement draft.
   useEffect(() => {
-    if (!isStreaming && sessionSnapshot) {
-      // Keep the locally picked model when older history has none.
-      const restoredSession = {
-        ...sessionSnapshot,
-        model: sessionSnapshot.model ?? sessionRef.current.model,
-      };
-      sessionRef.current = restoredSession;
-      setPublishedSession(restoredSession);
-      setHasLoadedSessionState(true);
+    if (
+      !isStreaming &&
+      sessionSnapshot &&
+      (isDraft || (isVisible && !isFetchingSnapshot && !error))
+    ) {
+      adoptSnapshot(sessionSnapshot);
     }
-  }, [isStreaming, sessionSnapshot]);
+  }, [error, isDraft, isFetchingSnapshot, isStreaming, isVisible, sessionSnapshot]);
 
   // Reconcile the subscriber whenever its visibility or the session's
   // workspace state changes. Effect events keep transport implementation
@@ -408,7 +414,6 @@ export function useSession(
         endSubscription();
         return;
       }
-      void invalidateSessionSnapshot();
     }
 
     if (isDraft || !isVisible || !hasLoadedSessionState) return;

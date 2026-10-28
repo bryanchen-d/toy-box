@@ -77,6 +77,11 @@ background. Reconnects always refresh, including after page visibility changes, 
 changed outside Toy Box is rediscovered. Subsequent events update their owning Query caches. The revision survives HMR,
 changes after a server restart, and requires no event buffer. Events announce accepted changes;
 they are synchronization hints, not durable truth or a replay log.
+The shared SSE response bounds queued encoded bytes, including retry and heartbeat frames,
+to 8 MiB. A single oversized frame may stand alone plus the opening retry prelude; this is
+not a strict maximum-frame limit. Overflow errors only that response and releases its
+listener and timer. Workspace reconnect refreshes authoritative queries; Channels retains its
+revision replay/snapshot recovery and Files registers with the current modification time.
 
 [`server/functions.ts`](server/functions.ts) validates remote ingress for hydration, shared
 workspace actions, and settings updates, then delegates to the plain operations in

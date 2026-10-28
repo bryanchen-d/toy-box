@@ -123,6 +123,28 @@ while visible, reduces ordered events, batches text and tool output deltas to an
 exposes delivery and control operations. The long-lived async event stream deliberately remains
 explicit instead of being disguised as a mutation. Ending a browser subscription never stops
 server work; abort is a separate operation.
+An ordinary attach uses the cursor of its already-adopted detail snapshot without
+reading it again; snapshot-first recovery begins only after observation loss.
+`observeSession.ts` keeps that abort lifetime across transport failures: after a one-second,
+abort-aware delay it fetches and adopts the authoritative detail snapshot before resuming at
+its cursor, even when shared running status has not changed. An uncertain first submission is
+never resent. Hidden or unmounted panes stop recovery without ending provider work.
+The RPC's per-call fetch hook surfaces body failures and premature EOF even when the
+installed framed decoder leaves an iterator read pending; cancellation never awaits
+that iterator's queued `return()`. Normal completion lets its response finish naturally.
+Each attempt races its entire consume lifetime once, rather than retaining a failure
+reaction for every event. Only wire failures and the bus's serialized
+`SessionObservationError` recover; rejected operations, missing snapshots, and
+adoption/reducer errors surface to the caller for reconciliation.
+Detail reads use only Query's cancellation signal and coalesce across panes.
+Stopping an observer neither cancels that shared read nor writes its local
+transcript over the cache; replacement/deletion still cancels through Query.
+Those entity-owned cancellations disable Query's revert-to-data result so an
+aborted read cannot be mistaken for an authoritative recovery snapshot.
+The runtime bus bounds replay and each observer's pending events to 1,500 events and 8 MiB
+of UTF-8 JSON. One oversized event may stand alone, with no accumulation behind it.
+Expired replay (tracked by actual discarded IDs, not per-session adjacency) rejects for
+snapshot recovery; overflowing observers release their backlog without closing healthy observers.
 
 Ordinary Sessions remain unbranded coordinators. Their Channel tools can create Channels with an
 intrinsic lead, create channel-specific members, discover available model configurations, read

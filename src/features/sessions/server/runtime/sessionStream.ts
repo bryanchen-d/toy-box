@@ -29,10 +29,8 @@ import { createSessionEventBus, type SessionStreamSubscription } from "./eventBu
 type MessageDisposition = "started" | "queued";
 type StreamEndReason = Extract<SessionEvent, { type: "end" }>["reason"];
 
-// Replay retention cap. A client reconnecting across a gap larger than this
-// silently misses the trimmed events; the client heals by refetching the
-// detail snapshot when its stream completes (see useSession), so the cap
-// trades a rare extra refetch for bounded memory.
+// Replay and per-observer count cap; the bus also owns their UTF-8 byte budget.
+// Expired replay and lagging observers reject without stopping provider work.
 const MAX_REPLAY_EVENTS = 1500;
 
 // Dev HMR can reload this module while active turns are still running. Keep the

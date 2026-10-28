@@ -7,6 +7,20 @@ import { modelConfigurationSchema } from "@providers/model";
 import { attachmentsSchema } from "@/shared/attachments/model";
 import { sessionSystemMessageSchema } from "./systemMessages";
 
+/** A recoverable observation failure, not a rejected session operation. */
+export class SessionObservationError extends Error {
+  override name = "SessionObservationError";
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(`Session observation lost: ${message}`, options);
+  }
+}
+
+export function isSessionObservationError(error: unknown): error is Error {
+  // TanStack's ShallowErrorPlugin preserves only the message across RPC.
+  return error instanceof Error && error.message.startsWith("Session observation lost: ");
+}
+
 export const sessionTypeSchema = z.enum(["standard", "automation", "hyper", "worker"]);
 
 export type SessionType = z.infer<typeof sessionTypeSchema>;

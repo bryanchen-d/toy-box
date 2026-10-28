@@ -116,7 +116,12 @@ export const streamSession = createServerFn({ method: "POST" })
     request.signal.addEventListener("abort", disconnect, { once: true });
     if (request.signal.aborted) disconnect();
 
-    yield* subscription;
+    try {
+      yield* subscription;
+    } finally {
+      request.signal.removeEventListener("abort", disconnect);
+      await subscription.return();
+    }
   });
 
 /** Create a session and run its first turn without any client stream attached.

@@ -1,11 +1,14 @@
 import { queryOptions, skipToken } from "@tanstack/react-query";
 import type { SessionsState, SessionType } from "./model";
+import { createSessionFetch } from "./observeSession";
 import {
   getSessionsState,
   listSkills,
   querySession,
   resolveSessionContext,
 } from "./server/functions";
+
+const snapshotFetch = createSessionFetch();
 
 export const sessionQueries = {
   all: () => ["sessions"] as const,
@@ -38,7 +41,7 @@ export const sessionQueries = {
   detail: (sessionId: string) =>
     queryOptions({
       queryKey: [...sessionQueries.details(), sessionId] as const,
-      queryFn: () => querySession({ data: { sessionId } }),
+      queryFn: ({ signal }) => querySession({ data: { sessionId }, signal, fetch: snapshotFetch }),
       staleTime: 0, // Always refetch when entering a session to get latest messages
       refetchOnWindowFocus: "always",
       refetchOnReconnect: "always",

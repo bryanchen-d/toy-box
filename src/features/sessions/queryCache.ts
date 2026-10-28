@@ -31,7 +31,10 @@ export async function recreateSessionInCache(
 ): Promise<void> {
   await Promise.all([
     queryClient.cancelQueries({ queryKey: sessionQueries.stateKey() }),
-    queryClient.cancelQueries({ queryKey: sessionQueries.detail(sessionId).queryKey }),
+    queryClient.cancelQueries(
+      { queryKey: sessionQueries.detail(sessionId).queryKey },
+      { revert: false },
+    ),
   ]);
 
   const timestamp = new Date().toISOString();
@@ -169,10 +172,14 @@ export async function invalidateSessionQueries(
 }
 
 function retireSessionDetail(queryClient: QueryClient, sessionId: string): void {
-  void queryClient.cancelQueries({
-    queryKey: sessionQueries.detail(sessionId).queryKey,
-    exact: true,
-  });
+  // Cancellation must reject, not resolve an observer's read with reverted entity data.
+  void queryClient.cancelQueries(
+    {
+      queryKey: sessionQueries.detail(sessionId).queryKey,
+      exact: true,
+    },
+    { revert: false },
+  );
   queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, (previous) =>
     previous ? createInitialSessionState() : undefined,
   );
