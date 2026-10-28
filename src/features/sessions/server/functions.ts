@@ -44,6 +44,7 @@ import {
   waitForSessionInputSchema,
 } from "../model/protocol";
 import { readSessionCatalog } from "@/server/managedSessions";
+import { createNoLiveSessionResponse, createSessionEventResponse } from "./eventStream";
 import { resolveSessionContext as resolveGitContext } from "./git";
 
 const REALTIME_MODEL = "gpt-realtime";
@@ -102,26 +103,13 @@ export const waitForSession = createServerFn({ method: "POST" })
 
 export const streamSession = createServerFn({ method: "POST" })
   .validator(zodValidator(streamSessionRequestSchema))
-  .handler(async function* ({ data }) {
+  .handler(async ({ data }) => {
     const request = getRequest() as ServerRequest;
     request.runtime?.bun?.server.timeout(request, 0);
     const subscription = await streamSessionEvents(data);
-    if (!subscription) return;
-
-    // Returning TanStack's serialized client iterator does not reach this
-    // underlying subscription. The browser instead aborts its fetch; Nitro/Bun
-    // exposes that disconnect through request.signal, and this bridge releases
-    // the server subscriber without affecting the session's work.
-    const disconnect = () => void subscription.return();
-    request.signal.addEventListener("abort", disconnect, { once: true });
-    if (request.signal.aborted) disconnect();
-
-    try {
-      yield* subscription;
-    } finally {
-      request.signal.removeEventListener("abort", disconnect);
-      await subscription.return();
-    }
+    return subscription
+      ? createSessionEventResponse(request, subscription)
+      : createNoLiveSessionResponse();
   });
 
 /** Create a session and run its first turn without any client stream attached.

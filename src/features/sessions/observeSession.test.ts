@@ -1,8 +1,9 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, onTestFinished, spyOn, test } from "bun:test";
 import { fromJSON, toJSONAsync } from "seroval";
 import { createDefaultSerovalPlugins } from "@tanstack/router-core/ssr/client";
 import { isCancelledError, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { observeSession } from "./observeSession";
+import { observeSession, sessionFetch } from "./observeSession";
+import { readSessionEvents } from "./readSessionEvents";
 import { createInitialSessionState } from "./model/reducer";
 import { applySessionEvent } from "./model/reducer";
 import { createSessionEventBus } from "./server/runtime/eventBus";
@@ -13,7 +14,9 @@ import { applyWorkspaceEventToSessionQueries, recreateSessionInCache } from "./q
 
 async function rpcError(error: Error): Promise<Error> {
   const plugins = createDefaultSerovalPlugins();
-  const decoded: unknown = fromJSON(await toJSONAsync(error, { plugins }), { plugins });
+  const decoded: unknown = fromJSON(await toJSONAsync(error, { plugins }), {
+    plugins,
+  });
   if (!(decoded instanceof Error)) throw new Error("Expected a serialized RPC error.");
   return decoded;
 }
@@ -32,7 +35,10 @@ test.each(["setup", "read"])(
     let recoveryErrors = 0;
     await expect(
       observeSession(
-        { sessionId: "test", message: { content: "once", clientId: "initial" } },
+        {
+          sessionId: "test",
+          message: { content: "once", clientId: "initial" },
+        },
         {
           signal: controller.signal,
           stream: async () => {
@@ -163,7 +169,11 @@ test("recovers a constant-live observation from an adopted snapshot, never resen
           if (requests.length === 1) await transport.fetch("http://localhost");
           order.push("resume");
           return (async function* () {
-            yield { type: "delta", content: "after snapshot", eventId: 43 } as const;
+            yield {
+              type: "delta",
+              content: "after snapshot",
+              eventId: 43,
+            } as const;
             yield { type: "end", reason: "idle", eventId: 44 } as const;
           })();
         },
@@ -249,7 +259,6 @@ test("an aborted snapshot cannot publish or reconnect, and passive mode survives
 
 test("clean completion has no retry and releases the iterator", async () => {
   let returned = 0;
-  let transportSignal: AbortSignal | undefined;
   const iterator: AsyncIterableIterator<SessionEvent> = {
     [Symbol.asyncIterator]() {
       return this;
@@ -264,10 +273,7 @@ test("clean completion has no retry and releases the iterator", async () => {
     { sessionId: "test" },
     {
       signal: new AbortController().signal,
-      stream: async (_request, transport) => {
-        transportSignal = transport.signal;
-        return iterator;
-      },
+      stream: async () => iterator,
       refresh: async () => {
         throw new Error("must not refresh");
       },
@@ -284,48 +290,37 @@ test("clean completion has no retry and releases the iterator", async () => {
   );
   expect(result).toBe(false);
   expect(returned).toBe(1);
-  expect(transportSignal?.aborted).toBe(false);
 });
 
-test("abort immediately releases an outstanding read even when the RPC iterator stays pending", async () => {
+test("abort rejects the outstanding native read and ends observation without recovery", async () => {
   const controller = new AbortController();
-  let release!: (event: IteratorResult<SessionEvent>) => void;
   let applied = 0;
-  const iterator: AsyncIterableIterator<SessionEvent> = {
-    [Symbol.asyncIterator]() {
-      return this;
-    },
-    next: () => {
-      queueMicrotask(() => controller.abort());
-      return new Promise((resolve) => {
-        release = resolve;
-      });
-    },
-    return: () => {
-      throw new Error("queued return must not block cancellation");
-    },
-  };
-  expect(
-    await observeSession(
-      { sessionId: "test" },
-      {
-        signal: controller.signal,
-        stream: async () => iterator,
-        refresh: async () => {
-          throw new Error("no retry");
-        },
-        adopt: () => {},
-        apply: () => {
-          applied++;
-        },
-        onError: () => {
-          throw new Error("abort is not an error");
-        },
+  const result = await observeSession(
+    { sessionId: "test" },
+    {
+      signal: controller.signal,
+      stream: async (_request, transport) => ({
+        [Symbol.asyncIterator]: () => ({
+          next: () =>
+            new Promise<IteratorResult<SessionEvent>>((_, reject) => {
+              queueMicrotask(() => controller.abort());
+              transport.signal.addEventListener("abort", () => reject(transport.signal.reason));
+            }),
+        }),
+      }),
+      refresh: async () => {
+        throw new Error("no retry");
       },
-    ),
-  ).toBe(false);
-  release({ done: false, value: { type: "delta", content: "abandoned read" } });
-  await Bun.sleep(0);
+      adopt: () => {},
+      apply: () => {
+        applied++;
+      },
+      onError: () => {
+        throw new Error("abort is not an error");
+      },
+    },
+  );
+  expect(result).toBe(false);
   expect(applied).toBe(0);
 });
 
@@ -384,7 +379,10 @@ test("two panes share one Query-owned snapshot; aborting one preserves the other
     },
   };
   const firstObserver = new QueryObserver(client, { ...query, enabled: false });
-  const secondObserver = new QueryObserver(client, { ...query, enabled: false });
+  const secondObserver = new QueryObserver(client, {
+    ...query,
+    enabled: false,
+  });
   const unsubscribeA = firstObserver.subscribe(() => {});
   const unsubscribeB = secondObserver.subscribe(() => {});
   const adopted: string[] = [];
@@ -525,125 +523,50 @@ test.each(["deleted", "replaced"])(
   },
 );
 
-test("a late read from a failed attempt cannot overwrite snapshot recovery", async () => {
-  let body!: ReadableStreamDefaultController<Uint8Array>;
-  const fetch = spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          body = controller;
+test.each(["error", "eof"])(
+  "raw wire %s without a terminal event recovers from a snapshot and resumes its cursor",
+  async (failure) => {
+    const requests: StreamSessionRequest[] = [];
+    const applied: string[] = [];
+    let adopted = false;
+    const body = (final: boolean) => {
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify(final ? { type: "end", reason: "idle" } : { type: "delta", content: "x" })}\n\n`,
+              ),
+            );
+          } else if (failure === "error" && !final) controller.error(new Error("wire lost"));
+          else controller.close();
         },
-      }),
-    ),
-  );
-  let release!: (event: IteratorResult<SessionEvent>) => void;
-  let attempts = 0;
-  const applied: string[] = [];
-  let adopted = false;
-  try {
+      });
+    };
     await observeSession(
-      { sessionId: "test" },
+      { sessionId: "test", message: { content: "once", clientId: "first" } },
       {
         signal: new AbortController().signal,
-        stream: async (_request, transport) => {
-          if (++attempts === 1) {
-            const response = await transport.fetch("http://localhost");
-            void response.text().catch(() => {});
-            const iterator: AsyncIterableIterator<SessionEvent> = {
-              [Symbol.asyncIterator]() {
-                return this;
-              },
-              next: () => {
-                queueMicrotask(() => body.error(new Error("wire lost")));
-                return new Promise((resolve) => {
-                  release = resolve;
-                });
-              },
-              return: () => {
-                throw new Error("must not await abandoned return");
-              },
-            };
-            return iterator;
-          }
-          expect(adopted).toBe(true);
-          release({ done: false, value: { type: "delta", content: "abandoned" } });
-          return (async function* () {
-            yield { type: "delta", content: "fresh" } as const;
-          })();
+        stream: async (request) => {
+          requests.push(request);
+          if (requests.length > 1) expect(adopted).toBe(true);
+          return readSessionEvents(new Response(body(requests.length > 1)));
         },
-        refresh: async () => createInitialSessionState(),
+        refresh: async () => createInitialSessionState({ lastSeenEventId: 9 }),
         adopt: () => {
           adopted = true;
         },
-        apply: (event) => {
-          if (event.type === "delta") applied.push(event.content);
-        },
+        apply: (event) => applied.push(event.type),
         onError: () => {},
       },
     );
-    await Bun.sleep(0);
-    expect(applied).toEqual(["fresh"]);
-  } finally {
-    fetch.mockRestore();
-  }
-});
-
-test.each(["error", "eof"])(
-  "wire %s releases a stranded RPC iterator without awaiting its queued return",
-  async (failure) => {
-    const fetch = spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            if (failure === "error") controller.error(new Error("wire lost"));
-            else controller.close();
-          },
-        }),
-      ),
-    );
-    let attempts = 0;
-    let failedSignal: AbortSignal | undefined;
-    let adopted = false;
-    try {
-      await observeSession(
-        { sessionId: "test" },
-        {
-          signal: new AbortController().signal,
-          stream: async (_request, transport) => {
-            if (++attempts === 1) {
-              failedSignal = transport.signal;
-              const response = await transport.fetch("http://localhost");
-              // Model the installed decoder: logs/catches wire loss, strands next().
-              void response.text().catch(() => {});
-              const iterator: AsyncIterableIterator<SessionEvent> = {
-                [Symbol.asyncIterator]() {
-                  return this;
-                },
-                next: () => new Promise<IteratorResult<SessionEvent>>(() => {}),
-                return: () => {
-                  throw new Error("queued return must not be awaited");
-                },
-              };
-              return iterator;
-            }
-            expect(failedSignal?.aborted).toBe(true);
-            expect(adopted).toBe(true);
-            return undefined;
-          },
-          refresh: async () => createInitialSessionState(),
-          adopt: () => {
-            adopted = true;
-          },
-          apply: () => {
-            throw new Error("no events");
-          },
-          onError: () => {},
-        },
-      );
-      expect(attempts).toBe(2);
-    } finally {
-      fetch.mockRestore();
-    }
+    expect(applied).toEqual(["delta", "end"]);
+    expect(requests).toEqual([
+      { sessionId: "test", message: { content: "once", clientId: "first" } },
+      { sessionId: "test", mode: undefined, afterEventId: 9 },
+    ]);
   },
 );
 
@@ -690,4 +613,98 @@ test("expired replay heals through the existing reducer before passive cursor re
   expect(attempts).toBe(2);
   expect(visible).toEqual(state);
   expect(visible.messages[0]?.content).toBe("before missed during disconnect after resume");
+});
+
+test("a queued event cannot publish after observation is aborted", async () => {
+  const controller = new AbortController();
+  const ready = Promise.withResolvers<void>();
+  const read = Promise.withResolvers<IteratorResult<SessionEvent>>();
+  const applied: SessionEvent[] = [];
+  const iterator: AsyncIterableIterator<SessionEvent> = {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next() {
+      ready.resolve();
+      return read.promise;
+    },
+    return: async () => ({ done: true, value: undefined }),
+  };
+  const observation = observeSession(
+    { sessionId: "test" },
+    {
+      signal: controller.signal,
+      stream: async () => iterator,
+      refresh: async () => {
+        throw new Error("must not refresh");
+      },
+      adopt: () => {
+        throw new Error("must not adopt");
+      },
+      apply: (event) => applied.push(event),
+      onError: () => {
+        throw new Error("abort is not an error");
+      },
+    },
+  );
+  await ready.promise;
+  controller.abort();
+  read.resolve({ done: false, value: { type: "delta", content: "late" } });
+  expect(await observation).toBe(false);
+  expect(applied).toEqual([]);
+});
+
+test("an already-aborted snapshot wait leaves the shared read alive without adopting it", async () => {
+  const controller = new AbortController();
+  const shared = Promise.withResolvers<SessionState>();
+  const snapshot = createInitialSessionState();
+  let adopted = false;
+  onTestFinished(() => shared.resolve(snapshot));
+  const observation = observeSession(
+    { sessionId: "test" },
+    {
+      signal: controller.signal,
+      stream: async () => {
+        throw new SessionObservationError("expired replay");
+      },
+      refresh: () => {
+        controller.abort();
+        return shared.promise;
+      },
+      adopt: () => {
+        adopted = true;
+      },
+      apply: () => {
+        throw new Error("must not apply");
+      },
+      onError: () => {},
+    },
+  );
+  expect(await observation).toBe(false);
+  expect(adopted).toBe(false);
+  shared.resolve(snapshot);
+  expect(await shared.promise).toBe(snapshot);
+});
+
+test("no-live responses do not try to read a browser-exposed 204 body", async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream({
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  );
+  Object.defineProperty(response, "status", { value: 204 });
+  const read = spyOn(response.body!, "getReader").mockImplementation(() => {
+    throw new Error("A 204 response has no event stream.");
+  });
+  const fetch = spyOn(globalThis, "fetch").mockResolvedValue(response);
+  try {
+    expect(readSessionEvents(await sessionFetch("http://localhost"))).toBeUndefined();
+    expect(cancelled).toBe(true);
+  } finally {
+    fetch.mockRestore();
+    read.mockRestore();
+  }
 });

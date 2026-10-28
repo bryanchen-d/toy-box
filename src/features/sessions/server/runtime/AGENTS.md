@@ -48,7 +48,7 @@ Control is a category, not one runtime method. Abort, queue steering, and queue 
 
 Once a session has turn-bearing history, resume is not a separate operation. Delivering to an idle session resumes its persisted provider connection; delivering to an active session queues. Callers do not choose whether a new turn starts or a message enters the active mailbox, though an active user delivery may request immediate dispatch.
 
-`streamSession` is the connected composite: it subscribes before delivering an optional message, preventing a fast first event from falling between separate requests. The same request can start a draft's first turn or create a session with its required first message, deliver to an existing session, or subscribe without delivering. Headless callers use `createSession`, `recreateSession`, `deliverSessionMessage`, and `waitForSessions` directly. Scenario supervisors compose those operations with their own policy.
+`streamSession` is the connected composite: it subscribes before delivering an optional message, preventing a fast first event from falling between separate requests. The same request can start a draft's first turn or create a session with its required first message, deliver to an existing session, or subscribe without delivering. Its wire result is a raw SSE response, not a serialized iterator, so events never enter a lifetime reference graph; an observer that cannot drain is cut off by the shared SSE queue bound and recovers from a snapshot. Headless callers use `createSession`, `recreateSession`, `deliverSessionMessage`, and `waitForSessions` directly. Scenario supervisors compose those operations with their own policy.
 
 ## Live execution
 

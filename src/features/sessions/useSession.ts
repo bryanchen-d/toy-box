@@ -21,6 +21,7 @@ import type { SessionSubscriptionMode, StreamSessionRequest } from "./model/prot
 import { sessionMutations } from "./mutations";
 import { sessionQueries } from "./queries";
 import { observeSession } from "./observeSession";
+import { readSessionEvents } from "./readSessionEvents";
 import {
   cancelSessionsStateQuery,
   invalidateSessionsStateQuery,
@@ -185,7 +186,8 @@ export function useSession(
     const consume = async () => {
       const receivedEvent = await observeSession(request, {
         signal: controller.signal,
-        stream: (data, transport) => streamSession({ data, ...transport }),
+        stream: async (data, transport) =>
+          readSessionEvents(await streamSession({ data, ...transport })),
         refresh: async () => {
           if (request.message) {
             // A failed first response leaves creation uncertain, not failed.

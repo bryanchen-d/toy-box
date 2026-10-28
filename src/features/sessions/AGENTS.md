@@ -129,11 +129,14 @@ reading it again; snapshot-first recovery begins only after observation loss.
 abort-aware delay it fetches and adopts the authoritative detail snapshot before resuming at
 its cursor, even when shared running status has not changed. An uncertain first submission is
 never resent. Hidden or unmounted panes stop recovery without ending provider work.
-The RPC's per-call fetch hook surfaces body failures and premature EOF even when the
-installed framed decoder leaves an iterator read pending; cancellation never awaits
-that iterator's queued `return()`. Normal completion lets its response finish naturally.
-Each attempt races its entire consume lifetime once, rather than retaining a failure
-reaction for every event. Only wire failures and the bus's serialized
+The `streamSession` RPC keeps its validated POST ingress but returns a raw SSE `Response`
+(`server/eventStream.ts`, on the shared SSE owner) that TanStack passes through unserialized.
+Returning an async iterable would route every event through Seroval's per-call reference
+map, which grows for the stream's whole lifetime. Each frame is one JSON `SessionEvent`; a
+204 means no live stream; the terminal `end` event completes it. `readSessionEvents.ts`
+parses frames back into the iterable `observeSession` consumes. A body that fails or reaches
+EOF without `end` is observation loss, as is a malformed frame, and native reads reject on
+abort, so no per-event race or EOF timer exists. Only wire failures and the bus's serialized
 `SessionObservationError` recover; rejected operations, missing snapshots, and
 adoption/reducer errors surface to the caller for reconciliation.
 Detail reads use only Query's cancellation signal and coalesce across panes.

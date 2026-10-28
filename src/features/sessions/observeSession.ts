@@ -7,15 +7,11 @@ import {
 } from "./model/protocol";
 
 /** Wire failures remain identifiable when a Query-owned request has multiple observers. */
-export function createSessionFetch(
-  onFailure?: (error: SessionObservationError) => void,
-  onEnd?: VoidFunction,
-): CustomFetch {
-  const fail = (cause: unknown) => {
-    const error = new SessionObservationError("Session transport failed.", { cause });
-    onFailure?.(error);
-    return error;
-  };
+export const sessionFetch = createSessionFetch();
+
+function createSessionFetch(): CustomFetch {
+  const fail = (cause: unknown) =>
+    new SessionObservationError("Session transport failed.", { cause });
   return async (input, init) => {
     let response: Response;
     try {
@@ -23,7 +19,7 @@ export function createSessionFetch(
     } catch (error) {
       throw fail(error);
     }
-    if (!response.body) return response;
+    if (response.status === 204 || !response.body) return response;
     const reader = response.body.getReader();
     return new Response(
       new ReadableStream<Uint8Array>({
@@ -33,7 +29,6 @@ export function createSessionFetch(
             if (next.done) {
               reader.releaseLock();
               controller.close();
-              onEnd?.();
             } else controller.enqueue(next.value);
           } catch (error) {
             reader.releaseLock();
@@ -76,43 +71,15 @@ export async function observeSession(
   let needsSnapshot = false;
   while (!signal.aborted) {
     const attempt = new AbortController();
-    const transportSignal = AbortSignal.any([signal, attempt.signal]);
-    let eofTimer: ReturnType<typeof setTimeout> | undefined;
-    let transportLost = false;
-    let completed = false;
-    let failTransport!: (error: unknown) => void;
-    const transportFailure = new Promise<never>((_, reject) => {
-      failTransport = (error) => {
-        transportLost = true;
-        reject(error);
-      };
-    });
-    const onAbort = () => failTransport(transportSignal.reason);
-    transportSignal.addEventListener("abort", onAbort, { once: true });
-    const stopped = () => transportSignal.aborted || transportLost;
-    const rejectStream = (error: unknown): never => {
-      if (isSessionObservationError(error)) transportLost = true;
-      throw error;
+    const transport = {
+      signal: AbortSignal.any([signal, attempt.signal]),
+      fetch: sessionFetch,
     };
-    // TanStack's framed decoder logs body errors but can leave deserialized
-    // iterator promises pending. Observe the wire without replacing its codec.
-    const observedFetch = createSessionFetch(failTransport, () => {
-      // Allow already-delivered patches to finish normal iteration.
-      if (!completed && !attempt.signal.aborted) {
-        eofTimer = setTimeout(
-          () =>
-            failTransport(
-              new SessionObservationError("Session transport ended before observation completed."),
-            ),
-          1_000,
-        );
-      }
-    });
-    const transport = { signal: transportSignal, fetch: observedFetch };
     const consume = async () => {
       if (needsSnapshot) {
-        const snapshot = await refresh().catch(rejectStream);
-        if (stopped()) return false;
+        // The Query owns this shared read; this observer only stops waiting.
+        const snapshot = await untilAborted(refresh(), signal);
+        if (signal.aborted) return false;
         adopt(snapshot);
         // The first request may have reached the server. Never submit it twice.
         request = {
@@ -122,58 +89,58 @@ export async function observeSession(
         };
         needsSnapshot = false;
       }
-      if (stopped()) return false;
-      let events: AsyncIterable<SessionEvent> | undefined;
-      try {
-        events = await stream(request, transport);
-      } catch (error) {
-        rejectStream(error);
-      }
-      if (stopped()) return false;
+      const events = await stream(request, transport);
+      if (!events || signal.aborted) return false;
+
       let receivedEvent = false;
-      if (events) {
-        let iterator: AsyncIterator<SessionEvent>;
-        try {
-          iterator = events[Symbol.asyncIterator]();
-        } catch (error) {
-          return rejectStream(error);
+      const iterator = events[Symbol.asyncIterator]();
+      try {
+        while (!signal.aborted) {
+          const next = await iterator.next();
+          if (signal.aborted || next.done) break;
+          apply(next.value);
+          receivedEvent = true;
         }
-        try {
-          while (!stopped()) {
-            let next: IteratorResult<SessionEvent>;
-            try {
-              next = await iterator.next();
-            } catch (error) {
-              return rejectStream(error);
-            }
-            if (stopped() || next.done) break;
-            apply(next.value);
-            receivedEvent = true;
-          }
-        } finally {
-          // A lost wire can strand next(); return() would queue behind it.
-          if (!stopped()) await iterator.return?.();
-        }
+      } finally {
+        await iterator.return?.();
       }
       return receivedEvent;
     };
     try {
-      const receivedEvent = await Promise.race([consume(), transportFailure]);
-      completed = !signal.aborted;
-      return receivedEvent;
+      return await consume();
     } catch (error) {
       if (signal.aborted) return false;
-      if (!transportLost) throw error;
+      if (!isSessionObservationError(error)) throw error;
       onError(error);
       needsSnapshot = true;
     } finally {
-      transportSignal.removeEventListener("abort", onAbort);
-      if (!completed) attempt.abort();
-      clearTimeout(eofTimer);
+      attempt.abort();
     }
     await waitToRetry(signal);
   }
   return false;
+}
+
+/** Wait for a shared read without owning its cancellation; abort leaves it to its Query. */
+function untilAborted<T>(read: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void read.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 function waitToRetry(signal: AbortSignal): Promise<void> {
