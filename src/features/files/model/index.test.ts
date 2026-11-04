@@ -32,6 +32,14 @@ describe("workspace files", () => {
     }
   });
 
+  test("machine routes preserve absolute Windows drive paths", () => {
+    for (const path of [String.raw`C:\Users\owner\image.png`, "d:/Users/owner/image.png"]) {
+      const file: WorkspaceFile = { kind: "machine", path };
+      const encoded = encodeFileRoute(file);
+      expect(decodeFileRoute(encoded.scope, encoded.path)).toEqual(file);
+    }
+  });
+
   test("session URLs stay bare while machine files use the machine scope", () => {
     expect(encodeFileRoute(sessionFile)).toEqual({ scope: "toy-box-session", path: "plan.md" });
     expect(encodeFileRoute(machineFile)).toEqual({ scope: "machine", path: "repo/src/foo.ts" });

@@ -2,7 +2,32 @@ import { expect, onTestFinished, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { machineFile } from "@files/model";
+import { createFileServeUrl } from "@files/model/paths";
 import { createServeResponse } from "./$scope/$";
+
+test("serves image bytes through an encoded machine-file URL", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));
+  const path = join(directory, "image #1.png");
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const bytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    "base64",
+  );
+  await Bun.write(path, bytes);
+  const url = new URL(createFileServeUrl(machineFile(path)), "http://toy-box.test");
+  const response = await createServeResponse(
+    {
+      scope: "machine",
+      _splat: decodeURIComponent(url.pathname.slice("/api/serve/machine/".length)),
+    },
+    new Request(url),
+  );
+
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toBe("image/png");
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+});
 
 test("revalidates unchanged files and serves changed bytes", async () => {
   const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));

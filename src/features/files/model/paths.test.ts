@@ -43,6 +43,12 @@ describe("artifact route paths", () => {
     );
   });
 
+  test("encodes Windows drive paths for both serving and watching files", () => {
+    const file = { kind: "machine", path: String.raw`C:\Users\owner\image #1.png` } as const;
+    expect(createFileServeUrl(file)).toBe("/api/serve/machine/C%3A/Users/owner/image%20%231.png");
+    expect(createFileWatchUrl(file)).toBe("/api/watch/machine/C%3A/Users/owner/image%20%231.png");
+  });
+
   test("builds trailing-slash bases for root and nested artifact directories", () => {
     expect(
       createFileServeBaseUrl({

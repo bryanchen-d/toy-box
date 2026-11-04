@@ -40,6 +40,7 @@ target retains the complete returned path. This is presentation over ordinary me
 not another workspace file identity or file-loading path.
 
 The route scope is a session id for an artifact or the literal `machine` for a host file. One resolver (`resolveWorkspaceFile`) maps that `WorkspaceFile` to an allowed absolute path for every operation: a session file resolves beneath its durable artifacts directory; a machine file resolves to its own absolute path.
+Machine route decoding restores the leading slash for POSIX paths but preserves Windows drive roots; both serve and watch use this shared codec.
 Serve responses are privately cached and revalidated from file metadata, so unchanged resources reuse browser-cached bytes without hiding edits.
 
 `server/watcher.ts` owns shared filesystem observation. One server-lifetime recursive watcher

@@ -79,7 +79,8 @@ export function encodeFileRoute(file: WorkspaceFile): { scope: string; path: str
 
 /** Reconstruct a file from a route scope segment and splat (the inverse of encodeFileRoute). */
 export function decodeFileRoute(scope: string, path: string): WorkspaceFile {
-  return scope === "machine" ? { kind: "machine", path: `/${path}` } : sessionFile(scope, path);
+  if (scope !== "machine") return sessionFile(scope, path);
+  return machineFile(/^[a-z]:[/\\]/i.test(path) ? path : `/${path}`);
 }
 
 /** A session file (an artifact): a path beneath a session's own artifacts directory. */
