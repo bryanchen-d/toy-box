@@ -209,7 +209,7 @@ function setRoutine(
     : [...routines, routine];
 }
 
-/** A new share comes first; retitling one keeps its place, archive state, and share time. */
+/** A new share follows pins; retitling preserves arrangement and share time. */
 function shareArtifact(
   artifacts: readonly ChannelArtifact[],
   incoming: Omit<ChannelArtifact, "id" | "sharedAt">,
@@ -218,5 +218,6 @@ function shareArtifact(
   const id = workspaceFileId(incoming.file);
   return artifacts.some((artifact) => artifact.id === id)
     ? artifacts.map((artifact) => (artifact.id === id ? { ...artifact, ...incoming } : artifact))
-    : [{ ...incoming, id, sharedAt }, ...artifacts];
+    : orderChannelArtifacts([{ ...incoming, id, sharedAt }, ...artifacts]);
 }
+import { orderChannelArtifacts } from "./index";

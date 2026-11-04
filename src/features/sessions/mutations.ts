@@ -12,6 +12,7 @@ import {
   renameSession,
   rewindSession as requestSessionRewind,
   steerQueuedMessage,
+  pinSessionArtifact,
 } from "./server/functions";
 import { sessionQueries } from "./queries";
 import {
@@ -23,7 +24,7 @@ import {
 } from "./queryCache";
 import { applyWorkspaceEvent } from "@workspace/queries";
 import type { SessionLaunch } from "./model";
-import type { SessionQuestionAnswer } from "./model/protocol";
+import type { PinSessionArtifactInput, SessionQuestionAnswer } from "./model/protocol";
 
 type CreateSessionVariables = {
   sessionId: string;
@@ -33,6 +34,13 @@ type CreateSessionVariables = {
 };
 
 export const sessionMutations = {
+  pinArtifact: () =>
+    mutationOptions({
+      mutationFn: (input: PinSessionArtifactInput) => pinSessionArtifact({ data: input }),
+      onSuccess: (_result, { sessionId }, _context, { client }) =>
+        client.invalidateQueries({ queryKey: sessionQueries.artifactPins(sessionId).queryKey }),
+    }),
+
   startSession: () =>
     mutationOptions({
       mutationFn: (launch: SessionLaunch) => startSession({ data: launch }),

@@ -24,12 +24,16 @@ creating another source of transcript truth.
 - `snapshots.ts` reconstructs `SessionState` through provider history projection and the canonical
   reducer, then caches that same value under the caller-supplied session ID. Active truth always
   comes from the runtime; cached snapshots only avoid replay work.
-- `schema.ts` defines the Sessions-owned `sessions` and `worktrees` tables. `sessions.ts` owns
+- `schema.ts` defines the Sessions-owned `sessions`, `worktrees`, and `session_artifact_pins` tables. `sessions.ts` owns
   durable public identity in the `sessions` table. A row without a provider
   is a draft; native creation adds its provider to that same row. Record reads return `Session`;
   catalog discovery enriches it with native metadata. `native_id` is an optional override:
   when absent, the canonical session UUID is also the native ID. Providers own
   names and message and attachment history, including after rewind.
+- `artifactPins.ts` persists ordered artifact paths independently of provider metadata, including
+  imported sessions without local identity rows. Filesystem discovery remains the authority for
+  artifact existence; a missing file is omitted without losing its pin if it is regenerated.
+  Complete session deletion clears these preferences through `deleteSessionRecord`.
 - `worktrees.ts` keeps a session worktree and its SQLite record in one lifecycle.
   Apply and merge require committed session changes and operate in the source checkout;
   unfinished edits reject the operation before any resource is removed.

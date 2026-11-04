@@ -11,10 +11,16 @@ import {
   Files,
   GripVertical,
   Loader2,
+  Pin,
+  PinOff,
   Search,
   X,
 } from "lucide-react";
-import type { ArrangeChannelArtifactsInput, ChannelArtifact } from "@channels/model";
+import {
+  orderChannelArtifacts,
+  type ArrangeChannelArtifactsInput,
+  type ChannelArtifact,
+} from "@channels/model";
 import { channelMutations } from "@channels/mutations";
 import { useEditorDisplay } from "@files/components/editor/kinds";
 import { useArtifactState } from "@workspace/components/outputs/ArtifactPill";
@@ -64,13 +70,16 @@ export function ChannelArtifacts({
   onClose: () => void;
 }) {
   const { openArtifact } = useChannelPane();
-  const { mutate: arrange } = useMutation(channelMutations.arrangeArtifacts(channelId));
+  const { mutate: arrange, error: arrangementError } = useMutation(
+    channelMutations.arrangeArtifacts(channelId),
+  );
   const [shelf, setShelf] = useState<Shelf>("shared");
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
   // A drag reorders locally until the arrangement it commits replaces these artifacts.
   const [drag, setDrag] = useState<{ from: ChannelArtifact[]; ids: string[] }>();
   const shared = artifacts.filter(({ archived }) => !archived);
+  const unpinned = shared.filter(({ pinned }) => !pinned);
   const archived = artifacts.filter(({ archived }) => archived);
   const shelved = shelf === "shared" ? shared : archived;
   // Only the Shared shelf drags.
@@ -118,20 +127,21 @@ export function ChannelArtifacts({
 
   /** Moves are relative to the whole shelf, so they mean the same while searching. */
   function moves(artifact: ChannelArtifact): ReactNode {
-    const index = shared.indexOf(artifact);
+    const group = shared.filter(({ pinned }) => !!pinned === !!artifact.pinned);
+    const index = group.indexOf(artifact);
     const move = (beforeArtifactId: string | null) =>
       arrange({ artifactIds: [artifact.id], beforeArtifactId });
     return (
       <>
-        <DropdownMenuItem disabled={index === 0} onClick={() => move(shared[0]!.id)}>
+        <DropdownMenuItem disabled={index === 0} onClick={() => move(group[0]!.id)}>
           <ArrowUpToLine /> Move to top
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={index === 0} onClick={() => move(shared[index - 1]!.id)}>
+        <DropdownMenuItem disabled={index === 0} onClick={() => move(group[index - 1]!.id)}>
           <ArrowUp /> Move up
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={index === shared.length - 1}
-          onClick={() => move(shared[index + 2]?.id ?? null)}
+          disabled={index === group.length - 1}
+          onClick={() => move(group[index + 2]?.id ?? null)}
         >
           <ArrowDown /> Move down
         </DropdownMenuItem>
@@ -259,20 +269,20 @@ export function ChannelArtifacts({
           shelf === "shared" && (
             <DropdownMenu>
               <DropdownMenuTrigger
-                disabled={shared.length < 2}
+                disabled={unpinned.length < 2}
                 render={<Button type="button" variant="ghost" size="xs" />}
               >
                 <ArrowDownUp /> Sort
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Arrange shared artifacts by</DropdownMenuLabel>
+                  <DropdownMenuLabel>Arrange unpinned artifacts by</DropdownMenuLabel>
                   {SORTS.map(({ label, compare }) => (
                     <DropdownMenuItem
                       key={label}
                       onClick={() =>
                         arrange({
-                          artifactIds: [...shared].sort(compare).map(({ id }) => id),
+                          artifactIds: [...unpinned].sort(compare).map(({ id }) => id),
                           beforeArtifactId: null,
                         })
                       }
@@ -287,6 +297,11 @@ export function ChannelArtifacts({
         )}
       </div>
 
+      {arrangementError && (
+        <p role="alert" className="px-4 py-2 text-xs text-destructive">
+          Unable to arrange artifacts: {arrangementError.message}
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
         {visible.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground italic">
@@ -303,7 +318,14 @@ export function ChannelArtifacts({
             as="div"
             axis="y"
             values={visible.map(({ id }) => id)}
-            onReorder={(ids) => setDrag({ from: artifacts, ids })}
+            onReorder={(ids) =>
+              setDrag({
+                from: artifacts,
+                ids: orderChannelArtifacts(
+                  ids.flatMap((id) => shared.find((artifact) => artifact.id === id) ?? []),
+                ).map(({ id }) => id),
+              })
+            }
             role="list"
             aria-label={shelf === "shared" ? "Shared artifacts" : "Archived artifacts"}
             className="flex flex-col"
@@ -324,6 +346,15 @@ export function ChannelArtifacts({
                 <RowMenu name={artifact.title}>
                   {shelf === "shared" ? (
                     <>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          arrange({ artifactIds: [artifact.id], pinned: !artifact.pinned })
+                        }
+                      >
+                        {artifact.pinned ? <PinOff /> : <Pin />}{" "}
+                        {artifact.pinned ? "Unpin" : "Pin to top"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       {moves(artifact)}
                       <DropdownMenuItem
                         onClick={() => arrange({ artifactIds: [artifact.id], archived: true })}
@@ -411,6 +442,7 @@ function ArtifactSummary({ artifact, onOpen }: { artifact: ChannelArtifact; onOp
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", open && "font-medium")}>
           {artifact.title}
+          {artifact.pinned && <Pin className="ml-1 inline size-3" role="img" aria-label="Pinned" />}
         </span>
         <span className="block truncate text-xs text-muted-foreground">
           {name} · <RelativeTime date={artifact.sharedAt} />

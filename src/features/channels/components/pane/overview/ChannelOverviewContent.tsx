@@ -195,6 +195,7 @@ export function ChannelOverviewContent({
                 key={artifact.id}
                 file={artifact.file}
                 label={artifact.title}
+                pinned={artifact.pinned}
                 detail={<RelativeTime className="text-muted-foreground" date={artifact.sharedAt} />}
                 className="w-full text-foreground"
                 onClick={() => onArtifactOpen(artifact)}

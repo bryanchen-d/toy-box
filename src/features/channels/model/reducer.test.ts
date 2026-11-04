@@ -467,6 +467,42 @@ test("arranging artifacts replaces them quietly", () => {
   expect(reduceChannelState(next, { type: "artifacts", revision: 102, artifacts: [] })).toBe(next);
 });
 
+test("a new share goes after pins, and retitling preserves a pin", () => {
+  const shared = reduceChannelState(
+    snapshot(),
+    system(102, {
+      type: "artifact_shared",
+      actor: { type: "user" },
+      artifact: { file: machineFile("/plan.md"), title: "Plan" },
+    }),
+  );
+  const pinned = reduceChannelState(shared, {
+    type: "artifacts",
+    revision: 103,
+    artifacts: [{ ...shared.artifacts[0]!, pinned: true }],
+  });
+  const arrived = reduceChannelState(
+    pinned,
+    system(104, {
+      type: "artifact_shared",
+      actor: { type: "user" },
+      artifact: { file: machineFile("/notes.md"), title: "Notes" },
+    }),
+  );
+  const retitled = reduceChannelState(
+    arrived,
+    system(105, {
+      type: "artifact_shared",
+      actor: { type: "user" },
+      artifact: { file: machineFile("/plan.md"), title: "Updated plan" },
+    }),
+  );
+  expect(retitled.artifacts).toMatchObject([
+    { title: "Updated plan", pinned: true },
+    { title: "Notes" },
+  ]);
+});
+
 test("routine messages add, change in place, and delete routines", () => {
   const standup = { id: "standup", title: "CI", schedule: "0 9 * * 1-5", prompt: "Check CI" };
   const review = { ...standup, id: "review", title: "Review", prompt: "Review the week" };

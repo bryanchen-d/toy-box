@@ -201,9 +201,13 @@ SDK canvases, the transcript, composer, location controls, and sidebar list. Com
 mutation observers and browser-local interaction state. Reusable managed-session surfaces such as
 Inbox may consume the composer or location controls directly.
 
-The composer stacks what a session produced (artifacts newest first, plus todo progress and changed
+The composer stacks what a session produced (pinned artifacts in pin order, then unpinned artifacts newest first, plus todo progress and changed
 files) and what is waiting (queued messages) above the message being written. Sessions and Channels
 share Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx).
+Its full artifact list offers Pin/Unpin even when every artifact fits inline. Session pins are
+durable user preferences read through `sessionQueries.artifactPins`; they do not enter provider
+history, canonical transcript state, or execution. Pin mutations broadcast `session.touched`,
+so observers and reconnect recovery refresh the same entity-owned query.
 Queued user messages can be sent now, removed, or edited:
 editing takes a message out of the queue and back into the draft, as does stopping the turn, so
 queued input never disappears. Draft text is a Workspace saved draft, so it follows the

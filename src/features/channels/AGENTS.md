@@ -85,8 +85,8 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   title and when it was first shared; sharing it again changes only the title. Every artifact
   carries its `id`, so tasks, apps, and native clients never derive it. Files owns the address and
   editor. Channels owns only the shared index and the `artifact_shared` transcript event, whose own
-  timestamp records the share. `ChannelState.artifacts` is the user's arrangement: a new share
-  comes first, and the user can move any artifact or archive it, which files it away from the
+  timestamp records the share. `ChannelState.artifacts` is the user's arrangement: pins come
+  first in their own order, followed by new shares. The user can move any artifact or archive it, which clears its pin and files it away from the
   composer tray without unsharing it. Agents still read every shared artifact.
 - `Channel.canvasArtifactId` optionally selects one shared session-owned `.toy` artifact.
   The lead sets or clears it through `update_channel`; validation rejects unshared files,
@@ -153,7 +153,7 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, and recordings to messages; generated images are attached by their saved paths.
 - Let the user arrange artifacts with `arrangeChannelArtifacts`: move a set before another
-  artifact (or last), together in the given order, and archive or restore it. Moving one artifact,
+  artifact (or last), together in the given order, pin or unpin it, and archive or restore it. Moving one artifact,
   moving a selection to the top, and sorting the whole list are all this one verb. One pure
   `applyChannelArtifactArrangement` serves the server transaction and the browser's optimistic
   update. Arranging is quiet, like task revisions: one revisioned `artifacts` event replaces the
@@ -284,7 +284,7 @@ changes update Channel metadata and append a separate typed system message for e
 in one transaction, advancing sequence and revision for each; a user purpose change also wakes the lead
 to read the new direction. Preview changes append `preview_changed`; tasks and lead-model changes
 have their own revisioned events without a transcript entry, as does an artifact arrangement, which
-rewrites each artifact's `position` and `archived` columns. A new share takes the position before
+rewrites each artifact's `position`, `pinned`, and `archived` columns. Pins sort ahead of positions; a new share takes the position before
 every other. Human read-position advances also
 have a revisioned event carrying only the committed cursor.
 Private Agent read-position changes update only Worker metadata. Message, reaction, and artifact tables continue
@@ -484,8 +484,8 @@ selection scrolls and highlights in place without remounting its composer or res
 opens from the tray's full list and the overview, and lists the Shared or Archived shelf with
 search. Each artifact opens on click, drags by a gutter grip on the Shared shelf while unfiltered,
 and has a menu to move it to the top, up, or down, or to archive or restore it. Moves stay relative
-to the whole shelf while searching. A selection of visible artifacts archives, restores, or moves
-to the top together, and Sort arranges the Shared shelf once by newest, oldest, or name. A drag
+to the artifact's pinned or unpinned group while searching. A selection of visible artifacts archives, restores, or moves
+to the top together, and Sort arranges only unpinned Shared artifacts once by newest, oldest, or name. A drag
 reorders locally until its optimistic arrangement replaces the list.
 
 In a wide pane, chat and the aside form one resizable panel group divided by the shared

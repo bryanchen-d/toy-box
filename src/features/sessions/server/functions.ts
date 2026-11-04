@@ -45,12 +45,15 @@ import {
   sessionInputSchema,
   sessionHistoryInputSchema,
   sessionSearchInputSchema,
+  pinSessionArtifactInputSchema,
   streamSessionRequestSchema,
   waitForSessionInputSchema,
 } from "../model/protocol";
 import { readSessionCatalog } from "@/server/managedSessions";
 import { createNoLiveSessionResponse, createSessionEventResponse } from "./eventStream";
 import { resolveSessionContext as resolveGitContext } from "./git";
+import { pinSessionArtifact as pinArtifact } from "./artifacts";
+import { readSessionArtifactPins } from "./state/artifactPins";
 
 const REALTIME_MODEL = "gpt-realtime";
 
@@ -106,6 +109,14 @@ export const querySessionHistory = createServerFn({ method: "POST" })
 export const searchSession = createServerFn({ method: "POST" })
   .validator(zodValidator(sessionSearchInputSchema))
   .handler(({ data }) => searchSessionHistory(data.sessionId, data.query));
+
+export const querySessionArtifactPins = createServerFn({ method: "POST" })
+  .middleware([withSessionId])
+  .handler(({ data }) => readSessionArtifactPins(data.sessionId));
+
+export const pinSessionArtifact = createServerFn({ method: "POST" })
+  .validator(zodValidator(pinSessionArtifactInputSchema))
+  .handler(({ data }) => pinArtifact(data));
 
 /** Wait for the announced, live, or latest persisted execution of one session. */
 export const waitForSession = createServerFn({ method: "POST" })

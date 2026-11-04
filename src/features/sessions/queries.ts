@@ -8,6 +8,7 @@ import {
   querySessionOutputs,
   querySessionHistory,
   searchSession,
+  querySessionArtifactPins,
   resolveSessionContext,
 } from "./server/functions";
 
@@ -40,6 +41,19 @@ export const sessionQueries = {
   details: () => [...sessionQueries.all(), "detail"] as const,
 
   entity: (sessionId: string) => [...sessionQueries.details(), sessionId] as const,
+
+  artifactPinsKey: () => [...sessionQueries.all(), "artifactPins"] as const,
+
+  artifactPins: (sessionId?: string) =>
+    queryOptions({
+      queryKey: [...sessionQueries.artifactPinsKey(), sessionId ?? null] as const,
+      queryFn: sessionId
+        ? ({ signal }) => querySessionArtifactPins({ data: { sessionId }, signal })
+        : skipToken,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    }),
 
   historyKey: (sessionId: string) => [...sessionQueries.entity(sessionId), "history"] as const,
 

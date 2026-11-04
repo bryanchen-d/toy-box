@@ -79,6 +79,7 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
       -- The user's arrangement, ascending; a new share takes a position before every other.
       position             INTEGER NOT NULL DEFAULT 0 CHECK (typeof(position) = 'integer'),
       archived             INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+      pinned               INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
       CHECK (
         (kind = 'session' AND session_id IS NOT NULL) OR
         (kind = 'machine' AND session_id IS NULL)

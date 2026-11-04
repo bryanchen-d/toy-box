@@ -21,5 +21,12 @@ export async function initializeSessionSchema(db: Bun.SQL): Promise<void> {
       lines_added          INTEGER,
       lines_removed        INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS session_artifact_pins (
+      session_id TEXT NOT NULL,
+      path       TEXT NOT NULL,
+      position   INTEGER NOT NULL,
+      PRIMARY KEY (session_id, path)
+    );
   `);
 }

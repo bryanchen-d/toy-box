@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pin } from "lucide-react";
 import { useEditorDisplay } from "@files/components/editor/kinds";
 import { workspaceFileId, type WorkspaceFile } from "@files/model";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
@@ -30,6 +30,7 @@ export function ArtifactPill({
   file,
   label,
   detail,
+  pinned,
   className,
   ...props
 }: ComponentProps<"button"> & {
@@ -37,6 +38,7 @@ export function ArtifactPill({
   label?: string;
   /** Trails the label, such as when the artifact was shared. */
   detail?: ReactNode;
+  pinned?: boolean;
 }) {
   const { name, Icon } = useEditorDisplay(file);
   const { open, busy } = useArtifactState(file);
@@ -57,6 +59,7 @@ export function ArtifactPill({
       <ScrollableFade className="flex whitespace-nowrap">
         <span className="shrink-0">{label ?? name}</span>
       </ScrollableFade>
+      {pinned && <Pin className="size-3 shrink-0" role="img" aria-label="Pinned" />}
       {detail && <span className="ms-auto shrink-0 ps-2">{detail}</span>}
     </button>
   );

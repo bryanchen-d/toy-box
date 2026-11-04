@@ -315,6 +315,36 @@ describe("artifact arrangement", () => {
     });
   const titles = (arranged: readonly ChannelArtifact[]) => arranged.map(({ title }) => title);
 
+  test("pins stay first through moves, and new pins follow existing pins", () => {
+    const pinned = applyChannelArtifactArrangement(artifacts, {
+      artifactIds: [notes.id],
+      pinned: true,
+    });
+    const both = applyChannelArtifactArrangement(pinned, { artifactIds: [plan.id], pinned: true });
+    expect(titles(both)).toEqual(["notes", "plan", "spec", "brief"]);
+    expect(both.slice(0, 2).every(({ pinned }) => pinned)).toBe(true);
+    const moved = applyChannelArtifactArrangement(both, {
+      artifactIds: [brief.id],
+      beforeArtifactId: notes.id,
+    });
+    expect(titles(moved)).toEqual(["notes", "plan", "brief", "spec"]);
+    const archived = applyChannelArtifactArrangement(both, {
+      artifactIds: [notes.id],
+      archived: true,
+    });
+    expect(archived.find(({ id }) => id === notes.id)).toMatchObject({ archived: true });
+    expect(archived.find(({ id }) => id === notes.id)).not.toHaveProperty("pinned");
+    expect(titles(archived)).toEqual(["plan", "notes", "spec", "brief"]);
+    expect(() =>
+      applyChannelArtifactArrangement(archived, { artifactIds: [notes.id], pinned: true }),
+    ).toThrow("Restore an artifact");
+    const restored = applyChannelArtifactArrangement(archived, {
+      artifactIds: [notes.id],
+      archived: false,
+    });
+    expect(restored.find(({ id }) => id === notes.id)).not.toHaveProperty("pinned");
+  });
+
   test("moves an artifact before another, or last for null", () => {
     expect(titles(arrange([notes], { beforeArtifactId: plan }))).toEqual([
       "notes",

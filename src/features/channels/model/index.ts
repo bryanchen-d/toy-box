@@ -194,11 +194,12 @@ export type ChannelArtifact = z.output<typeof channelArtifactSchema> & {
   url?: string;
   /** The user filed it away from the composer tray; it stays shared and openable. */
   archived?: true;
+  pinned?: true;
 };
 
 const channelArtifactIdSchema = z.string().min(1);
 
-/** How the user arranges shared artifacts. Omitted fields keep their places or archive state. */
+/** How the user arranges shared artifacts. Omitted fields keep their places, pins and archive state. */
 export const arrangeChannelArtifactsInputSchema = z
   .object({
     channelId: durableIdSchema,
@@ -210,6 +211,7 @@ export const arrangeChannelArtifactsInputSchema = z
     /** The artifact they move before, or null to move them last. */
     beforeArtifactId: channelArtifactIdSchema.nullable().optional(),
     archived: z.boolean().optional(),
+    pinned: z.boolean().optional(),
   })
   .strict();
 export type ArrangeChannelArtifactsInput = z.output<typeof arrangeChannelArtifactsInputSchema>;
@@ -218,7 +220,12 @@ export type ArrangeChannelArtifactsInput = z.output<typeof arrangeChannelArtifac
  *  places them together, in the given order. */
 export function applyChannelArtifactArrangement(
   artifacts: readonly ChannelArtifact[],
-  { artifactIds, beforeArtifactId, archived }: Omit<ArrangeChannelArtifactsInput, "channelId">,
+  {
+    artifactIds,
+    beforeArtifactId,
+    archived,
+    pinned,
+  }: Omit<ArrangeChannelArtifactsInput, "channelId">,
 ): ChannelArtifact[] {
   const shared = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
   if (
@@ -231,25 +238,47 @@ export function applyChannelArtifactArrangement(
     throw new Error("Move artifacts before one that isn't moving.");
   }
   const arranged = new Map(
-    artifactIds.map((id) => [id, withArchived(shared.get(id)!, archived)] as const),
+    artifactIds.map((id) => [id, withArrangement(shared.get(id)!, archived, pinned)] as const),
   );
   if (beforeArtifactId === undefined) {
-    return artifacts.map((artifact) => arranged.get(artifact.id) ?? artifact);
+    return orderChannelArtifacts(
+      artifacts.map((artifact) => arranged.get(artifact.id) ?? artifact),
+    );
   }
   const others = artifacts.filter(({ id }) => !arranged.has(id));
   const index =
     beforeArtifactId === null
       ? others.length
       : others.findIndex(({ id }) => id === beforeArtifactId);
-  return [...others.slice(0, index), ...arranged.values(), ...others.slice(index)];
+  return orderChannelArtifacts([
+    ...others.slice(0, index),
+    ...arranged.values(),
+    ...others.slice(index),
+  ]);
 }
 
-/** The same artifact when its archive state already matches. */
-function withArchived(artifact: ChannelArtifact, archived: boolean | undefined): ChannelArtifact {
-  if (archived === undefined || archived === !!artifact.archived) return artifact;
-  if (archived) return { ...artifact, archived: true };
-  const { archived: _archived, ...restored } = artifact;
-  return restored;
+export function orderChannelArtifacts(artifacts: readonly ChannelArtifact[]): ChannelArtifact[] {
+  return [
+    ...artifacts.filter(({ pinned }) => pinned),
+    ...artifacts.filter(({ pinned }) => !pinned),
+  ];
+}
+
+function withArrangement(
+  artifact: ChannelArtifact,
+  archived: boolean | undefined,
+  pinned: boolean | undefined,
+): ChannelArtifact {
+  const isArchived = archived ?? !!artifact.archived;
+  if (pinned && isArchived) throw new Error("Restore an artifact before pinning it.");
+  const isPinned = !isArchived && (pinned ?? !!artifact.pinned);
+  if (isArchived === !!artifact.archived && isPinned === !!artifact.pinned) return artifact;
+  const { archived: _archived, pinned: _pinned, ...rest } = artifact;
+  return {
+    ...rest,
+    ...(isArchived ? { archived: true } : {}),
+    ...(isPinned ? { pinned: true } : {}),
+  };
 }
 
 const channelMessageActorSchema = z.discriminatedUnion("type", [
@@ -401,7 +430,7 @@ export type ChannelState = {
   messages: ChannelMessage[];
   /** The newest unanswered public request, including one outside the message window. */
   request: ChannelConversationMessage | null;
-  /** In the user's arrangement; new shares come first. */
+  /** In the user's arrangement: pins first, then new shares. */
   artifacts: ChannelArtifact[];
   /** Oldest first. */
   routines: ChannelRoutine[];

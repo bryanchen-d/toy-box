@@ -540,7 +540,7 @@ export class ChannelDatabase {
         )
         ON CONFLICT DO UPDATE SET title = excluded.title
         WHERE channel_artifacts.title <> excluded.title
-        RETURNING kind, session_id, path, title, created_at, archived
+        RETURNING kind, session_id, path, title, created_at, archived, pinned
       `;
       if (!row)
         return {
@@ -567,9 +567,10 @@ export class ChannelDatabase {
       if (artifacts.every((artifact, index) => artifact === current[index])) {
         return { channelId, events: [] };
       }
-      for (const [position, { file, archived }] of artifacts.entries()) {
+      for (const [position, { file, archived, pinned }] of artifacts.entries()) {
         await db`
-          UPDATE channel_artifacts SET position = ${position}, archived = ${archived ? 1 : 0}
+          UPDATE channel_artifacts SET position = ${position}, archived = ${archived ? 1 : 0},
+            pinned = ${pinned ? 1 : 0}
           WHERE channel_id = ${channelId} AND kind = ${file.kind} AND path = ${file.path}
             AND session_id IS ${file.kind === "session" ? file.sessionId : null}
         `;
@@ -968,9 +969,9 @@ async function hydrateMessages(
 
 async function listArtifacts(db: Bun.SQL, channelId: string): Promise<ChannelArtifact[]> {
   const rows = await db<ChannelArtifactRow[]>`
-    SELECT kind, session_id, path, title, created_at, archived FROM channel_artifacts
+    SELECT kind, session_id, path, title, created_at, archived, pinned FROM channel_artifacts
     WHERE channel_id = ${channelId}
-    ORDER BY position
+    ORDER BY pinned DESC, position
   `;
   return rows.map(artifactFromRow);
 }
@@ -1020,10 +1021,13 @@ type ChannelReactionRow = {
   reaction: ChannelReaction["reaction"];
 };
 
-type ChannelArtifactRow = { path: string; title: string; created_at: string; archived: number } & (
-  | { kind: "session"; session_id: string }
-  | { kind: "machine"; session_id: null }
-);
+type ChannelArtifactRow = {
+  path: string;
+  title: string;
+  created_at: string;
+  archived: number;
+  pinned: number;
+} & ({ kind: "session"; session_id: string } | { kind: "machine"; session_id: null });
 
 async function readChannelRows(db: Bun.SQL, channelId?: string) {
   const where = channelId === undefined ? db`` : db`WHERE id = ${channelId}`;
@@ -1114,6 +1118,7 @@ function artifactFromRow(row: ChannelArtifactRow): ChannelArtifact {
     title: row.title,
     sharedAt: row.created_at,
     ...(row.archived ? { archived: true } : {}),
+    ...(row.pinned ? { pinned: true } : {}),
   };
 }
 

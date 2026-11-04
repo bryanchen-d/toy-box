@@ -5,7 +5,7 @@
 
 import { useState, type ReactNode } from "react";
 import { defaultFilter } from "cmdk";
-import { Archive, Files, Loader2, SlidersHorizontal } from "lucide-react";
+import { Archive, Files, Loader2, Pin, PinOff, SlidersHorizontal } from "lucide-react";
 import { useEditorDisplay } from "@files/components/editor/kinds";
 import { workspaceFileId, type WorkspaceFile } from "@files/model";
 import { createFileServeUrl } from "@files/model/paths";
@@ -44,6 +44,7 @@ type ComposerArtifact = {
   label?: string;
   /** When its owner last updated or shared it, in epoch milliseconds. */
   time: number;
+  pinned?: boolean;
 };
 
 export function ComposerTray({
@@ -55,6 +56,8 @@ export function ComposerTray({
   extraOutput,
   onOpenArtifact,
   onArchiveArtifact,
+  onPinArtifact,
+  artifactActionsDisabled,
   onManageArtifacts,
   children,
 }: {
@@ -72,6 +75,8 @@ export function ComposerTray({
   onOpenArtifact?: (file: WorkspaceFile) => void;
   /** Files an artifact away from the tray, offered beside each one in the full list. */
   onArchiveArtifact?: (file: WorkspaceFile) => void;
+  onPinArtifact?: (file: WorkspaceFile, pinned: boolean) => void;
+  artifactActionsDisabled?: boolean;
   /** Opens the owner's own surface for arranging its artifacts, offered below the full list. */
   onManageArtifacts?: () => void;
   children?: ReactNode;
@@ -101,6 +106,8 @@ export function ComposerTray({
                 artifacts={artifacts}
                 onOpen={openArtifact}
                 onArchive={onArchiveArtifact && (({ file }) => onArchiveArtifact(file))}
+                onPin={onPinArtifact && (({ file, pinned }) => onPinArtifact(file, !pinned))}
+                actionsDisabled={artifactActionsDisabled}
                 onManage={onManageArtifacts}
               />
             ) : (
@@ -145,6 +152,7 @@ function ArtifactPeek({
     <ArtifactPill
       file={file}
       label={label}
+      pinned={artifact.pinned}
       onClick={onOpen}
       className={cn("max-w-56", className)}
     />
@@ -174,17 +182,20 @@ function ArtifactPeek({
   );
 }
 
-/** Every artifact, filterable: "+N" beside the inline pills, or the only pill when narrow. Its
- *  label and visibility follow the same container breakpoints as the inline pills. */
+/** Every artifact, filterable. Pin controls stay reachable even when every artifact fits inline. */
 function ArtifactList({
   artifacts,
   onOpen,
   onArchive,
+  onPin,
+  actionsDisabled,
   onManage,
 }: {
   artifacts: readonly ComposerArtifact[];
   onOpen: (artifact: ComposerArtifact) => void;
   onArchive?: (artifact: ComposerArtifact) => void;
+  onPin?: (artifact: ComposerArtifact) => void;
+  actionsDisabled?: boolean;
   onManage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -196,16 +207,21 @@ function ArtifactList({
         aria-label="All artifacts"
         className={cn(
           outputPillClassName,
-          count === 1 ? "@md:hidden" : count <= INLINE_ARTIFACT_CLASS_NAMES.length && "@2xl:hidden",
+          !onPin &&
+            (count === 1
+              ? "@md:hidden"
+              : count <= INLINE_ARTIFACT_CLASS_NAMES.length && "@2xl:hidden"),
         )}
         render={<button type="button" />}
       >
-        <Files className="size-3.5 shrink-0 @md:hidden" />
-        <span className="@md:hidden">
+        <Files className={cn("size-3.5 shrink-0", !onPin && "@md:hidden")} />
+        <span className={cn(!onPin && "@md:hidden")}>
           {count} {count === 1 ? "artifact" : "artifacts"}
         </span>
-        <span className="@max-md:hidden @2xl:hidden">+{count - 1}</span>
-        <span className="@max-2xl:hidden">+{count - INLINE_ARTIFACT_CLASS_NAMES.length}</span>
+        {!onPin && <span className="@max-md:hidden @2xl:hidden">+{count - 1}</span>}
+        {!onPin && (
+          <span className="@max-2xl:hidden">+{count - INLINE_ARTIFACT_CLASS_NAMES.length}</span>
+        )}
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="w-72 p-0">
         <Command filter={filterByKeywords}>
@@ -225,6 +241,8 @@ function ArtifactList({
                     onOpen(artifact);
                   }}
                   onArchive={onArchive && (() => onArchive(artifact))}
+                  onPin={onPin && (() => onPin(artifact))}
+                  actionsDisabled={actionsDisabled}
                 />
               ))}
             </CommandGroup>
@@ -257,10 +275,14 @@ function ArtifactListItem({
   artifact,
   onSelect,
   onArchive,
+  onPin,
+  actionsDisabled,
 }: {
   artifact: ComposerArtifact;
   onSelect: () => void;
   onArchive?: () => void;
+  onPin?: () => void;
+  actionsDisabled?: boolean;
 }) {
   const { file, time } = artifact;
   const { name, Icon } = useEditorDisplay(file);
@@ -271,7 +293,7 @@ function ArtifactListItem({
       value={workspaceFileId(file)}
       keywords={[label, file.path]}
       onSelect={onSelect}
-      className={cn(onArchive && "pe-9")}
+      className={cn(onArchive && onPin ? "pe-16" : (onArchive || onPin) && "pe-9")}
     >
       {busy ? <Loader2 className="animate-spin" /> : <Icon />}
       <ScrollableFade
@@ -279,28 +301,46 @@ function ArtifactListItem({
       >
         <span className="shrink-0">{label}</span>
       </ScrollableFade>
+      {artifact.pinned && <Pin className="size-3 shrink-0" role="img" aria-label="Pinned" />}
       <RelativeTime
         className="ms-auto shrink-0 text-xs text-muted-foreground"
         date={new Date(time)}
       />
     </CommandItem>
   );
-  if (!onArchive) return item;
+  if (!onArchive && !onPin) return item;
 
   // A sibling of the option rather than inside it, so archiving never also selects it. The wrapper
   // hides with the option when filtering leaves it out.
   return (
     <div className="group/artifact relative [&:not(:has([cmdk-item]))]:hidden">
       {item}
-      <button
-        type="button"
-        aria-label={`Archive ${label}`}
-        title="Archive"
-        className="absolute end-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/artifact:opacity-100 group-has-data-[selected=true]/artifact:opacity-100 pointer-coarse:opacity-100"
-        onClick={onArchive}
-      >
-        <Archive className="size-3.5" />
-      </button>
+      <div className="absolute end-1.5 top-1/2 flex -translate-y-1/2 opacity-0 group-hover/artifact:opacity-100 group-has-data-[selected=true]/artifact:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+        {onPin && (
+          <button
+            type="button"
+            aria-label={`${artifact.pinned ? "Unpin" : "Pin"} ${label}`}
+            title={artifact.pinned ? "Unpin" : "Pin"}
+            disabled={actionsDisabled}
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            onClick={onPin}
+          >
+            {artifact.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+          </button>
+        )}
+        {onArchive && (
+          <button
+            type="button"
+            aria-label={`Archive ${label}`}
+            title="Archive"
+            disabled={actionsDisabled}
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            onClick={onArchive}
+          >
+            <Archive className="size-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

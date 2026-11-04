@@ -3,6 +3,7 @@
 // the input; the input holds this message's images, text, settings, and send controls.
 
 import { useRef, useState, type KeyboardEvent } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { formatForDisplay, matchesKeyboardEvent } from "@tanstack/react-hotkeys";
 import { Maximize2, Minimize2, Square } from "lucide-react";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -35,6 +36,9 @@ import { useSavedDraft } from "@workspace/hooks/useSavedDraft";
 import type { FileDiffSummary } from "../../model/editDiffs";
 import { useViewport } from "@/shared/hooks/useViewport";
 import { cn } from "@/shared/utils";
+import { sessionQueries } from "../../queries";
+import { sessionMutations } from "../../mutations";
+import { orderSessionArtifacts } from "../../model/artifacts";
 
 /** Delivers a message; a returned promise that rejects returns the message to the composer. */
 type SendMessage = (
@@ -100,6 +104,12 @@ export function SessionComposer(props: SessionComposerProps) {
     contextUsage,
   } = props;
   const run = props.sessionId === undefined ? props.onRun : undefined;
+  const artifactPins = useQuery({
+    ...sessionQueries.artifactPins(sessionId),
+    enabled: !!sessionId && artifacts.length > 0,
+  });
+  const pinArtifact = useMutation(sessionMutations.pinArtifact());
+  const pinError = pinArtifact.error ?? artifactPins.error;
   const draft = useComposerDraft({
     ...useSavedDraft(sessionId === undefined ? "inbox" : `session:${sessionId}`),
     // Inbox runs new work by default; a session receives the message.
@@ -170,12 +180,17 @@ export function SessionComposer(props: SessionComposerProps) {
         sessionId && (
           // One tray docked to the input holds what the session made and what waits to send.
           <ComposerTray
-            artifacts={[...artifacts]
-              .sort((left, right) => right.updatedAt - left.updatedAt)
-              .map(({ path, updatedAt }) => ({
+            artifacts={orderSessionArtifacts(artifacts, artifactPins.data ?? []).map(
+              ({ path, updatedAt, pinned }) => ({
                 file: sessionFile(sessionId, path),
                 time: updatedAt,
-              }))}
+                pinned,
+              }),
+            )}
+            onPinArtifact={(file, pinned) =>
+              pinArtifact.mutate({ sessionId, path: file.path, pinned })
+            }
+            artifactActionsDisabled={pinArtifact.isPending || artifactPins.isFetching}
             artifactTimeLabel="Updated"
             checklist={getDisplayTodos(todos ?? [], isBusy)}
             checklistLabel="Todos"
@@ -188,6 +203,11 @@ export function SessionComposer(props: SessionComposerProps) {
               ) : undefined
             }
           >
+            {pinError && (
+              <p role="alert" className="px-2 py-1 text-xs text-destructive">
+                Artifact pins: {pinError.message}
+              </p>
+            )}
             <QueuedMessageList
               sessionId={sessionId}
               messages={queuedMessages}

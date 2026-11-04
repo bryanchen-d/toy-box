@@ -3,6 +3,23 @@ import { dirname, extname, join } from "node:path";
 import { resolveSessionArtifactPath, sessionArtifactDirectory } from "@files/server/paths";
 import type { SessionArtifact } from "../model";
 import { SESSION_ARTIFACT_EXTENSIONS } from "../model/constants";
+import type { PinSessionArtifactInput } from "../model/protocol";
+import { SessionArtifactPinsDatabase } from "./state/artifactPins";
+import { getStateDatabase } from "@/server/database";
+import { broadcast } from "@workspace/server/events";
+
+export async function pinSessionArtifact({
+  sessionId,
+  path,
+  pinned,
+}: PinSessionArtifactInput): Promise<void> {
+  const artifacts = await listSessionArtifacts(sessionId);
+  if (!artifacts.some((artifact) => artifact.path === path)) {
+    throw new Error("Pin an artifact belonging to this session.");
+  }
+  await new SessionArtifactPinsDatabase(await getStateDatabase()).set(sessionId, path, pinned);
+  broadcast({ type: "session.touched", sessionId });
+}
 
 export function sessionArtifactsDirectory(sessionId: string): string {
   const path = sessionArtifactDirectory(sessionId);

@@ -80,11 +80,13 @@ export function ChannelComposer({
   const request = state?.request;
   const needsReply = channel ? channelHasPendingRequest(channel) : false;
   const { lead, members, agents, openArtifact, openArtifacts } = useChannelPane();
-  // The arrangement already puts new shares first; archived artifacts stay off the tray.
-  const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived }) =>
-    archived ? [] : [{ file, label: title, time: Date.parse(sharedAt) }],
+  // The arrangement puts pins before new shares; archived artifacts stay off the tray.
+  const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived, pinned }) =>
+    archived ? [] : [{ file, label: title, time: Date.parse(sharedAt), pinned }],
   );
-  const { mutate: arrangeArtifacts } = useMutation(channelMutations.arrangeArtifacts(channelId));
+  const { mutate: arrangeArtifacts, error: arrangementError } = useMutation(
+    channelMutations.arrangeArtifacts(channelId),
+  );
   const draft = useComposerDraft({
     ...useSavedDraft(channelDraftKey(channelId, threadSequence)),
     onSend: onSubmit,
@@ -136,8 +138,17 @@ export function ChannelComposer({
             onArchiveArtifact={(file) =>
               arrangeArtifacts({ artifactIds: [workspaceFileId(file)], archived: true })
             }
+            onPinArtifact={(file, pinned) =>
+              arrangeArtifacts({ artifactIds: [workspaceFileId(file)], pinned })
+            }
             onManageArtifacts={openArtifacts}
-          />
+          >
+            {arrangementError && (
+              <p role="alert" className="px-2 py-1 text-xs text-destructive">
+                Unable to arrange artifacts: {arrangementError.message}
+              </p>
+            )}
+          </ComposerTray>
         )
       }
       completions={{

@@ -1057,6 +1057,7 @@ describe("channel database", () => {
       title: "Plan",
       actor: { type: "user" },
     });
+
     const before = await channels.getSnapshot(channel.id, 100);
     for (const arrangement of [
       { artifactIds: ["machine:/plan.md", "machine:/missing.md"], archived: true },
@@ -1067,6 +1068,47 @@ describe("channel database", () => {
       ).rejects.toThrow("Arrange artifacts shared in this channel.");
     }
     expect(await channels.getSnapshot(channel.id, 100)).toEqual(before);
+  });
+
+  test("pins persist across reads and new shares, and archiving clears them", async () => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Pins", ...CHANNEL_DEFAULTS });
+    const share = (path: string) =>
+      channels.shareArtifact({
+        channelId: channel.id,
+        file: machineFile(path),
+        title: path,
+        actor: { type: "user" },
+      });
+    await share("/plan.md");
+    await share("/spec.md");
+    const pin = (path: string) =>
+      channels.arrangeArtifacts({
+        channelId: channel.id,
+        artifactIds: [`machine:${path}`],
+        pinned: true,
+      });
+    await pin("/plan.md");
+    await pin("/spec.md");
+    expect((await pin("/plan.md")).events).toEqual([]);
+    await share("/new.md");
+    await share("/plan.md");
+    const snapshot = await channels.getSnapshot(channel.id, 100);
+    expect(snapshot?.artifacts).toMatchObject([
+      { title: "/plan.md", pinned: true },
+      { title: "/spec.md", pinned: true },
+      { title: "/new.md" },
+    ]);
+    await channels.arrangeArtifacts({
+      channelId: channel.id,
+      artifactIds: ["machine:/plan.md"],
+      archived: true,
+    });
+    const archived = (await channels.listArtifacts(channel.id)).find(
+      ({ title }) => title === "/plan.md",
+    );
+    expect(archived?.archived).toBe(true);
+    expect(archived?.pinned).toBeUndefined();
   });
 
   test("deleting a member retains sender attribution in prior messages", async () => {

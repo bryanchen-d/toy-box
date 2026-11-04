@@ -38,6 +38,12 @@ export const sessionSearchInputSchema = sessionInputSchema.extend({
   query: messageSearchQuerySchema,
 });
 
+export const pinSessionArtifactInputSchema = sessionInputSchema.extend({
+  path: z.string().min(1),
+  pinned: z.boolean(),
+});
+export type PinSessionArtifactInput = z.infer<typeof pinSessionArtifactInputSchema>;
+
 export const waitForSessionInputSchema = sessionInputSchema.extend({
   timeoutMs: z.number().int().nonnegative().max(300_000).optional(),
 });

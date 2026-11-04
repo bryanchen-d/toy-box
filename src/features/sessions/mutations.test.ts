@@ -18,6 +18,18 @@ const session = {
 } satisfies Session;
 
 describe("session mutation options", () => {
+  test("pinning invalidates the owning session's pin list without replacing newer data", async () => {
+    const client = createQueryClient();
+    const key = sessionQueries.artifactPins(sessionId).queryKey;
+    client.setQueryData(key, ["plan.md"]);
+    await new MutationObserver(client, {
+      ...sessionMutations.pinArtifact(),
+      mutationFn: async () => {},
+    }).mutate({ sessionId, path: "spec.md", pinned: true });
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryData(key)).toEqual(["plan.md"]);
+  });
+
   test("publishes a draft session before its creation request resolves", async () => {
     const queryClient = createWorkspaceQueryClient();
     let resolveRequest!: () => void;

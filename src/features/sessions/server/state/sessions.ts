@@ -48,6 +48,7 @@ export async function setSessionProvider(
 export async function deleteSessionRecord(id: string): Promise<void> {
   const db = await getStateDatabase({ createIfMissing: false });
   if (!db) return;
+  await db`DELETE FROM session_artifact_pins WHERE session_id = ${id}`;
   await db`DELETE FROM sessions WHERE session_id = ${id}`;
 }
 

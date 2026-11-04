@@ -35,9 +35,17 @@ export async function recreateSessionInCache(
       { queryKey: sessionQueries.detail(sessionId).queryKey },
       { revert: false },
     ),
+    queryClient.cancelQueries(
+      { queryKey: sessionQueries.artifactPins(sessionId).queryKey },
+      { revert: false },
+    ),
   ]);
   queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
   queryClient.removeQueries({ queryKey: sessionQueries.searchKey(sessionId) });
+  queryClient.removeQueries({
+    queryKey: sessionQueries.artifactPins(sessionId).queryKey,
+    exact: true,
+  });
   queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
 
   const timestamp = new Date().toISOString();
@@ -171,10 +179,15 @@ export async function invalidateSessionQueries(
     queryClient.invalidateQueries({
       queryKey: sessionQueries.detail(sessionId).queryKey,
     }),
+    queryClient.invalidateQueries({ queryKey: sessionQueries.artifactPins(sessionId).queryKey }),
   ]);
 }
 
 function retireSessionDetail(queryClient: QueryClient, sessionId: string): void {
+  void queryClient.cancelQueries(
+    { queryKey: sessionQueries.artifactPins(sessionId).queryKey },
+    { revert: false },
+  );
   // Cancellation must reject, not resolve an observer's read with reverted entity data.
   void queryClient.cancelQueries(
     {
@@ -184,6 +197,10 @@ function retireSessionDetail(queryClient: QueryClient, sessionId: string): void 
   );
   queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
   queryClient.removeQueries({ queryKey: sessionQueries.searchKey(sessionId) });
+  queryClient.removeQueries({
+    queryKey: sessionQueries.artifactPins(sessionId).queryKey,
+    exact: true,
+  });
   queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
   queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, (previous) =>
     previous ? createInitialSessionView() : undefined,

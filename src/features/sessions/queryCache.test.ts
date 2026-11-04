@@ -35,6 +35,19 @@ function readState(queryClient: QueryClient): SessionsState {
 }
 
 describe("session query cache", () => {
+  test("session metadata changes invalidate durable artifact pins for every observer", () => {
+    const client = new QueryClient();
+    onTestFinished(() => client.clear());
+    const key = sessionQueries.artifactPins("session-a").queryKey;
+    client.setQueryData(key, ["plan.md"]);
+    applyWorkspaceEventToSessionQueries(client, {
+      type: "session.touched",
+      sessionId: "session-a",
+    });
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryData(key)).toEqual(["plan.md"]);
+  });
+
   test.each(["delete", "recreate"])(
     "%s cancels and retires history ranges, message searches, and shared output reads",
     async (action) => {
@@ -62,6 +75,21 @@ describe("session query cache", () => {
           ),
       );
       const pendingOutputs = Promise.withResolvers<ReturnType<typeof projectSessionOutputs>>();
+      const pendingPins = Promise.withResolvers<string[]>();
+      reads.push(
+        client
+          .fetchQuery({
+            ...sessionQueries.artifactPins(id),
+            queryFn: async ({ signal }) => {
+              signal.throwIfAborted();
+              return pendingPins.promise;
+            },
+          })
+          .then(
+            () => "resolved",
+            () => "cancelled",
+          ),
+      );
       let outputReads = 0;
       const outputsQuery = {
         ...sessionQueries.outputs(id),
@@ -108,13 +136,16 @@ describe("session query cache", () => {
         "cancelled",
         "cancelled",
         "cancelled",
+        "cancelled",
       ]);
       pending.resolve(projectSessionHistory(view, 0));
       pendingOutputs.resolve(projectSessionOutputs(view));
+      pendingPins.resolve(["late.md"]);
       pendingSearch.resolve([]);
       await Bun.sleep(0);
       expect(client.getQueriesData({ queryKey: sessionQueries.historyKey(id) })).toEqual([]);
       expect(client.getQueryData(sessionQueries.outputs(id).queryKey)).toBeUndefined();
+      expect(client.getQueryData(sessionQueries.artifactPins(id).queryKey)).toBeUndefined();
       expect(client.getQueriesData({ queryKey: sessionQueries.searchKey(id) })).toEqual([]);
       expect(client.getQueryData(sessionQueries.detail(id).queryKey)?.messageCount).toBe(
         action === "delete" ? 0 : 1,

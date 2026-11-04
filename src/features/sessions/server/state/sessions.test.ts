@@ -61,8 +61,10 @@ describe("session database", () => {
     ).rejects.toThrow("different provider history");
     await expect(setSessionProvider("other", { id: "copilot", sessionId: id })).rejects.toThrow();
     expect(await readSessions()).toHaveLength(1);
+    await db`INSERT INTO session_artifact_pins (session_id, path, position) VALUES (${id}, 'plan.md', 0)`;
 
     await deleteSessionRecord(id);
+    expect(await db`SELECT * FROM session_artifact_pins WHERE session_id = ${id}`).toEqual([]);
     expect(await readSession(id)).toBeUndefined();
     const provider = { id: "codex", sessionId: "second-run" };
     await setSessionProvider(id, provider);

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePageVisibility } from "@/shared/hooks/usePageVisibility";
 import { invalidateSessionsStateQuery } from "@sessions/queryCache";
+import { sessionQueries } from "@sessions/queries";
 import { applyWorkspaceEvent, invalidateWorkspaceStateQuery } from "@workspace/queries";
 import type { WorkspaceEvent } from "@workspace/model/events";
 import { invalidateChannelListQuery } from "@channels/queryCache";
@@ -31,6 +32,7 @@ export function useWorkspaceSync(ssrRevision?: string): void {
       void Promise.all([
         invalidateWorkspaceStateQuery(queryClient),
         invalidateSessionsStateQuery(queryClient),
+        queryClient.invalidateQueries({ queryKey: sessionQueries.artifactPinsKey() }),
         invalidateChannelListQuery(queryClient),
         invalidateAutomationListQuery(queryClient),
         invalidateInboxListQuery(queryClient),
