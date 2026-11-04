@@ -24,6 +24,7 @@ import {
   getSessionView,
   getSessionOutputs,
   getSessionHistoryPage,
+  searchSessionHistory,
   rewindSession as rewindRuntimeSession,
   steerQueuedMessage as steerRuntimeQueuedMessage,
   streamSession as streamSessionEvents,
@@ -43,6 +44,7 @@ import {
   rewindSessionInputSchema,
   sessionInputSchema,
   sessionHistoryInputSchema,
+  sessionSearchInputSchema,
   streamSessionRequestSchema,
   waitForSessionInputSchema,
 } from "../model/protocol";
@@ -100,6 +102,10 @@ export const querySessionOutputs = createServerFn({ method: "POST" })
 export const querySessionHistory = createServerFn({ method: "POST" })
   .validator(zodValidator(sessionHistoryInputSchema))
   .handler(({ data }) => getSessionHistoryPage(data.sessionId, data.start));
+
+export const searchSession = createServerFn({ method: "POST" })
+  .validator(zodValidator(sessionSearchInputSchema))
+  .handler(({ data }) => searchSessionHistory(data.sessionId, data.query));
 
 /** Wait for the announced, live, or latest persisted execution of one session. */
 export const waitForSession = createServerFn({ method: "POST" })

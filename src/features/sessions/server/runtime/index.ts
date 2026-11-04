@@ -10,6 +10,7 @@ import {
   projectSessionView,
 } from "@sessions/model/view";
 import { createSessionDiffsProjector } from "@sessions/model/editDiffs";
+import { searchSessionMessages } from "@sessions/model/search";
 import type { SessionQuestionAnswer, StreamSessionRequest } from "@sessions/model/protocol";
 import type {
   SessionCompletion,
@@ -148,6 +149,10 @@ export async function getSessionOutputs(sessionId: string) {
 
 export function getSessionHistoryPage(sessionId: string, start: number) {
   return readSessionProjection(sessionId, (state) => projectSessionHistory(state, start));
+}
+
+export function searchSessionHistory(sessionId: string, query: string) {
+  return readSessionProjection(sessionId, (state) => searchSessionMessages(state.messages, query));
 }
 
 export function isSessionRunning(sessionId: string): boolean {

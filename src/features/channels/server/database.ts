@@ -53,6 +53,8 @@ import {
 
 import { z } from "zod";
 import { attachmentSchema } from "@/shared/attachments/model";
+import { createMessageSearchMatcher, MESSAGE_SEARCH_LIMIT } from "@/shared/messages/search";
+import type { ChannelMessageMatch } from "@channels/model/search";
 
 const channelAttachmentSchema = z.union([attachmentSchema, z.string().min(1).max(4_096)]);
 export type StoredAttachment = z.output<typeof channelAttachmentSchema>;
@@ -349,6 +351,47 @@ export class ChannelDatabase {
 
   async getThreadSequence(channelId: string, sequence: number): Promise<number> {
     return resolveThreadSequence(this.db, channelId, sequence);
+  }
+
+  /** Search public conversation text without hydrating attachments or changing read positions. */
+  async searchMessages(
+    channelId: string,
+    query: string,
+    threadSequence?: number,
+  ): Promise<ChannelMessageMatch[]> {
+    await requireChannel(this.db, channelId);
+    const thread =
+      threadSequence === undefined ? null : await this.getThreadSequence(channelId, threadSequence);
+    const findMatch = createMessageSearchMatcher(query);
+    const matches: ChannelMessageMatch[] = [];
+    let before = Number.MAX_SAFE_INTEGER;
+    for (;;) {
+      const rows = await this.db<
+        Pick<ChannelMessageRow, "sequence" | "sender_agent_id" | "content" | "thread_sequence">[]
+      >`
+        SELECT sequence, sender_agent_id, content, thread_sequence FROM channel_messages
+        WHERE channel_id = ${channelId} AND sequence < ${before} AND sender_type <> 'system'
+          AND (${thread} IS NULL OR sequence = ${thread} OR thread_sequence = ${thread})
+        ORDER BY sequence DESC
+        LIMIT 100
+      `;
+      for (const row of rows) {
+        const match = findMatch(row.content);
+        if (!match) continue;
+        matches.push({
+          sequence: row.sequence,
+          threadSequence: row.thread_sequence ?? row.sequence,
+          sender:
+            row.sender_agent_id === null
+              ? { type: "user" }
+              : { type: "agent", agentId: row.sender_agent_id },
+          ...match,
+        });
+        if (matches.length === MESSAGE_SEARCH_LIMIT) return matches;
+      }
+      if (rows.length < 100) return matches;
+      before = rows.at(-1)!.sequence;
+    }
   }
 
   /** The thread a message starts or belongs to: its top-level message, then every reply. */

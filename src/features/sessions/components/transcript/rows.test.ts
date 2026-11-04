@@ -14,6 +14,18 @@ function rowsFor(messages: Message[]) {
 }
 
 describe("transcript rows", () => {
+  test("maps search targets directly to virtual rows across unloaded and hidden history", () => {
+    const rows = createTranscriptRows(5271, () => undefined, [1, 2, 100, 2500]);
+    for (const messageIndex of [0, 3, 99, 101, 2499, 2501, 5270]) {
+      const index = rows.indexOfMessage(messageIndex);
+      expect(index).toBeDefined();
+      expect(rows.at(index!).messageIndex).toBe(messageIndex);
+    }
+    for (const hiddenOrMissing of [-1, 1, 2, 100, 2500, 5271]) {
+      expect(rows.indexOfMessage(hiddenOrMissing)).toBeUndefined();
+    }
+  });
+
   test("omits empty assistants without losing absolute message identity", () => {
     const messages: Message[] = [
       { role: "user", content: "Prompt", clientId: "queued" },

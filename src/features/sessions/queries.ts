@@ -7,6 +7,7 @@ import {
   querySession,
   querySessionOutputs,
   querySessionHistory,
+  searchSession,
   resolveSessionContext,
 } from "./server/functions";
 
@@ -51,6 +52,19 @@ export const sessionQueries = {
       staleTime: Infinity,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
+      retry: false,
+    }),
+
+  searchKey: (sessionId: string) => [...sessionQueries.entity(sessionId), "search"] as const,
+
+  search: (sessionId: string, query: string) =>
+    queryOptions({
+      queryKey: [...sessionQueries.searchKey(sessionId), query] as const,
+      queryFn: query
+        ? ({ signal }) => searchSession({ data: { sessionId, query }, signal, fetch: sessionFetch })
+        : skipToken,
+      gcTime: 0,
+      staleTime: 0,
       retry: false,
     }),
 

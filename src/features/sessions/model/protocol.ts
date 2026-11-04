@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { modelConfigurationSchema } from "@providers/model";
 import { attachmentsSchema } from "@/shared/attachments/model";
+import { messageSearchQuerySchema } from "@/shared/messages/search";
 import { sessionSystemMessageSchema } from "./systemMessages";
 
 /** A recoverable observation failure, not a rejected session operation. */
@@ -31,6 +32,10 @@ export const sessionInputSchema = z.object({
 
 export const sessionHistoryInputSchema = sessionInputSchema.extend({
   start: z.number().int().nonnegative(),
+});
+
+export const sessionSearchInputSchema = sessionInputSchema.extend({
+  query: messageSearchQuerySchema,
 });
 
 export const waitForSessionInputSchema = sessionInputSchema.extend({

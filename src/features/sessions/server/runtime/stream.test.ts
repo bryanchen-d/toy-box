@@ -5,6 +5,7 @@ import {
   abortSession,
   deliverSessionMessage,
   getSessionUsage,
+  searchSessionHistory,
   registerPendingSessionCompletion,
   rejectPendingSessionCompletion,
   waitForSessions,
@@ -195,6 +196,34 @@ function mockStreamRuntimeModules({
 }
 
 describe("SessionStream lifecycle", () => {
+  test("search projects bounded idle history and prefers live canonical state", async () => {
+    const id = "session-message-search";
+    cleanUpStreamAfterTest(id, { restoreMocks: true });
+    const snapshot = createInitialSessionState({
+      messages: [
+        { role: "user", content: "Historical needle" },
+        ...Array.from({ length: 100 }, (): SessionState["messages"][number] => ({
+          role: "assistant",
+          content: "Unrelated",
+        })),
+      ],
+    });
+    const load = mock(async (_id: string, project: (state: SessionState) => unknown) =>
+      structuredClone(project(snapshot)),
+    );
+    mockStreamRuntimeModules({ snapshotCache: { loadSessionSnapshot: load } });
+    expect(await searchSessionHistory(id, "needle")).toEqual([
+      { messageIndex: 0, role: "user", before: "Historical ", match: "needle", after: "" },
+    ]);
+    SessionStream.getOrCreate(id, makeFakeSession(), {
+      messages: [{ role: "assistant", content: "Live NEEDLE" }],
+    });
+    expect(await searchSessionHistory(id, "needle")).toEqual([
+      { messageIndex: 0, role: "assistant", before: "Live ", match: "NEEDLE", after: "" },
+    ]);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   test("usage reads project only metadata from live or idle state and do not replay drafts", async () => {
     const id = "session-usage-read";
     cleanUpStreamAfterTest(id, { restoreMocks: true });
@@ -1765,6 +1794,7 @@ describe("createSession", () => {
       runtime.getSessionView(sessionId),
       runtime.getSessionHistoryPage(sessionId, 0),
     ];
+    const search = runtime.searchSessionHistory(sessionId, "truth");
     await settle();
     SessionStream.getOrCreate(sessionId, makeFakeSession(), {
       messages: [{ role: "assistant", content: "Active truth" }],
@@ -1777,6 +1807,9 @@ describe("createSession", () => {
     for (const result of await Promise.all(reads)) {
       expect(result.messages).toEqual([{ role: "assistant", content: "Active truth" }]);
     }
+    expect(await search).toEqual([
+      { messageIndex: 0, role: "assistant", before: "Active ", match: "truth", after: "" },
+    ]);
   });
 
   test("output refresh has no transcript body and includes off-window edits and voice text", async () => {

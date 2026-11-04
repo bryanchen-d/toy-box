@@ -39,6 +39,7 @@ import {
 } from "./ChannelComposer";
 import { ChannelPaneProvider } from "./ChannelPaneContext";
 import { ChannelThread } from "./ChannelThread";
+import { ChannelMessageSearch } from "./ChannelMessageSearch";
 import { ChannelOverview } from "./overview/ChannelOverview";
 import { ChannelTranscript, type ChannelTranscriptHandle } from "./transcript/ChannelTranscript";
 import type { TranscriptView } from "./transcript/transcriptRows";
@@ -93,6 +94,7 @@ function ChannelContent({
     visible: isVisible,
   });
   const transcriptRef = useRef<ChannelTranscriptHandle>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ChannelComposerHandle>(null);
   const threadComposerRef = useRef<ChannelComposerHandle>(null);
   const editSavedDraft = useEditSavedDraft();
@@ -253,7 +255,11 @@ function ChannelContent({
             minSize={100 - CHANNEL_ASIDE_MAX_SIZE}
             className={cn(asideKind && "hidden @3xl/channel:block")}
           >
-            <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto]">
+            <div
+              ref={chatRef}
+              tabIndex={-1}
+              className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] outline-none"
+            >
               {state && (
                 <ChannelOverview
                   channel={state.channel}
@@ -266,21 +272,37 @@ function ChannelContent({
                   }
                 />
               )}
-              <div className="col-start-1 row-start-1 min-h-0">
-                {state ? (
-                  <ChannelTranscript
-                    // Each view lands afresh, since its rows and their keys differ.
-                    key={view}
-                    messages={state.messages}
-                    view={view}
-                    unreadAfter={unreadAfter}
-                    handleRef={transcriptRef}
-                    requestSequence={state.channel.requestSequence}
-                    onLoadPrevious={loadPrevious}
+              <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
+                {state && (
+                  <ChannelMessageSearch
+                    channelId={channelId}
+                    isVisible={isVisible}
+                    hotkeyTarget={chatRef}
+                    onSelect={(match) =>
+                      setAside({
+                        type: "thread",
+                        sequence: match.threadSequence,
+                        selectedSequence: match.sequence,
+                      })
+                    }
                   />
-                ) : (
-                  <TranscriptSkeleton />
                 )}
+                <div className="min-h-0 flex-1">
+                  {state ? (
+                    <ChannelTranscript
+                      // Each view lands afresh, since its rows and their keys differ.
+                      key={view}
+                      messages={state.messages}
+                      view={view}
+                      unreadAfter={unreadAfter}
+                      handleRef={transcriptRef}
+                      requestSequence={state.channel.requestSequence}
+                      onLoadPrevious={loadPrevious}
+                    />
+                  ) : (
+                    <TranscriptSkeleton />
+                  )}
+                </div>
               </div>
               <div className="col-start-1 row-start-2 shrink-0 border-t bg-background px-4 pt-4 md:pb-4">
                 {postError && (
@@ -342,6 +364,7 @@ function ChannelContent({
                     channelId={channelId}
                     sequence={thread}
                     selectedSequence={aside?.type === "thread" ? aside.selectedSequence : undefined}
+                    isVisible={isVisible}
                     state={state}
                     composerRef={threadComposerRef}
                     onLoadThrough={loadPrevious}

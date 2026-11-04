@@ -16,6 +16,122 @@ async function openChannels() {
   return new ChannelDatabase(database);
 }
 
+describe("channel message search", () => {
+  async function setup() {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Search", ...CHANNEL_DEFAULTS });
+    const post = async (
+      content: string,
+      options: { channelId?: string; threadSequence?: number; user?: true } = {},
+    ) =>
+      (
+        await channels.appendMessage({
+          id: crypto.randomUUID(),
+          channelId: options.channelId ?? channel.id,
+          sender: options.user ? { type: "user" } : { type: "agent", agentId: channel.id },
+          content,
+          threadSequence: options.threadSequence,
+        })
+      ).message;
+    return { channels, channel, post };
+  }
+
+  test("channel search includes replies; thread search includes only its root and replies", async () => {
+    const { channels, channel, post } = await setup();
+    const root = await post("First needle", { user: true });
+    const reply = await post("Reply NEEDLE", { threadSequence: root.sequence });
+    const otherThread = await post("Another needle");
+    const other = await createStoredChannel(channels, { name: "Other", ...CHANNEL_DEFAULTS });
+    await post("Other channel needle", { channelId: other.id, user: true });
+    await channels.updateChannel(channel.id, { purpose: "needle in a system message" });
+    const before = await channels.getSnapshot(channel.id, 100);
+    const matches = await channels.searchMessages(channel.id, "needle");
+    expect(matches).toEqual([
+      {
+        sequence: otherThread.sequence,
+        threadSequence: otherThread.sequence,
+        sender: { type: "agent", agentId: channel.id },
+        before: "Another ",
+        match: "needle",
+        after: "",
+      },
+      {
+        sequence: reply.sequence,
+        threadSequence: root.sequence,
+        sender: { type: "agent", agentId: channel.id },
+        before: "Reply ",
+        match: "NEEDLE",
+        after: "",
+      },
+      {
+        sequence: root.sequence,
+        threadSequence: root.sequence,
+        sender: { type: "user" },
+        before: "First ",
+        match: "needle",
+        after: "",
+      },
+    ]);
+    expect(await channels.searchMessages(channel.id, "needle", root.sequence)).toEqual(
+      matches.slice(1),
+    );
+    expect(await channels.searchMessages(channel.id, "needle", reply.sequence)).toEqual(
+      matches.slice(1),
+    );
+    expect(await channels.getSnapshot(channel.id, 100)).toEqual(before);
+  });
+
+  test("search reaches unloaded history and uses literal Unicode-aware matching", async () => {
+    const { channels, channel, post } = await setup();
+    const old = await post("İstanbul [a-z]+.*? Äpfel 100%_done");
+    for (let index = 0; index < 130; index++) await post(`Recent unrelated ${index}`);
+    expect(
+      (await channels.getSnapshot(channel.id, 100))?.messages.some(
+        ({ sequence }) => sequence === old.sequence,
+      ),
+    ).toBe(false);
+    expect(await channels.searchMessages(channel.id, "[A-Z]+.*?")).toEqual([
+      {
+        sequence: old.sequence,
+        threadSequence: old.sequence,
+        sender: { type: "agent", agentId: channel.id },
+        before: "İstanbul ",
+        match: "[a-z]+.*?",
+        after: " Äpfel 100%_done",
+      },
+    ]);
+    expect((await channels.searchMessages(channel.id, "ÄPFEL"))[0]?.match).toBe("Äpfel");
+    expect((await channels.searchMessages(channel.id, "100%_done"))[0]?.sequence).toBe(
+      old.sequence,
+    );
+    expect(await channels.searchMessages(channel.id, "[not found]")).toEqual([]);
+  });
+
+  test("results are the 20 newest matches and contain bounded snippets", async () => {
+    const { channels, channel, post } = await setup();
+    for (let index = 0; index < 25; index++)
+      await post(`${"a".repeat(100)}Needle${"b".repeat(200)}`);
+    const matches = await channels.searchMessages(channel.id, "needle");
+    expect(matches.map(({ sequence }) => sequence)).toEqual(
+      Array.from({ length: 20 }, (_, index) => 25 - index),
+    );
+    expect(matches[0]).toMatchObject({
+      before: "..." + "a".repeat(60),
+      match: "Needle",
+      after: "b".repeat(100) + "...",
+    });
+  });
+
+  test("missing channels and unavailable threads fail instead of searching another scope", async () => {
+    const { channels, channel } = await setup();
+    await expect(channels.searchMessages("missing", "needle")).rejects.toThrow("Channel not found");
+    await expect(channels.searchMessages(channel.id, "needle", 999)).rejects.toThrow();
+    const change = await channels.updateChannel(channel.id, { purpose: "System only" });
+    const system = change.events.find((event) => event.type === "message")!.message;
+    await expect(channels.searchMessages(channel.id, "needle", system.sequence)).rejects.toThrow();
+  });
+});
+
 describe("channel attention", () => {
   async function setup() {
     const channels = await openChannels();

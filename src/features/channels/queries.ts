@@ -1,5 +1,9 @@
 import { reduceChannelState } from "./model/reducer";
-import { experimental_streamedQuery as streamedQuery, queryOptions } from "@tanstack/react-query";
+import {
+  experimental_streamedQuery as streamedQuery,
+  queryOptions,
+  skipToken,
+} from "@tanstack/react-query";
 import {
   channelUnreadAfter,
   type ChannelObservationEvent,
@@ -10,6 +14,7 @@ import {
   getChannelThreadSequence,
   getChannelUsage,
   listChannels,
+  searchChannelMessages,
 } from "@channels/server/functions";
 import { ChannelStreamError, streamChannel } from "./stream";
 import { removeChannelFromList } from "./queryCache";
@@ -32,6 +37,23 @@ export const channelQueries = {
       refetchOnReconnect: false,
     }),
   details: () => [...channelQueries.all(), "detail"] as const,
+  search: (channelId: string, query: string, threadSequence?: number) =>
+    queryOptions({
+      queryKey: [
+        ...channelQueries.details(),
+        channelId,
+        "search",
+        threadSequence ?? null,
+        query,
+      ] as const,
+      queryFn: query
+        ? ({ signal }) =>
+            searchChannelMessages({ data: { channelId, query, threadSequence }, signal })
+        : skipToken,
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+    }),
   threadSequence: (channelId: string, sequence: number) =>
     queryOptions({
       queryKey: [...channelQueries.all(), "threadSequence", channelId, sequence] as const,

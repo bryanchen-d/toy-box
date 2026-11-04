@@ -36,7 +36,7 @@ function readState(queryClient: QueryClient): SessionsState {
 
 describe("session query cache", () => {
   test.each(["delete", "recreate"])(
-    "%s cancels and retires every pending history range and shared output read",
+    "%s cancels and retires history ranges, message searches, and shared output reads",
     async (action) => {
       const client = new QueryClient();
       onTestFinished(() => client.clear());
@@ -81,6 +81,22 @@ describe("session query cache", () => {
         );
       }
       expect(outputReads).toBe(1);
+      const pendingSearch = Promise.withResolvers<never[]>();
+      reads.push(
+        client
+          .fetchQuery({
+            ...sessionQueries.search(id, "old"),
+            gcTime: Infinity,
+            queryFn: async ({ signal }) => {
+              signal.throwIfAborted();
+              return pendingSearch.promise;
+            },
+          })
+          .then(
+            () => "resolved",
+            () => "cancelled",
+          ),
+      );
       if (action === "delete") {
         applyWorkspaceEventToSessionQueries(client, { type: "session.deleted", sessionId: id });
       } else {
@@ -91,12 +107,15 @@ describe("session query cache", () => {
         "cancelled",
         "cancelled",
         "cancelled",
+        "cancelled",
       ]);
       pending.resolve(projectSessionHistory(view, 0));
       pendingOutputs.resolve(projectSessionOutputs(view));
+      pendingSearch.resolve([]);
       await Bun.sleep(0);
       expect(client.getQueriesData({ queryKey: sessionQueries.historyKey(id) })).toEqual([]);
       expect(client.getQueryData(sessionQueries.outputs(id).queryKey)).toBeUndefined();
+      expect(client.getQueriesData({ queryKey: sessionQueries.searchKey(id) })).toEqual([]);
       expect(client.getQueryData(sessionQueries.detail(id).queryKey)?.messageCount).toBe(
         action === "delete" ? 0 : 1,
       );

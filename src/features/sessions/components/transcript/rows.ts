@@ -20,6 +20,16 @@ export function createTranscriptRows(
   };
   return {
     length: count + 1,
+    indexOfMessage(messageIndex: number): number | undefined {
+      if (messageIndex < 0 || messageIndex >= messageCount) return undefined;
+      let index = messageIndex;
+      for (const hidden of hiddenIndices) {
+        if (hidden === messageIndex) return undefined;
+        if (hidden > messageIndex) break;
+        index--;
+      }
+      return index;
+    },
     at(index: number): TranscriptRow {
       if (index < 0) index += count + 1;
       if (index === count) {

@@ -470,6 +470,16 @@ offers "Reply in thread", which opens its thread with the draft addressed to its
 former Reply action did. A message still being sent offers none until it commits. "Input needed"
 opens a question asked in a thread.
 
+Channels and threads use the shared `MessageSearch` popup and focused-pane `Ctrl+F`/`Cmd+F`.
+Channel search includes all public user and agent messages and their replies, independently of
+the current transcript view; thread search includes only its root and replies. The database scans
+conversation text newest first in bounded pages, returning at most 20 literal, case-insensitive
+matches with bounded snippets, without hydrating attachments, reading private Sessions, waking
+agents, or advancing read positions. Queries run only while search is open and visible.
+Choosing a Channel result reuses the message-reference path: open its containing thread, load
+history through the root, and reveal and highlight the selected message. Within a thread,
+selection scrolls and highlights in place without remounting its composer or restoring end following.
+
 `ChannelArtifacts` is the third aside, where the user manages what the composer tray shows. It
 opens from the tray's full list and the overview, and lists the Shared or Archived shelf with
 search. Each artifact opens on click, drags by a gutter grip on the Shared shelf while unfiltered,

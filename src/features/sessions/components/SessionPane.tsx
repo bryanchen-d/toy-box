@@ -166,6 +166,7 @@ export function SessionPane({
   // Render state and handlers
   // ---------------------------------------------------------------------------
   const scrollToBottomRef = useRef<(() => void) | null>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
 
   const worktree = sessionRecord?.worktree;
   const isWorktreeSession = !isDraft && Boolean(worktree?.branch);
@@ -227,7 +228,7 @@ export function SessionPane({
   const isLoadingSessionState = !isDraft && !hasLoadedSessionState;
 
   return (
-    <div className="flex flex-col h-full">
+    <div ref={paneRef} tabIndex={-1} className="flex flex-col h-full outline-none">
       {/* Compact panes declare location and message count into the host title bar. */}
       {isCompact && mode === "active" && (
         <PaneActions>
@@ -255,6 +256,9 @@ export function SessionPane({
           <CurrentSessionProvider value={{ sessionId, cwd: effectiveDirectory, mode }}>
             <EditDiffsProvider value={editDiffs.byToolCallId}>
               <SessionMessageList
+                sessionId={sessionId}
+                isVisible={isVisible}
+                hotkeyTarget={paneRef}
                 messageCount={messageCount}
                 getMessage={getMessage}
                 hiddenMessageIndices={hiddenMessageIndices}

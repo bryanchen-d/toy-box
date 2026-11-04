@@ -333,6 +333,18 @@ message so reasoning/status cannot mask newly visible output. Keep the virtualiz
 uncached when changing this component; verify scroll-only updates in the compiled browser.
 This bounds mounted rows, not the snapshot payload or the canonical messages array.
 
+`SessionMessageSearch` binds the shared `MessageSearch` popup and literal snippet matcher to the
+current chat's canonical message text, including unloaded
+history and visible system-message labels, but not tool output. The runtime projects at most
+20 newest case-insensitive literal matches with bounded snippets; no separate index is stored.
+Search queries live under the session detail key, are observed only while the search popup is
+open and visible, and refresh while in use. Selecting a result uses its canonical message
+index to jump through the virtualizer and demand-load only the target viewport's history pages.
+The selected row is briefly highlighted without changing normal append following.
+`Ctrl+F` (`Cmd+F` on macOS) opens search within the focused chat, including its composer;
+pressing it again in the search input selects the query. Shortcuts stay scoped to their
+pane/input so other panes and the browser retain their own find behavior.
+
 Assistant Markdown keeps Streamdown's
 HTML and protocol sanitization but omits URL hardening so relative links remain semantic anchors;
 links that resolve to an already-published session artifact focus that artifact's editor pane.

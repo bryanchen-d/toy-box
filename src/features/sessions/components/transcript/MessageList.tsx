@@ -4,7 +4,9 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type MutableRefObject,
+  type RefObject,
 } from "react";
 import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import * as m from "motion/react-m";
@@ -16,8 +18,13 @@ import { Message } from "./messages/Message";
 import { queuedMessageLayoutId } from "../composer/QueuedMessageList";
 import { ReasoningDisplay, StatusIndicator } from "./SessionStatus";
 import { createTranscriptRows } from "./rows";
+import { SessionMessageSearch } from "./SessionMessageSearch";
+import type { SessionMessageMatch } from "../../model/search";
 
 type SessionMessageListProps = {
+  sessionId: string;
+  isVisible: boolean;
+  hotkeyTarget: RefObject<HTMLElement | null>;
   messageCount: number;
   getMessage: (index: number) => SessionTranscriptMessage | undefined;
   hiddenMessageIndices: readonly number[];
@@ -36,6 +43,9 @@ export function SessionMessageList(props: SessionMessageListProps) {
 }
 
 function VirtualizedMessageList({
+  sessionId,
+  isVisible,
+  hotkeyTarget,
   messageCount,
   getMessage,
   hiddenMessageIndices,
@@ -48,6 +58,7 @@ function VirtualizedMessageList({
   scrollToBottomRef,
 }: SessionMessageListProps) {
   const scrollRef = useRef<HTMLElement>(null);
+  const [target, setTarget] = useState<SessionMessageMatch | null>(null);
   const rows = useMemo(
     () => createTranscriptRows(messageCount, getMessage, hiddenMessageIndices),
     [messageCount, getMessage, hiddenMessageIndices],
@@ -99,75 +110,105 @@ function VirtualizedMessageList({
     };
   }, [scrollToBottomRef, virtualizer]);
 
+  const targetRow = target ? rows.indexOfMessage(target.messageIndex) : undefined;
+  const targetLoaded = target !== null && getMessage(target.messageIndex) !== undefined;
+
+  useEffect(() => {
+    if (!target || !targetLoaded) return;
+    const timeout = setTimeout(() => setTarget(null), 2500);
+    return () => clearTimeout(timeout);
+  }, [target, targetLoaded]);
+
   return (
-    <div className="h-full bg-panel relative">
-      <ScrollableFade
-        ref={scrollRef}
-        axis="vertical"
-        rootClassName="size-full"
-        style={{ overflowAnchor: "none" }}
-      >
-        <div className="@container relative mx-4" style={{ height: virtualizer.getTotalSize() }}>
-          {items.map((item) => {
-            const row = rows.at(item.index);
-            const message = row.message;
-            const content = message && (
-              <Message
-                message={message}
-                isStreaming={isStreaming}
-                isBusy={isStreaming && status !== "background"}
-                isLast={row.messageIndex === messageCount - 1}
-              />
-            );
-            return (
-              <div
-                key={item.key}
-                ref={virtualizer.measureElement}
-                data-index={item.index}
-                data-message-index={row.messageIndex}
-                className="absolute top-0 left-0 w-full"
-                style={{ transform: `translateY(${item.start}px)` }}
-              >
-                {message ? (
-                  message.role === "user" && message.clientId ? (
-                    <m.div
-                      layoutId={queuedMessageLayoutId(message.clientId)}
-                      layout="position"
-                      layoutDependency={message.clientId}
-                    >
-                      {content}
-                    </m.div>
-                  ) : (
-                    content
-                  )
-                ) : row.messageIndex !== undefined ? (
-                  <div
-                    className="min-h-24 py-4 text-sm text-muted-foreground"
-                    role={historyError ? "alert" : undefined}
-                  >
-                    {historyError
-                      ? `Unable to load history: ${historyError.message}`
-                      : "Loading messages..."}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {isStreaming && reasoningContent && (
-                      <ReasoningDisplay content={reasoningContent} />
-                    )}
-                    {isStreaming && !isWaiting && status !== "idle" && (
-                      <StatusIndicator status={status} />
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </ScrollableFade>
-      <ScrollToBottomButton
-        isAtBottom={virtualizer.isAtEnd()}
-        onScrollToBottom={() => virtualizer.scrollToEnd()}
+    <div className="h-full bg-panel relative flex flex-col">
+      <SessionMessageSearch
+        sessionId={sessionId}
+        isVisible={isVisible}
+        hotkeyTarget={hotkeyTarget}
+        onSelect={(match) => {
+          setTarget(match);
+          const index = rows.indexOfMessage(match.messageIndex);
+          if (index !== undefined) virtualizer.scrollToIndex(index, { align: "start" });
+        }}
       />
+      {target && targetRow === undefined && (
+        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+          This message is no longer available. Search again.
+        </p>
+      )}
+      <div className="relative min-h-0 flex-1">
+        <ScrollableFade
+          ref={scrollRef}
+          axis="vertical"
+          rootClassName="size-full"
+          style={{ overflowAnchor: "none" }}
+        >
+          <div className="@container relative mx-4" style={{ height: virtualizer.getTotalSize() }}>
+            {items.map((item) => {
+              const row = rows.at(item.index);
+              const message = row.message;
+              const content = message && (
+                <Message
+                  message={message}
+                  isStreaming={isStreaming}
+                  isBusy={isStreaming && status !== "background"}
+                  isLast={row.messageIndex === messageCount - 1}
+                />
+              );
+              return (
+                <div
+                  key={item.key}
+                  ref={virtualizer.measureElement}
+                  data-index={item.index}
+                  data-message-index={row.messageIndex}
+                  className={`absolute top-0 left-0 w-full rounded-md transition-colors ${
+                    target !== null && target.messageIndex === row.messageIndex
+                      ? "bg-accent/50 ring-2 ring-ring/50"
+                      : ""
+                  }`}
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  {message ? (
+                    message.role === "user" && message.clientId ? (
+                      <m.div
+                        layoutId={queuedMessageLayoutId(message.clientId)}
+                        layout="position"
+                        layoutDependency={message.clientId}
+                      >
+                        {content}
+                      </m.div>
+                    ) : (
+                      content
+                    )
+                  ) : row.messageIndex !== undefined ? (
+                    <div
+                      className="min-h-24 py-4 text-sm text-muted-foreground"
+                      role={historyError ? "alert" : undefined}
+                    >
+                      {historyError
+                        ? `Unable to load history: ${historyError.message}`
+                        : "Loading messages..."}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {isStreaming && reasoningContent && (
+                        <ReasoningDisplay content={reasoningContent} />
+                      )}
+                      {isStreaming && !isWaiting && status !== "idle" && (
+                        <StatusIndicator status={status} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </ScrollableFade>
+        <ScrollToBottomButton
+          isAtBottom={virtualizer.isAtEnd()}
+          onScrollToBottom={() => virtualizer.scrollToEnd()}
+        />
+      </div>
     </div>
   );
 }

@@ -37,6 +37,7 @@ export async function recreateSessionInCache(
     ),
   ]);
   queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
+  queryClient.removeQueries({ queryKey: sessionQueries.searchKey(sessionId) });
   queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
 
   const timestamp = new Date().toISOString();
@@ -182,6 +183,7 @@ function retireSessionDetail(queryClient: QueryClient, sessionId: string): void 
     { revert: false },
   );
   queryClient.removeQueries({ queryKey: sessionQueries.historyKey(sessionId) });
+  queryClient.removeQueries({ queryKey: sessionQueries.searchKey(sessionId) });
   queryClient.removeQueries({ queryKey: sessionQueries.outputs(sessionId).queryKey, exact: true });
   queryClient.setQueryData(sessionQueries.detail(sessionId).queryKey, (previous) =>
     previous ? createInitialSessionView() : undefined,

@@ -314,6 +314,18 @@ export async function getChannelThreadSequence(channelId: string, sequence: numb
   return database.getThreadSequence(channelId, sequence);
 }
 
+export async function searchChannelMessages(
+  channelId: string,
+  query: string,
+  threadSequence?: number,
+) {
+  return new ChannelDatabase(await getStateDatabase()).searchMessages(
+    channelId,
+    query,
+    threadSequence,
+  );
+}
+
 /** One thread in full, read without changing anyone's read position. */
 export async function readChannelThread(channelId: string, threadSequence: number) {
   const database = new ChannelDatabase(await getStateDatabase());

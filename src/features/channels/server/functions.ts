@@ -15,6 +15,7 @@ import {
   updateChannelMemberInputSchema,
 } from "@channels/model";
 import * as channels from ".";
+import { channelMessageSearchInputSchema } from "@channels/model/search";
 export const listChannels = createServerFn({ method: "GET" }).handler((): Promise<ChannelList> =>
   channels.listChannels(),
 );
@@ -26,6 +27,12 @@ export const getChannelUsage = createServerFn({ method: "GET" })
 export const getChannelThreadSequence = createServerFn({ method: "GET" })
   .validator(zodValidator(channelIdentitySchema.extend({ sequence: channelThreadSequenceSchema })))
   .handler(({ data }) => channels.getChannelThreadSequence(data.channelId, data.sequence));
+
+export const searchChannelMessages = createServerFn({ method: "POST" })
+  .validator(zodValidator(channelMessageSearchInputSchema))
+  .handler(({ data }) =>
+    channels.searchChannelMessages(data.channelId, data.query, data.threadSequence),
+  );
 
 export const createChannel = createServerFn({ method: "POST" })
   .validator(zodValidator(createChannelInputSchema))
