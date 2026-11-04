@@ -10,6 +10,7 @@ import {
 } from "react";
 import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import * as m from "motion/react-m";
+import type { ModelConfiguration } from "@providers/model";
 import type { Message as SessionTranscriptMessage, SessionStatus } from "../../model";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ScrollToBottomButton } from "@/shared/ui/scroll-to-bottom-button";
@@ -33,6 +34,7 @@ type SessionMessageListProps = {
   isStreaming: boolean;
   isWaiting: boolean;
   status: SessionStatus;
+  model?: ModelConfiguration;
   reasoningContent: string;
   scrollToBottomRef: MutableRefObject<(() => void) | null>;
 };
@@ -54,6 +56,7 @@ function VirtualizedMessageList({
   isStreaming,
   isWaiting,
   status,
+  model,
   reasoningContent,
   scrollToBottomRef,
 }: SessionMessageListProps) {
@@ -195,7 +198,7 @@ function VirtualizedMessageList({
                         <ReasoningDisplay content={reasoningContent} />
                       )}
                       {isStreaming && !isWaiting && status !== "idle" && (
-                        <StatusIndicator status={status} />
+                        <StatusIndicator status={status} model={model} />
                       )}
                     </div>
                   )}

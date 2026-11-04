@@ -3,8 +3,15 @@ import { StickToBottom } from "use-stick-to-bottom";
 import { RunningIndicator } from "@/shared/ui/running-indicator";
 import { Layers } from "lucide-react";
 import type { SessionStatus } from "../../model";
+import { formatModelConfiguration, type ModelConfiguration } from "@providers/model";
 
-export function StatusIndicator({ status }: { status: SessionStatus }) {
+export function StatusIndicator({
+  status,
+  model,
+}: {
+  status: SessionStatus;
+  model?: ModelConfiguration;
+}) {
   const getStatusText = () => {
     switch (status) {
       case "thinking":
@@ -29,7 +36,10 @@ export function StatusIndicator({ status }: { status: SessionStatus }) {
       ) : (
         <RunningIndicator className="h-4 w-4" />
       )}
-      <span className="italic">{getStatusText()}</span>
+      <span className="italic">
+        {model && `${formatModelConfiguration(model)}: `}
+        {getStatusText()}
+      </span>
     </div>
   );
 }

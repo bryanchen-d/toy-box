@@ -267,6 +267,7 @@ export function SessionPane({
                 isStreaming={isStreaming}
                 isWaiting={workspaceSessionStatus === "waiting"}
                 status={status}
+                model={sessionModel}
                 reasoningContent={reasoningContent}
                 scrollToBottomRef={scrollToBottomRef}
               />
