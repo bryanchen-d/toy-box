@@ -55,18 +55,31 @@ export function ThreadActivity({
 }) {
   const { agent, openThread } = useChannelPane();
   const latest = thread.replies.at(-1)!;
+  const isUser = latest.sender.type === "user";
   const author = latest.sender.type === "agent" ? agent(latest.sender.agentId).name : "You";
 
   return (
     <button
       type="button"
       onClick={() => openThread(thread.sequence)}
-      className="group/thread flex w-full min-w-0 gap-3 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "group/thread flex w-full min-w-0 gap-3 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isUser && "justify-end",
+      )}
     >
-      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center">
-        <CornerDownRight className="size-4 text-muted-foreground" />
-      </span>
-      <span className="block min-w-0 flex-1 space-y-1 rounded-xl border border-dashed px-3 py-2 group-hover/thread:bg-muted/50 @md:max-w-[80%]">
+      {!isUser && (
+        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center">
+          <CornerDownRight className="size-4 text-muted-foreground" />
+        </span>
+      )}
+      <span
+        className={cn(
+          "block min-w-0 flex-1 space-y-1 rounded-xl border px-3 py-2 @md:max-w-[80%]",
+          isUser
+            ? "user-message group-hover/thread:bg-blue-200 dark:group-hover/thread:bg-blue-900"
+            : "border-dashed group-hover/thread:bg-muted/50",
+        )}
+      >
         <span className="flex min-w-0 items-center gap-2 text-xs">
           <ThreadParticipants replies={thread.replies} />
           <span className="shrink-0 font-semibold group-hover/thread:underline">
@@ -108,7 +121,7 @@ function ThreadParticipants({ replies }: { replies: readonly ChannelConversation
           <span
             key="user"
             aria-hidden
-            className="inline-flex size-4.5 items-center justify-center rounded-sm bg-primary text-primary-foreground"
+            className="inline-flex size-4.5 items-center justify-center rounded-sm bg-blue-100 text-blue-950 dark:bg-blue-950 dark:text-blue-100"
           >
             <UserRound className="size-3" />
           </span>

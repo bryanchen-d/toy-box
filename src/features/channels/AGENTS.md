@@ -442,7 +442,11 @@ echoes. A failed post removes only its still-optimistic message, preserving
 committed echoes, concurrent changes, and mounted canvas feedback.
 
 `ChannelUserMessage` adds mentions, reactions, and timeline timestamps to the shared
-[`UserMessage`](../../shared/messages/UserMessage.tsx); agent messages reuse the shared
+[`UserMessage`](../../shared/messages/UserMessage.tsx), whose right-aligned light-blue bubble also
+styles human replies inside the thread view. Thread activity in the main transcript aligns right
+and uses the same blue surface when its latest reply is human; agent activity stays left-aligned
+with a dashed border. Human bubbles and participant icons use a muted dark-blue surface in the dark
+theme. Agent messages reuse the shared
 [`CopyControl`](../../shared/messages/CopyControl.tsx). `ChannelReactions` takes a message and
 shows its recorded and projected reactions, or nothing. Every agent reference, whether an author,
 reactor, task owner, or sharer, resolves through `channelAgentIdentity`, so a removed agent
