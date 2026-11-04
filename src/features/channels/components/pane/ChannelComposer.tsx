@@ -28,6 +28,13 @@ import { cn } from "@/shared/utils";
 import { useChannelPane } from "./ChannelPaneContext";
 import { channelTaskItems, TaskDiff } from "./channelTaskItems";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
+import type { ComposerReferences } from "@/shared/composers/input/ComposerInput";
+import { parseChannelUri } from "@channels/model/references";
+
+const channelReferences: ComposerReferences = (reference) =>
+  reference.kind === "channel" && parseChannelUri(`channel:${reference.target}`)
+    ? { title: `channel:${reference.target}`, className: "rounded bg-accent/25 px-1 font-medium" }
+    : undefined;
 
 /** Starts a message from elsewhere in the pane, continuing whatever draft exists. */
 export type ChannelComposerHandle = {
@@ -109,6 +116,7 @@ export function ChannelComposer({
   return (
     <Composer
       draft={draft}
+      references={channelReferences}
       tray={
         !inThread && (
           <ComposerTray

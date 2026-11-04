@@ -4,7 +4,11 @@
 
 import { appLifecycleTools, artifactAppTools, createAppStateTools } from "@apps/server/tools";
 import { AUTOMATION_SESSION_INSTRUCTIONS, automationTools } from "@automations/server/tools";
-import { channelTools, createChannelMembersTool } from "@channels/server/tools";
+import {
+  CHANNEL_REFERENCE_INSTRUCTIONS,
+  channelTools,
+  createChannelMembersTool,
+} from "@channels/server/tools";
 import { editorTools, fileTools } from "@files/server/tools";
 import { INBOX_SESSION_INSTRUCTIONS, inboxTools } from "@inbox/server/tools";
 import { listModels } from "@providers/server";
@@ -111,7 +115,10 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
   return {
     configurationKey: undefined,
     tools: getSessionTools(policy, { appId }),
-    additionalInstructions: policy.instructions.join("\n\n"),
+    additionalInstructions: [
+      ...policy.instructions,
+      ...(policy.channels ? [CHANNEL_REFERENCE_INSTRUCTIONS] : []),
+    ].join("\n\n"),
   };
 }
 

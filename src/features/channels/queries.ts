@@ -6,7 +6,11 @@ import {
   type ChannelState,
   type ChannelMessage,
 } from "./model";
-import { getChannelUsage, listChannels } from "@channels/server/functions";
+import {
+  getChannelThreadSequence,
+  getChannelUsage,
+  listChannels,
+} from "@channels/server/functions";
 import { ChannelStreamError, streamChannel } from "./stream";
 import { removeChannelFromList } from "./queryCache";
 
@@ -28,6 +32,14 @@ export const channelQueries = {
       refetchOnReconnect: false,
     }),
   details: () => [...channelQueries.all(), "detail"] as const,
+  threadSequence: (channelId: string, sequence: number) =>
+    queryOptions({
+      queryKey: [...channelQueries.all(), "threadSequence", channelId, sequence] as const,
+      queryFn: ({ signal }) => getChannelThreadSequence({ data: { channelId, sequence }, signal }),
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+    }),
   usage: (channelId: string) =>
     queryOptions({
       queryKey: [...channelQueries.all(), "usage", channelId] as const,

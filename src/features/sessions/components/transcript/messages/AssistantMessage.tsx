@@ -3,6 +3,15 @@ import { TriangleAlert } from "lucide-react";
 import type { AssistantMessage as AssistantMessageType, ToolCall } from "../../../model";
 import { transcriptLinkComponents, transcriptRehypePlugins } from "./TranscriptFileLink";
 import { ToolCallMessage } from "./tools/ToolCallMessage";
+import { defaultRemarkPlugins } from "streamdown";
+import {
+  channelReferenceComponents,
+  channelReferenceTags,
+  remarkChannelReferences,
+} from "@channels/components/ChannelReferences";
+
+const referencePlugins = [...Object.values(defaultRemarkPlugins), remarkChannelReferences];
+const linkComponents = { ...transcriptLinkComponents, ...channelReferenceComponents };
 
 // ============================================================================
 // Assistant Message Component
@@ -35,7 +44,9 @@ export function AssistantMessage({
               mode="streaming"
               isAnimating={isLast && isBusy}
               plugins={codePlugins}
-              components={transcriptLinkComponents}
+              components={linkComponents}
+              remarkPlugins={referencePlugins}
+              allowedTags={channelReferenceTags}
               rehypePlugins={transcriptRehypePlugins}
               className="text-sm"
             >

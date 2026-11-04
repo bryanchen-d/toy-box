@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
-import { CatchBoundary } from "@tanstack/react-router";
+import { CatchBoundary, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { channelQueries } from "@channels/queries";
+import { parseChannelReferenceHash } from "@channels/model/references";
 import { AlertCircle, PanelsTopLeft } from "lucide-react";
 import {
   channelAgentIdentity,
@@ -44,9 +47,9 @@ import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
 /** What this view shows beside the chat, or in its place when the pane is narrow. */
 type ChannelAside =
   | { type: "canvas" }
-  | { type: "thread"; sequence: number }
+  | { type: "thread"; sequence: number; selectedSequence?: number }
   | { type: "artifacts" }
-  | { type: "members" };
+  | { type: "members"; selectedAgentId?: string };
 
 /** Each aside kind's share of a wide pane until the user resizes it. */
 const ASIDE_SIZES: Record<ChannelAside["type"], number> = {
@@ -97,6 +100,36 @@ function ChannelContent({
     useWorkspaceSurface();
   const [view, setView] = useState<TranscriptView>("all");
   const [aside, setAside] = useState<ChannelAside | null>(null);
+  const location = useRouterState({ select: ({ location }) => location });
+  const hash = location.hash;
+  const target = parseChannelReferenceHash(hash);
+  const reference = target?.channelId === channelId ? target : undefined;
+  const selectedSequence = reference?.type === "message" ? reference.sequence : undefined;
+  const referenceThread = useQuery({
+    ...channelQueries.threadSequence(channelId, selectedSequence ?? 0),
+    enabled: isVisible && selectedSequence !== undefined,
+  });
+  const [openedLocation, setOpenedLocation] = useState<typeof location>();
+  if (
+    state &&
+    reference &&
+    location !== openedLocation &&
+    (reference.type !== "message" || referenceThread.data !== undefined)
+  ) {
+    setOpenedLocation(location);
+    if (reference.type === "team" || reference.type === "agent")
+      setAside({
+        type: "members",
+        selectedAgentId: reference.type === "agent" ? reference.agentId : undefined,
+      });
+    else if (reference.type === "message")
+      setAside({
+        type: "thread",
+        sequence: referenceThread.data!,
+        selectedSequence: reference.sequence,
+      });
+    else setAside(null);
+  }
   const canvas = state?.artifacts.find(({ id }) => id === state.channel.canvasArtifactId);
   const showingCanvas = aside?.type === "canvas" && !!canvas;
   const thread = aside?.type === "thread" && state ? aside.sequence : undefined;
@@ -156,6 +189,8 @@ function ChannelContent({
   return (
     <ChannelPaneProvider
       value={{
+        channelId,
+        selectedMessageSequence: aside?.type === "thread" ? aside.selectedSequence : undefined,
         lead,
         members,
         agents,
@@ -199,6 +234,16 @@ function ChannelContent({
         </PaneActions>
       )}
       <div className="@container/channel h-full min-h-0">
+        {referenceThread.error && selectedSequence !== undefined && (
+          <p role="alert" className="p-3 text-sm text-destructive">
+            Message unavailable: {referenceThread.error.message}
+          </p>
+        )}
+        {!target && /^channel(?::|%3a)/i.test(hash) && (
+          <p role="alert" className="p-3 text-sm text-destructive">
+            Invalid channel reference.
+          </p>
+        )}
         {/* A narrow pane shows the aside in place of chat, so only a wide one divides them. */}
         <ResizablePanelGroup direction="horizontal" className="bg-background">
           <ResizablePanel
@@ -293,9 +338,10 @@ function ChannelContent({
                 )}
                 {thread !== undefined && state && (
                   <ChannelThread
-                    key={thread}
+                    key={`${thread}:${aside?.type === "thread" ? (aside.selectedSequence ?? "") : ""}`}
                     channelId={channelId}
                     sequence={thread}
+                    selectedSequence={aside?.type === "thread" ? aside.selectedSequence : undefined}
                     state={state}
                     composerRef={threadComposerRef}
                     onLoadThrough={loadPrevious}
@@ -314,6 +360,7 @@ function ChannelContent({
                   <ChannelMembers
                     channel={state.channel}
                     isVisible={isVisible}
+                    selectedAgentId={aside?.type === "members" ? aside.selectedAgentId : undefined}
                     onClose={() => setAside(null)}
                   />
                 )}

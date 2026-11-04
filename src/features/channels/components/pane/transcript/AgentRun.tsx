@@ -16,6 +16,7 @@ import { ChannelReactions } from "./ChannelReactions";
 import { RequestTag } from "./RequestTag";
 import { ThreadSummary } from "./ThreadReplies";
 import type { AgentRunEntry } from "./transcriptRows";
+import { CopyChannelUri } from "@channels/components/CopyChannelUri";
 
 /** One agent's consecutive messages under a single avatar. */
 export function AgentRun({
@@ -46,14 +47,18 @@ function AgentMessage({
   entry: AgentRunEntry;
   agent: ChannelAgentIdentity;
 }) {
-  const { replyInThread } = useChannelPane();
+  const { channelId, selectedMessageSequence, replyInThread } = useChannelPane();
   const textRef = useRef<HTMLDivElement>(null);
   const { collapsed, clamped, toggle } = useShowMore(textRef, message.content, collapsible);
   const attachments = message.attachments ?? [];
 
   return (
     <div
-      className="group/entry"
+      className={cn(
+        "group/entry",
+        selectedMessageSequence === message.sequence && "rounded-lg ring-2 ring-primary/40",
+      )}
+      data-message-sequence={message.sequence}
       data-request-sequence={request === "pending" ? message.sequence : undefined}
     >
       {showHeader && (
@@ -93,7 +98,7 @@ function AgentMessage({
               <ShowMore {...toggle} className={cn(clamped && "absolute bottom-2 left-3.5 mt-0")} />
             )}
           </div>
-          <div className="pointer-events-none absolute -top-3 right-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-focus-within/entry:pointer-events-auto group-focus-within/entry:opacity-100 group-hover/entry:pointer-events-auto group-hover/entry:opacity-100">
+          <div className="pointer-events-none absolute -top-3 right-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-focus-within/entry:pointer-events-auto group-focus-within/entry:opacity-100 group-hover/entry:pointer-events-auto group-hover/entry:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100">
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -111,12 +116,24 @@ function AgentMessage({
               <TooltipContent sideOffset={4}>Reply in thread</TooltipContent>
             </Tooltip>
             <CopyControl content={message.content} />
+            <CopyChannelUri
+              variant="button"
+              target={{ type: "message", channelId, sequence: message.sequence }}
+              label="Copy message URI"
+            />
           </div>
         </div>
       )}
       {attachments.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           <AttachmentGallery attachments={attachments} variant="filmstrip" />
+          {!message.content && (
+            <CopyChannelUri
+              variant="button"
+              target={{ type: "message", channelId, sequence: message.sequence }}
+              label="Copy message URI"
+            />
+          )}
         </div>
       )}
       <ChannelReactions message={message} className="mt-2" />

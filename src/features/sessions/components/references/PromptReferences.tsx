@@ -6,6 +6,11 @@ import { decodeReference, splitReferences } from "@/shared/references";
 import { cn } from "@/shared/utils";
 import { isPromptReference, type PromptReference } from "../../model/references";
 import "./PromptReferences.css";
+import {
+  channelReferenceComponents,
+  channelReferenceTags,
+  remarkChannelReferences,
+} from "@channels/components/ChannelReferences";
 
 /** Each kind's presentation. Its icon is the stylesheet's mask, which its pills also show. */
 export const promptReferenceKinds = {
@@ -14,6 +19,7 @@ export const promptReferenceKinds = {
     Icon: referenceIcon("session"),
   },
   file: { title: ({ target }) => `File: ${target}`, Icon: referenceIcon("file") },
+  channel: { title: ({ target }) => `Channel: ${target}`, Icon: referenceIcon("channel") },
 } satisfies Record<
   PromptReference["kind"],
   {
@@ -101,7 +107,7 @@ function remarkPromptReferences() {
           child.type === "link" && from !== undefined && to !== undefined
             ? decodeReference(content.slice(from, to))
             : undefined;
-        if (reference && isPromptReference(reference)) {
+        if (reference && isPromptReference(reference) && reference.kind !== "channel") {
           return {
             type: "text",
             value: reference.label,
@@ -119,9 +125,16 @@ function remarkPromptReferences() {
   };
 }
 
-const plugins = [...Object.values(defaultRemarkPlugins), remarkPromptReferences];
-const allowedTags = { [REFERENCE_TAG]: ["kind", "title"] };
-const components = { [REFERENCE_TAG]: ReferencePill } satisfies Components;
+const plugins = [
+  ...Object.values(defaultRemarkPlugins),
+  remarkPromptReferences,
+  remarkChannelReferences,
+];
+const allowedTags = { [REFERENCE_TAG]: ["kind", "title"], ...channelReferenceTags };
+const components = {
+  [REFERENCE_TAG]: ReferencePill,
+  ...channelReferenceComponents,
+} satisfies Components;
 
 export function PromptReferenceMarkdown({ content }: { content: string }) {
   return (

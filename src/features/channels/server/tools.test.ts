@@ -4,6 +4,30 @@ import { channelLeadTools, channelMemberTools, channelTools } from "./tools";
 test.each([
   ["lead", channelLeadTools],
   ["member", channelMemberTools],
+  ["session", channelTools],
+] as const)("%s tools can inspect references", (_role, tools) => {
+  for (const name of ["list_channels", "inspect_channel", "read_channel"])
+    expect(tools.some((tool) => tool.name === name)).toBe(true);
+  expect(new Set(tools.map((tool) => tool.name)).size).toBe(tools.length);
+  const inspect = tools.find(({ name }) => name === "inspect_channel")!;
+  expect(inspect.parameters?.safeParse({ uri: "channel:source/messages/42" }).success).toBe(true);
+  expect(inspect.parameters?.safeParse({ uri: "channel:source", beforeSequence: 10 }).success).toBe(
+    true,
+  );
+  expect(
+    inspect.parameters?.safeParse({ uri: "channel:source/messages/42", beforeSequence: 10 })
+      .success,
+  ).toBe(false);
+  expect(
+    inspect.parameters?.safeParse({ uri: "channel:source", beforeSequence: 10, threadSequence: 1 })
+      .success,
+  ).toBe(false);
+  expect(inspect.parameters?.safeParse({ uri: "channel:source/team/other" }).success).toBe(false);
+});
+
+test.each([
+  ["lead", channelLeadTools],
+  ["member", channelMemberTools],
 ] as const)("%s channel protocol tools are available without discovery", (_role, tools) => {
   expect(
     tools

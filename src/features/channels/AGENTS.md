@@ -205,6 +205,29 @@ policy; optional channel tools retain native discovery. Tool names and availabil
 the configuration key, so a changed policy reconnects an idle agent on its next wake without
 recreating its Session, membership, or read position.
 
+All Channel agents also receive `list_channels` and `inspect_channel`. Inspection accepts a
+`channel:ID` URI, optionally followed by `/team`, `/agents/AGENT_ID`, or `/messages/SEQUENCE`.
+IDs are URL-escaped, stable identities, never names or mention handles. A message reference reads
+its complete containing thread, even outside the newest-message window; channel inspection pages
+backward with `beforeSequence` or reads a thread with `threadSequence`. Inspection returns public
+configuration, configured lead/member models, roles, routines, tasks, artifacts, and messages.
+It works while the source is paused, never joins or wakes it, never advances human or Agent read
+positions, and never reads private Sessions. The own-channel `read_channel` protocol is unchanged.
+Ordinary Sessions retain their ID-based `read_channel` and receive the same inspection tool and
+reference instructions. Missing targets fail rather than resolving another identity by name.
+
+`model/references.ts` owns channel, team, Agent, and message URI identity. The team address selects
+the Channel's roster, not a second team entity. Channel menus, Team menus, Agent row menus (including
+the lead), and conversation message actions copy raw URIs with clipboard success/failure feedback.
+Message text copying remains separate; uncommitted optimistic messages cannot copy a URI.
+`components/ChannelReferences.tsx` renders bare URIs and Markdown references in Channel and Session
+messages while leaving code literal. Links use the existing workspace channel selection plus a
+URI hash: team and Agent targets open the roster, and message targets resolve their thread and
+reveal the exact message with a highlight, loading older history through its root. Removed Agents
+and missing messages show an explicit unavailable result. These are in-app references, not
+OS-registered protocols. Learning from another team uses ordinary cited messages and shared
+artifacts rather than cloned teams, copied history, or another persistence model.
+
 A directory is optional. Channels records a provided directory without creating it. When the work
 needs one and none was provided, the lead can create and assign it through `update_channel`.
 

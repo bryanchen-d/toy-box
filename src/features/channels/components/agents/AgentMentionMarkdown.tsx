@@ -3,6 +3,11 @@ import { defaultRemarkPlugins, type Components } from "streamdown";
 import { splitAgentMentionText } from "@channels/model";
 import { Markdown } from "@/shared/ui/markdown";
 import { cn } from "@/shared/utils";
+import {
+  channelReferenceComponents,
+  channelReferenceTags,
+  remarkChannelReferences,
+} from "../ChannelReferences";
 
 const MENTION_TAG = "agent-mention";
 
@@ -73,10 +78,17 @@ function AccentMention(props: MentionProps) {
   return <Mention {...props} onAccent />;
 }
 
-const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkAgentMentions];
-const allowedTags = { [MENTION_TAG]: ["handle"] };
-const components = { [MENTION_TAG]: Mention } satisfies Components;
-const accentComponents = { [MENTION_TAG]: AccentMention } satisfies Components;
+const remarkPlugins = [
+  ...Object.values(defaultRemarkPlugins),
+  remarkAgentMentions,
+  remarkChannelReferences,
+];
+const allowedTags = { [MENTION_TAG]: ["handle"], ...channelReferenceTags };
+const components = { [MENTION_TAG]: Mention, ...channelReferenceComponents } satisfies Components;
+const accentComponents = {
+  [MENTION_TAG]: AccentMention,
+  ...channelReferenceComponents,
+} satisfies Components;
 
 /** Markdown whose operational agent mentions render distinctly from ordinary text. */
 export function AgentMentionMarkdown({

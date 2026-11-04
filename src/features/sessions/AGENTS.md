@@ -263,8 +263,12 @@ toolbar typing feedback remain separate presentation controls.
 foundational to messages as well as the composer: the input builds its pills from that split,
 given a host's `ComposerReferences` presentation, and queue summaries render and label from it.
 Kinds are URI-scheme identifiers defined by hosts, not a shared catalog. An unlabeled reference
-decodes with its target as its label. Sessions recognizes `session` and `file`, encoded as
-`[Title](session:PUBLIC_ID)` and `[Name](file:PATH)`.
+decodes with its target as its label. Sessions recognizes `session`, `file`, and Channels-owned
+`channel` references, encoded as `[Title](session:PUBLIC_ID)`, `[Name](file:PATH)`, and
+`[Team](channel:CHANNEL_ID)`. Channel URIs can also address `/team`, `/agents/AGENT_ID`, and
+`/messages/SEQUENCE`; they open their target in the workspace instead of becoming noninteractive
+pills in sent messages. Bare channel URIs are recognized in sent user and assistant prose too,
+but never inside code. Agents resolve them through the read-only `inspect_channel` tool.
 Completion triggers are not part of the encoding. Other kinds remain ordinary text or Markdown
 in Sessions; Channels' `@handle` mentions retain their own addressing semantics.
 The composer does not parse Markdown.
@@ -288,7 +292,7 @@ selection and caret behavior.
 Both use the configured accent color; queued and sent message pills add a thin accent border
 and a slightly stronger tint.
 The session-history instructions direct the agent to `read_session` using the public ID.
-Only encoded references are recognized. Pills are constructed on insertion, paste, and
+Only encoded references become composer pills. Pills are constructed on insertion, paste, and
 draft adoption; ordinary typing stays native rather than being re-parsed after each key.
 The composer does not infer references from bare names/paths or apply Markdown rules.
 `completions/completionSources.ts` is a pure `promptCompletionSources` over the prompt's scope

@@ -33,6 +33,7 @@ function render(content: ReactNode): string {
   return renderToStaticMarkup(
     <ChannelPaneProvider
       value={{
+        channelId: "team",
         lead,
         members: [],
         agents: [lead],

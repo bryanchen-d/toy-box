@@ -24,6 +24,7 @@ import { useChannelPane } from "../ChannelPaneContext";
 import { channelTaskItems, TaskDiff } from "../channelTaskItems";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 import { RowMenu } from "./RowMenu";
+import { CopyChannelUri } from "@channels/components/CopyChannelUri";
 
 /** What the overview shows: the Channel's context, team members, tasks, artifacts, and routines. */
 export function ChannelOverviewContent({
@@ -86,24 +87,46 @@ export function ChannelOverviewContent({
         title="Team members"
         count={members.length + 1}
         detail={
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={onViewMembers}
-          >
-            View all
-          </button>
+          <div className="flex items-center gap-1">
+            <RowMenu name="Team">
+              <CopyChannelUri
+                target={{ type: "team", channelId: channel.id }}
+                label="Copy team URI"
+              />
+            </RowMenu>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={onViewMembers}
+            >
+              View all
+            </button>
+          </div>
         }
       >
         <div>
           <div role="list" aria-label={`Team members in #${channel.name}`}>
-            <AgentItem agent={lead} action={<RowMenu name={lead.name} />} />
+            <AgentItem
+              agent={lead}
+              action={
+                <RowMenu name={lead.name}>
+                  <CopyChannelUri
+                    target={{ type: "agent", channelId: channel.id, agentId: lead.id }}
+                    label="Copy agent URI"
+                  />
+                </RowMenu>
+              }
+            />
             {sortedMembers.map((member) => (
               <AgentItem
                 key={member.id}
                 agent={member}
                 action={
                   <RowMenu name={member.name}>
+                    <CopyChannelUri
+                      target={{ type: "agent", channelId: channel.id, agentId: member.id }}
+                      label="Copy agent URI"
+                    />
                     <DropdownMenuItem onClick={() => onEditMember(member)}>
                       <Pencil /> Edit member
                     </DropdownMenuItem>

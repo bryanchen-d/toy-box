@@ -21,6 +21,7 @@ const FOLLOW_THRESHOLD_PX = 80;
 export function ChannelThread({
   channelId,
   sequence,
+  selectedSequence,
   state,
   composerRef,
   onLoadThrough,
@@ -30,6 +31,7 @@ export function ChannelThread({
   channelId: string;
   /** The thread's top-level message. */
   sequence: number;
+  selectedSequence?: number;
   state: ChannelState;
   composerRef: RefObject<ChannelComposerHandle | null>;
   /** Loads older history through the thread's top-level message. */
@@ -57,14 +59,18 @@ export function ChannelThread({
     if (!scrollElement || !isLoaded) return;
     if (!landedRef.current) {
       landedRef.current = true;
-      const question = scrollElement.querySelector("[data-request-sequence]");
+      const question =
+        selectedSequence === undefined
+          ? scrollElement.querySelector("[data-request-sequence]")
+          : scrollElement.querySelector(`[data-message-sequence="${selectedSequence}"]`);
       if (question) {
+        followsEndRef.current = false;
         question.scrollIntoView({ block: "center" });
         return;
       }
     }
     if (followsEndRef.current) scrollElement.scrollTop = scrollElement.scrollHeight;
-  }, [isLoaded, replyCount]);
+  }, [isLoaded, replyCount, selectedSequence]);
 
   return (
     <section aria-label="Thread" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">

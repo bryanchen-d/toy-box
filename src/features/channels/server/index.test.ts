@@ -4,7 +4,7 @@ import { beforeEach, expect, mock, onTestFinished, setSystemTime, spyOn, test } 
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChannelEvent } from "@channels/model";
+import { channelAgentMetadataSchema, type ChannelEvent } from "@channels/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { reduceChannelState } from "@channels/model/reducer";
 import { createTestDatabase } from "@/server/database";
@@ -505,6 +505,7 @@ test("channel tools use agentId across creation, context, profile updates, and w
   expect(context.members).toEqual([
     {
       agentId: member.agentId,
+      uri: `channel:${channelId}/agents/${member.agentId}`,
       name: "Reviewer",
       mention: "@reviewer",
       role: "Review the outcome.",
@@ -522,6 +523,107 @@ test("channel tools use agentId across creation, context, profile updates, and w
       { agentId: member.agentId, status: "completed" },
     ],
   });
+});
+
+test("cross-channel inspection reads configuration and old threads without execution or cursor effects", async () => {
+  const channels = await openChannels();
+  const source = await createStoredChannel(channels, { name: "Source", ...CHANNEL_DEFAULTS });
+  const home = await createStoredChannel(channels, { name: "Learners", ...CHANNEL_DEFAULTS });
+  const memberModel = { provider: "codex", name: "gpt-6", reasoningEffort: "high" };
+  await channels.createMember({
+    ...channelAgent(source.id, "reviewer", "Reviewer"),
+    metadata: { seenThrough: 0, role: "Review before release.", model: memberModel },
+  });
+  const { message: root } = await channels.appendMessage({
+    id: "process",
+    channelId: source.id,
+    sender: { type: "agent", agentId: source.id },
+    content: "Review each outcome before releasing it.",
+  });
+  for (let index = 0; index < 105; index++)
+    await channels.appendMessage({
+      id: `update-${index}`,
+      channelId: source.id,
+      sender: { type: "user" },
+      content: `Update ${index}`,
+    });
+  const { message: reply } = await channels.appendMessage({
+    id: "lesson",
+    channelId: source.id,
+    sender: { type: "agent", agentId: "reviewer" },
+    content: "Keep acceptance criteria explicit.",
+    threadSequence: root.sequence,
+  });
+  await channels.editChannel({ channelId: source.id, name: "Renamed source", paused: true });
+  const before = await channels.getSnapshot(source.id, 200);
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage");
+  onTestFinished(() => deliver.mockRestore());
+  const uri = `channel:${source.id}`;
+
+  const latest = await invokeTool("inspect_channel", { uri }, home.id);
+  expect(latest.channel).toMatchObject({
+    channelId: source.id,
+    name: "Renamed source",
+    uri,
+    teamUri: `${uri}/team`,
+    paused: true,
+    model: source.model,
+  });
+  expect(latest.messages).toHaveLength(100);
+  expect(latest.hasMore).toBe(true);
+  expect(latest.members[0]).toMatchObject({
+    agentId: "reviewer",
+    uri: `${uri}/agents/reviewer`,
+    role: "Review before release.",
+    model: memberModel,
+  });
+  expect(latest.lead).toMatchObject({ uri: `${uri}/agents/${source.id}`, model: source.model });
+  expect(latest).not.toHaveProperty("sessions");
+  for (const suffix of ["/team", "/agents/reviewer", `/agents/${source.id}`])
+    expect(
+      (await invokeTool("inspect_channel", { uri: `${uri}${suffix}` }, home.id)).channel.channelId,
+    ).toBe(source.id);
+
+  const thread = await invokeTool(
+    "inspect_channel",
+    { uri: `${uri}/messages/${reply.sequence}` },
+    home.id,
+  );
+  expect(thread.messages.map(({ sequence }: { sequence: number }) => sequence)).toEqual([
+    root.sequence,
+    reply.sequence,
+  ]);
+  expect(thread.messages[0].uri).toBe(`${uri}/messages/${root.sequence}`);
+  expect(thread.hasMore).toBe(false);
+  const older = await invokeTool(
+    "inspect_channel",
+    { uri, beforeSequence: latest.messages[0].sequence },
+    home.id,
+  );
+  expect(older.messages.some(({ content }: { content: string }) => content === root.content)).toBe(
+    true,
+  );
+  expect(older.hasMore).toBe(false);
+  expect(await channels.getSnapshot(source.id, 200)).toEqual(before);
+  const { getPersistedWorker } = await import("@workers/server/database");
+  for (const id of [source.id, "reviewer", home.id])
+    expect(
+      channelAgentMetadataSchema.parse((await getPersistedWorker(id))?.metadata).seenThrough,
+    ).toBe(0);
+  expect(deliver).not.toHaveBeenCalled();
+  expect(sessionRuntime.createSession).not.toHaveBeenCalled();
+
+  const { getChannelThreadSequence } = await import("./index");
+  expect(await getChannelThreadSequence(source.id, reply.sequence)).toBe(root.sequence);
+  await expect(
+    invokeTool("inspect_channel", { uri: `${uri}/agents/deleted` }, home.id),
+  ).rejects.toThrow("Channel agent not found.");
+  await expect(
+    invokeTool("inspect_channel", { uri: `${uri}/messages/9999` }, home.id),
+  ).rejects.toThrow();
+  await expect(invokeTool("inspect_channel", { uri: "channel:deleted" }, home.id)).rejects.toThrow(
+    "Channel not found.",
+  );
 });
 
 test("a Session can seed and passively read Channel context", async () => {

@@ -9,6 +9,8 @@ import { useChannelPane } from "../ChannelPaneContext";
 import { ChannelReactions } from "./ChannelReactions";
 import { ThreadSummary } from "./ThreadReplies";
 import type { TranscriptThread } from "./transcriptRows";
+import { CopyChannelUri } from "@channels/components/CopyChannelUri";
+import { cn } from "@/shared/utils";
 
 /** The user's message, shown as in a session, with the reactions agents gave it and its thread. */
 export function ChannelUserMessage({
@@ -18,16 +20,29 @@ export function ChannelUserMessage({
   message: ChannelConversationMessage;
   thread?: TranscriptThread;
 }) {
-  const { replyInThread, isSending } = useChannelPane();
+  const { channelId, selectedMessageSequence, replyInThread, isSending } = useChannelPane();
 
   return (
-    <div className="flex flex-col">
+    <div
+      className={cn(
+        "flex flex-col",
+        selectedMessageSequence === message.sequence && "rounded-lg ring-2 ring-primary/40",
+      )}
+      data-message-sequence={message.sequence}
+    >
       <UserMessage
         message={message}
         time={<ClockTime className="text-xs text-muted-foreground" date={message.timestamp} />}
         extraActions={
           <>
             <ChannelReactions message={message} className="mr-1" />
+            {!isSending(message.id) && (
+              <CopyChannelUri
+                variant="button"
+                target={{ type: "message", channelId, sequence: message.sequence }}
+                label="Copy message URI"
+              />
+            )}
             {!isSending(message.id) && (
               <Tooltip>
                 <TooltipTrigger

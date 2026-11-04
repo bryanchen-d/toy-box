@@ -4,6 +4,7 @@ import type { Channel, ChannelList, ChannelMessage } from "@channels/model";
 import {
   arrangeChannelArtifactsInputSchema,
   channelIdentitySchema,
+  channelThreadSequenceSchema,
   createChannelMemberInputSchema,
   createChannelInputSchema,
   editChannelInputSchema,
@@ -21,6 +22,10 @@ export const listChannels = createServerFn({ method: "GET" }).handler((): Promis
 export const getChannelUsage = createServerFn({ method: "GET" })
   .validator(zodValidator(channelIdentitySchema))
   .handler(({ data }) => channels.getChannelUsage(data.channelId));
+
+export const getChannelThreadSequence = createServerFn({ method: "GET" })
+  .validator(zodValidator(channelIdentitySchema.extend({ sequence: channelThreadSequenceSchema })))
+  .handler(({ data }) => channels.getChannelThreadSequence(data.channelId, data.sequence));
 
 export const createChannel = createServerFn({ method: "POST" })
   .validator(zodValidator(createChannelInputSchema))

@@ -347,6 +347,10 @@ export class ChannelDatabase {
     return listMessagesBefore(this.db, channelId, beforeSequence, limit);
   }
 
+  async getThreadSequence(channelId: string, sequence: number): Promise<number> {
+    return resolveThreadSequence(this.db, channelId, sequence);
+  }
+
   /** The thread a message starts or belongs to: its top-level message, then every reply. */
   async listThread(channelId: string, sequence: number): Promise<ChannelMessage[]> {
     return inStateTransaction(this.db, async (db) => {

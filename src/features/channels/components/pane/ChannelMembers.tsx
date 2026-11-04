@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Users, X } from "lucide-react";
 import { AgentEditor } from "@channels/components/agents/AgentEditor";
@@ -16,6 +16,7 @@ import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
 import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { useChannelPane } from "./ChannelPaneContext";
+import { CopyChannelUri } from "@channels/components/CopyChannelUri";
 import { RowMenu } from "./overview/RowMenu";
 import { DropdownMenuCheckboxItem, DropdownMenuItem } from "@/shared/ui/dropdown-menu";
 
@@ -23,10 +24,12 @@ export function ChannelMembers({
   channel,
   onClose,
   isVisible = true,
+  selectedAgentId,
 }: {
   channel: Channel;
   onClose: () => void;
   isVisible?: boolean;
+  selectedAgentId?: string;
 }) {
   const { lead, members, presence } = useChannelPane();
   const [editingId, setEditingId] = useState<string>();
@@ -39,6 +42,10 @@ export function ChannelMembers({
     enabled: isVisible && showCredits,
   });
   const total = sumSessionUsage(agents.map((agent) => usage.data?.[agent.id]));
+  const selectedRef = useRef<HTMLTableRowElement>(null);
+  useLayoutEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "center" });
+  }, [selectedAgentId]);
 
   return (
     <section
@@ -49,6 +56,7 @@ export function ChannelMembers({
         <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <h2 className="min-w-0 truncate text-sm font-medium">Team members ({agents.length})</h2>
         <RowMenu name="Team">
+          <CopyChannelUri target={{ type: "team", channelId: channel.id }} label="Copy team URI" />
           <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>
             Show model
           </DropdownMenuCheckboxItem>
@@ -70,6 +78,11 @@ export function ChannelMembers({
       <p className="border-b px-4 py-2 text-xs text-muted-foreground">
         Model settings apply on the next turn. Hover an agent to inspect live activity.
       </p>
+      {selectedAgentId && !agents.some(({ id }) => id === selectedAgentId) && (
+        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+          Agent unavailable. It no longer belongs to this channel.
+        </p>
+      )}
       {showCredits && (
         <div className="space-y-1 border-b px-4 py-3 text-xs">
           <p>
@@ -132,7 +145,11 @@ export function ChannelMembers({
                   : members.find(({ id }) => id === agent.id)?.model;
 
               return (
-                <tr key={agent.id} className="border-b align-top [&>td]:px-3 [&>td]:py-3">
+                <tr
+                  key={agent.id}
+                  ref={agent.id === selectedAgentId ? selectedRef : undefined}
+                  className={`border-b align-top [&>td]:px-3 [&>td]:py-3 ${agent.id === selectedAgentId ? "bg-accent/30" : ""}`}
+                >
                   <td className="min-w-40">
                     <AgentItem agent={agent} role="presentation" showDetail={false} />
                   </td>
@@ -181,6 +198,10 @@ export function ChannelMembers({
                   )}
                   <td>
                     <RowMenu name={agent.name}>
+                      <CopyChannelUri
+                        target={{ type: "agent", channelId: channel.id, agentId: agent.id }}
+                        label="Copy agent URI"
+                      />
                       <DropdownMenuItem onClick={() => setEditingId(agent.id)}>
                         Edit {agent.name}
                       </DropdownMenuItem>

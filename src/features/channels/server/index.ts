@@ -308,6 +308,12 @@ export async function readChannelForAgent(sessionId: string) {
   return result;
 }
 
+export async function getChannelThreadSequence(channelId: string, sequence: number) {
+  const database = new ChannelDatabase(await getStateDatabase());
+  if (!(await database.getChannel(channelId))) throw new Error("Channel not found.");
+  return database.getThreadSequence(channelId, sequence);
+}
+
 /** One thread in full, read without changing anyone's read position. */
 export async function readChannelThread(channelId: string, threadSequence: number) {
   const database = new ChannelDatabase(await getStateDatabase());

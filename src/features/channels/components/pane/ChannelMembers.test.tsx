@@ -62,6 +62,7 @@ test("the team table includes lead and members, nested work, waiting details and
     <QueryClientProvider client={client}>
       <ChannelPaneProvider
         value={{
+          channelId: channel.id,
           lead,
           members,
           agents,
@@ -131,6 +132,7 @@ function renderUsage(usage?: SessionUsage) {
     <QueryClientProvider client={client}>
       <ChannelPaneProvider
         value={{
+          channelId: channel.id,
           lead,
           members: [],
           agents: [lead],

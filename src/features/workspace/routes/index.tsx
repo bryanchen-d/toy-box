@@ -55,6 +55,7 @@ import { selectTopLevelSessions, sessionQueries } from "@sessions/queries";
 import { providerQueries } from "@providers/queries";
 import { useHasModels } from "@providers/useModels";
 import { channelQueries } from "@channels/queries";
+import { parseChannelReferenceHash } from "@channels/model/references";
 import { automationQueries } from "@automations/queries";
 import { inboxQueries } from "@inbox/queries";
 import { appQueries } from "@apps/queries";
@@ -151,6 +152,9 @@ function WorkspacePage() {
   const selectedChannelIds = Route.useSearch({
     select: (search) => search.channels ?? [],
     structuralSharing: true,
+  });
+  const referencedChannelId = useRouterState({
+    select: ({ location }) => parseChannelReferenceHash(location.hash)?.channelId,
   });
   const openFiles = Route.useSearch({
     select: (search) => search.files ?? [],
@@ -450,8 +454,8 @@ function WorkspacePage() {
   useEffect(() => {
     if (!channels || selectedChannelIds.length === 0) return;
     const availableChannelIds = new Set(channels.map((channel) => channel.id));
-    const validChannelIds = selectedChannelIds.filter((channelId) =>
-      availableChannelIds.has(channelId),
+    const validChannelIds = selectedChannelIds.filter(
+      (channelId) => channelId === referencedChannelId || availableChannelIds.has(channelId),
     );
     if (validChannelIds.length === selectedChannelIds.length) return;
 
@@ -463,7 +467,7 @@ function WorkspacePage() {
       }),
       replace: true,
     });
-  }, [channels, navigate, selectedChannelIds]);
+  }, [channels, navigate, referencedChannelId, selectedChannelIds]);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SessionFilters>({

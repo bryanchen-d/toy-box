@@ -6,7 +6,7 @@ import type { Worker } from "@workers/model";
 import { getStateDatabase } from "@/server/database";
 import { channelAgentFromWorker, type ChannelAgentContext } from "@channels/model/worker";
 import { ChannelDatabase } from "./database";
-import { channelLeadTools, channelMemberTools } from "./tools";
+import { CHANNEL_REFERENCE_INSTRUCTIONS, channelLeadTools, channelMemberTools } from "./tools";
 import { screenTools } from "@screens/server/tools";
 
 export async function getChannelAgentConfiguration(worker: Extract<Worker, { type: "channel" }>) {
@@ -26,7 +26,7 @@ export async function getChannelAgentConfiguration(worker: Extract<Worker, { typ
       ...(agent.isLead ? channelLeadTools : channelMemberTools),
     ],
     directory: channel.directory,
-    additionalInstructions: buildChannelAgentInstructions(agent, channel),
+    additionalInstructions: `${buildChannelAgentInstructions(agent, channel)}\n\n${CHANNEL_REFERENCE_INSTRUCTIONS}`,
     disableMemory: true as const,
     ...(model ? { model } : {}),
   };

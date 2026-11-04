@@ -3,6 +3,7 @@ import { FolderOpen, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import type { Channel } from "@channels/model";
 import { channelMutations } from "@channels/mutations";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
+import { CopyChannelUri } from "./CopyChannelUri";
 
 /** A Channel's actions, shared by every menu that offers them. */
 export function ChannelMenuItems({
@@ -20,6 +21,10 @@ export function ChannelMenuItems({
   const { mutate, isPending, error, variables } = useMutation(channelMutations.edit());
   return (
     <>
+      <CopyChannelUri
+        target={{ type: "channel", channelId: channel.id }}
+        label="Copy channel URI"
+      />
       <DropdownMenuItem
         closeOnClick={false}
         disabled={isPending}

@@ -12,6 +12,8 @@ import type { WorkspaceFile } from "@files/model";
 /** The open Channel's agents, its threads and artifacts, and the drafts its transcript and
  *  overview start. */
 type ChannelPane = {
+  channelId: string;
+  selectedMessageSequence?: number;
   lead: ChannelLead;
   members: readonly ChannelMember[];
   /** The lead, then the members. */
