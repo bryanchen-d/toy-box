@@ -29,6 +29,7 @@ import { workspaceFileFromAbsolutePath } from "@files/server/paths";
 import {
   deliverSessionMessage,
   getSessionDirectory,
+  getSessionUsage,
   waitForSessions,
 } from "@sessions/server/runtime";
 import type { SessionSystemMessage } from "@sessions/model";
@@ -44,6 +45,18 @@ const CHANNEL_MESSAGE_LIMIT = 100;
 
 export async function listChannels(): Promise<ChannelList> {
   return new ChannelDatabase(await getStateDatabase()).listChannels();
+}
+
+export async function getChannelUsage(channelId: string) {
+  const roster = await new ChannelDatabase(await getStateDatabase()).getRoster(channelId);
+  if (!roster) throw new Error("Channel not found.");
+  return Object.fromEntries(
+    await Promise.all(
+      [roster.lead, ...roster.members].map(
+        async (agent) => [agent.id, await getSessionUsage(agent.id)] as const,
+      ),
+    ),
+  );
 }
 
 export async function createChannelMember({

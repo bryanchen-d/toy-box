@@ -11,13 +11,23 @@ import { AgentAvatar } from "./AgentAvatar";
 
 /** One agent in a Channel. The ring around its avatar shows whether it's working or waiting, and the
  *  line beneath its name says on what, or what it's for while idle. */
-export function AgentItem({ agent, action }: { agent: ChannelAgent; action?: ReactNode }) {
+export function AgentItem({
+  agent,
+  action,
+  role = "listitem",
+  showDetail = true,
+}: {
+  agent: ChannelAgent;
+  action?: ReactNode;
+  role?: "listitem" | "presentation";
+  showDetail?: boolean;
+}) {
   const preview = useSessionPreview();
   const presence = useChannelPane().presence[agent.id] ?? { state: "idle" };
-  const detail = presenceDetail(presence, agent.role);
+  const detail = showDetail ? presenceDetail(presence, agent.role) : undefined;
 
   return (
-    <div role="listitem" className="flex min-w-0 items-center gap-2.5 py-1 text-left">
+    <div role={role} className="flex min-w-0 items-center gap-2.5 py-1 text-left">
       <SessionPreview sessionId={agent.id} side="left" sideOffset={10} {...preview}>
         <button
           type="button"

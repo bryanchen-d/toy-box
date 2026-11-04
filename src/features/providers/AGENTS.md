@@ -103,3 +103,7 @@ check the list whenever a provider is upgraded:
   unavailable on later turns after compaction (reproduced with CLI 1.0.102 and 1.0.104).
   The four essential channel tools opt out through `alwaysAvailable`. Reconsider deferral only
   once discovery works reliably after compaction, on later turns, and after resume.
+- Copilot usage receipts (`server/copilot/usage.ts`): CLI 1.0.105 emits durable
+  `session.usage_record` events that SDK 1.0.24 does not yet declare. The adapter extends
+  the native event union with the existing SDK usage payload. Remove the extension once
+  the SDK declares the receipt.

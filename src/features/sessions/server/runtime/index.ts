@@ -20,6 +20,7 @@ import type {
 } from "@sessions/model";
 import * as sessionRegistry from "@sessions/server/state/registry";
 import { loadSessionSnapshot, refreshSessionSnapshot } from "@sessions/server/state/snapshots";
+import { readSession } from "@sessions/server/state/sessions";
 import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
 import { SessionStream, SessionStreamFinishedError } from "./sessionStream";
@@ -129,6 +130,13 @@ export async function getSessionView(sessionId: string) {
   return readSessionProjection(sessionId, (state) =>
     projectSessionView(state, cwd, projectSessionDiffs(state.messages, cwd)),
   );
+}
+
+/** Draft sessions have not spent credits; providers without credit reports remain unreported. */
+export async function getSessionUsage(sessionId: string) {
+  const session = await readSession(sessionId);
+  if (session && !session.provider) return undefined;
+  return (await readSessionProjection(sessionId, (state) => ({ usage: state.usage }))).usage;
 }
 
 export async function getSessionOutputs(sessionId: string) {

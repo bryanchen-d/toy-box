@@ -27,6 +27,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/shared/u
 import { cn } from "@/shared/utils";
 import { ChannelCanvas } from "./ChannelCanvas";
 import { ChannelArtifacts } from "./ChannelArtifacts";
+import { ChannelMembers } from "./ChannelMembers";
 import {
   addressedDraft,
   ChannelComposer,
@@ -44,10 +45,16 @@ import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
 type ChannelAside =
   | { type: "canvas" }
   | { type: "thread"; sequence: number }
-  | { type: "artifacts" };
+  | { type: "artifacts" }
+  | { type: "members" };
 
 /** Each aside kind's share of a wide pane until the user resizes it. */
-const ASIDE_SIZES: Record<ChannelAside["type"], number> = { canvas: 50, thread: 35, artifacts: 35 };
+const ASIDE_SIZES: Record<ChannelAside["type"], number> = {
+  canvas: 50,
+  thread: 35,
+  artifacts: 35,
+  members: 65,
+};
 
 export function ChannelPane({
   channelId,
@@ -94,8 +101,11 @@ function ChannelContent({
   const showingCanvas = aside?.type === "canvas" && !!canvas;
   const thread = aside?.type === "thread" && state ? aside.sequence : undefined;
   const showingArtifacts = aside?.type === "artifacts" && !!state;
+  const showingMembers = aside?.type === "members" && !!state;
   const asideKind =
-    showingCanvas || thread !== undefined || showingArtifacts ? aside?.type : undefined;
+    showingCanvas || thread !== undefined || showingArtifacts || showingMembers
+      ? aside?.type
+      : undefined;
   const asideSize = asideKind && (channelAsideSizes?.[asideKind] ?? ASIDE_SIZES[asideKind]);
   // A drag commits only the size it ends at, so following the pointer stays within the panels.
   const resizeRef = useRef<{ size?: number; dragging: boolean }>({ dragging: false });
@@ -157,6 +167,7 @@ function ChannelContent({
         mention: () => composerRef.current?.mention(),
         openArtifact,
         openArtifacts: () => setAside({ type: "artifacts" }),
+        openMembers: () => setAside({ type: "members" }),
       }}
     >
       {canvas && (
@@ -296,6 +307,13 @@ function ChannelContent({
                   <ChannelArtifacts
                     channelId={channelId}
                     artifacts={state.artifacts}
+                    onClose={() => setAside(null)}
+                  />
+                )}
+                {showingMembers && (
+                  <ChannelMembers
+                    channel={state.channel}
+                    isVisible={isVisible}
                     onClose={() => setAside(null)}
                   />
                 )}

@@ -31,6 +31,7 @@ type ChannelPane = {
   openArtifact: (file: WorkspaceFile) => void;
   /** Shows the artifacts panel, where the user arranges what the composer tray shows. */
   openArtifacts: () => void;
+  openMembers: () => void;
 };
 
 const ChannelPaneContext = createContext<ChannelPane | undefined>(undefined);

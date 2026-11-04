@@ -5,6 +5,7 @@ import type { ModelConfiguration } from "@providers/model";
 import type { Attachment } from "@/shared/attachments/model";
 import type { SessionSystemMessage } from "./systemMessages";
 import type { SessionType } from "./protocol";
+import type { SessionUsage } from "./usage";
 
 export type SessionContext = {
   directory?: string;
@@ -122,6 +123,7 @@ export type SessionState = {
   model?: ModelConfiguration;
   /** Reported while the provider runs; native histories do not retain it. */
   contextUsage?: ContextUsage;
+  usage?: SessionUsage;
   todos: TodoItem[];
   linkedSessionIds: string[];
   canvases: SessionCanvas[];
@@ -261,6 +263,7 @@ export type SessionEvent = (
   // Live output appended to a running tool call.
   | { type: "tool_output_delta"; toolCallId: string; parentToolCallId?: string; content: string }
   | { type: "context_usage_changed"; usage: ContextUsage }
+  | { type: "usage"; usage: SessionUsage; mode: "delta" | "total" }
   | {
       type: "question_requested";
       toolCallId: string;

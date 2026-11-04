@@ -32,6 +32,7 @@ export function ChannelOverviewContent({
   routines,
   onArtifactOpen,
   onManageArtifacts,
+  onViewMembers,
   onEditMember,
   onRemoveMember,
   onAddAgent,
@@ -43,6 +44,7 @@ export function ChannelOverviewContent({
   routines: ChannelRoutine[];
   onArtifactOpen: (artifact: ChannelArtifact) => void;
   onManageArtifacts: () => void;
+  onViewMembers: () => void;
   onEditMember: (member: ChannelMember) => void;
   onRemoveMember: (member: ChannelMember) => void;
   onAddAgent: () => void;
@@ -80,7 +82,19 @@ export function ChannelOverviewContent({
         )}
       </div>
 
-      <OverviewSection title="Team members" count={members.length + 1}>
+      <OverviewSection
+        title="Team members"
+        count={members.length + 1}
+        detail={
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={onViewMembers}
+          >
+            View all
+          </button>
+        }
+      >
         <div>
           <div role="list" aria-label={`Team members in #${channel.name}`}>
             <AgentItem agent={lead} action={<RowMenu name={lead.name} />} />

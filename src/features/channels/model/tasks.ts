@@ -59,6 +59,16 @@ export const channelTasksSchema = z
     visit(tasks, []);
   });
 
+export function channelTasksForAgent(
+  tasks: readonly ChannelTask[],
+  agentId: string,
+): ChannelTask[] {
+  return tasks.flatMap((task) => [
+    ...(task.ownerId === agentId ? [task] : []),
+    ...channelTasksForAgent(task.children ?? [], agentId),
+  ]);
+}
+
 /** Sum reported work across task trees without storing derived totals. */
 export function channelTasksDiff(tasks: readonly ChannelTask[]): DiffStats | undefined {
   return tasks

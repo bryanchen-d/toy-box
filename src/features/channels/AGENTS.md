@@ -366,6 +366,19 @@ to these capabilities under Toy Box's existing trusted-owner server assumption.
 
 ## Presentation
 
+The Team members aside hides AI credits by default and does not fetch usage until the user
+enables "Show AI credits" in the title's actions menu. This toggle is local to the mounted
+view. When enabled, it shows each current agent's private-session AI credits and their derived
+team total, including the lead and provider-native subagents. A separate on-demand
+`channelQueries.usage` read exposes only usage metadata, not private transcripts. It polls
+every five seconds only while credits are enabled and the aside is visible (and pauses in hidden
+browser tabs). Turning credits off hides the total, usage details, errors, and per-agent column
+and stops this view's usage polling.
+Missing reports show "Not reported"; incomplete team or session coverage shows a partial
+subtotal. Load and refresh failures are explicit and retryable. The total covers the current
+roster, not removed members or a cross-provider currency conversion. No billing data is
+stored by Channels.
+
 `ChannelPane` takes a Channel ID and owns one cached `ChannelState` for its transcript, overview,
 and composer. It does not read the workspace catalog or derive agent presence from Session state.
 The sidebar uses the catalog and workspace activity independently; private Session previews and

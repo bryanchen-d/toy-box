@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   areModelConfigurationsEqual,
   formatReasoningEffort,
+  formatModelConfiguration,
   getModelReasoningConfig,
   normalizeModelConfiguration,
   parseSerializedModelConfiguration,
@@ -28,6 +29,20 @@ function tier(name: string, tokenWindow = 200_000): ContextTier {
 }
 
 describe("model configuration", () => {
+  test("formats a model's reported effort without inventing a default", () => {
+    expect(
+      formatModelConfiguration({
+        provider: "copilot",
+        name: "claude-opus-5.5",
+        reasoningEffort: "high",
+      }),
+    ).toBe("claude-opus-5.5 (High)");
+    expect(
+      formatModelConfiguration({ provider: "codex", name: "gpt-6", reasoningEffort: "xhigh" }),
+    ).toBe("gpt-6 (Extra High)");
+    expect(formatModelConfiguration({ provider: "claude", name: "opus" })).toBe("opus");
+  });
+
   test("model configurations require an explicit provider", () => {
     expect(parseSerializedModelConfiguration(JSON.stringify({ name: "shared" }))).toBeNull();
   });

@@ -41,6 +41,7 @@ export async function loadChannelHistory(
 
 /** A detail stream leaves its terminal value in place; Workspace also retires its query. */
 export function removeChannelFromList(queryClient: QueryClient, channelId: string): void {
+  queryClient.removeQueries({ queryKey: channelQueries.usage(channelId).queryKey, exact: true });
   queryClient.setQueryData<ChannelList>(channelQueries.listKey(), (list) =>
     list
       ? {

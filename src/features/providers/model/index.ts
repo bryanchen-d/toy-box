@@ -167,3 +167,9 @@ export function formatReasoningEffort(reasoningEffort: string) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+export function formatModelConfiguration(model: ModelConfiguration): string {
+  return model.reasoningEffort
+    ? `${model.name} (${formatReasoningEffort(model.reasoningEffort)})`
+    : model.name;
+}

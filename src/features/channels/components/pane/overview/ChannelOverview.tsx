@@ -54,7 +54,7 @@ export function ChannelOverview({
     channelOverviewPinned = false,
     setChannelOverviewPinned,
   } = useWorkspaceSurface();
-  const { mention, openArtifact: revealArtifact, openArtifacts } = useChannelPane();
+  const { mention, openArtifact: revealArtifact, openArtifacts, openMembers } = useChannelPane();
   const overviewRef = useRef<HTMLDivElement>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [dialog, setDialog] = useState<OverviewDialog>();
@@ -136,6 +136,10 @@ export function ChannelOverview({
       onManageArtifacts={() => {
         closeSheet();
         openArtifacts();
+      }}
+      onViewMembers={() => {
+        closeSheet();
+        openMembers();
       }}
       onEditMember={(member) => openDialog({ type: "edit_member", member })}
       onRemoveMember={(member) => openDialog({ type: "remove_member", member })}

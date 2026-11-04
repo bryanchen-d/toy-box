@@ -3,12 +3,43 @@ import {
   applyChannelTaskEdits,
   channelTasksDiff,
   channelTasksComplete,
+  channelTasksForAgent,
   editChannelTasksInputSchema,
   type ChannelTask,
   type EditChannelTasksInput,
 } from "./tasks";
 
 const task = (id: string): ChannelTask => ({ id, title: id, status: "pending" });
+
+test("agent tasks include directly assigned descendants without inheriting their parent's owner", () => {
+  const tasks: ChannelTask[] = [
+    {
+      ...task("t1"),
+      ownerId: "lead",
+      children: [
+        {
+          ...task("t2"),
+          ownerId: "builder",
+          status: "in_progress",
+          children: [
+            { ...task("t3"), status: "blocked" },
+            { ...task("t4"), ownerId: "builder", status: "blocked" },
+          ],
+        },
+        { ...task("t5"), ownerId: "builder", status: "done" },
+      ],
+    },
+    { ...task("t6"), ownerId: "builder" },
+  ];
+  expect(channelTasksForAgent(tasks, "builder").map(({ id, status }) => ({ id, status }))).toEqual([
+    { id: "t2", status: "in_progress" },
+    { id: "t4", status: "blocked" },
+    { id: "t5", status: "done" },
+    { id: "t6", status: "pending" },
+  ]);
+  expect(channelTasksForAgent(tasks, "lead").map(({ id }) => id)).toEqual(["t1"]);
+  expect(channelTasksForAgent(tasks, "removed")).toEqual([]);
+});
 
 test("ordered edits target IDs, preserve omitted outcomes and descendants, and clear explicit nulls", () => {
   const tasks = [

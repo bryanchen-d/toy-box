@@ -18,6 +18,10 @@ export const listChannels = createServerFn({ method: "GET" }).handler((): Promis
   channels.listChannels(),
 );
 
+export const getChannelUsage = createServerFn({ method: "GET" })
+  .validator(zodValidator(channelIdentitySchema))
+  .handler(({ data }) => channels.getChannelUsage(data.channelId));
+
 export const createChannel = createServerFn({ method: "POST" })
   .validator(zodValidator(createChannelInputSchema))
   .handler(({ data }): Promise<Channel> => channels.createChannel(data));

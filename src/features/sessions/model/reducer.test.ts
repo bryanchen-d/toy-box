@@ -36,6 +36,32 @@ function requestQuestion(toolCallId: string, question: SessionQuestionBase): Ses
 }
 
 describe("session reducer", () => {
+  test("usage accumulates over resumed turns and checkpoints replace rather than add totals", () => {
+    const initial = createInitialSessionState({
+      usage: { aiCredits: 2, status: "complete" },
+    });
+    const state = reduceEvents(
+      [
+        { type: "usage", mode: "delta", usage: { aiCredits: 1.25, status: "complete" } },
+        { type: "usage", mode: "total", usage: { aiCredits: 3.25, status: "complete" } },
+        { type: "usage", mode: "delta", usage: { aiCredits: 0, status: "unavailable" } },
+        { type: "end", reason: "idle" },
+      ],
+      initial,
+    );
+    expect(initial.usage).toEqual({ aiCredits: 2, status: "complete" });
+    expect(state.usage).toEqual({ aiCredits: 3.25, status: "partial" });
+    expect(createInitialSessionState(state).usage).toEqual(state.usage);
+    expect(createInitialSessionState(state).usage).not.toBe(state.usage);
+    expect(
+      applySessionEvent(state, {
+        type: "usage",
+        mode: "total",
+        usage: { aiCredits: 4, status: "complete" },
+      }).usage,
+    ).toEqual({ aiCredits: 4, status: "complete" });
+  });
+
   test("background status is idempotent, preserves queued input, and is not terminal", () => {
     const state = reduceEvents([
       { type: "delta", content: "Done" },

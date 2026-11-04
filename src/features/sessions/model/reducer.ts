@@ -24,6 +24,7 @@
 
 import { workspaceFileId, type WorkspaceFile } from "@files/model";
 import { hasBlockingSessionQuestion } from "./questions";
+import { sumSessionUsage } from "./usage";
 import type {
   SessionCanvas,
   SessionEvent,
@@ -55,6 +56,7 @@ export function createInitialSessionState(initial: Partial<SessionState> = {}): 
     reasoningContent: initial.reasoningContent ?? "",
     model: initial.model,
     ...(initial.contextUsage ? { contextUsage: { ...initial.contextUsage } } : {}),
+    ...(initial.usage ? { usage: { ...initial.usage } } : {}),
     ...(initial.lastSeenEventId !== undefined ? { lastSeenEventId: initial.lastSeenEventId } : {}),
   };
 }
@@ -297,6 +299,14 @@ function applySessionEventCore(state: SessionState, event: SessionEvent): void {
 
     case "context_usage_changed": {
       state.contextUsage = event.usage;
+      return;
+    }
+
+    case "usage": {
+      state.usage =
+        event.mode === "total"
+          ? event.usage
+          : sumSessionUsage(state.usage ? [state.usage, event.usage] : [event.usage]);
       return;
     }
 

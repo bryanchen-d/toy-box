@@ -22,6 +22,7 @@ import {
   type ToolCallProjectionPolicy as SharedToolCallProjectionPolicy,
 } from "@sessions/server/toolProjection";
 import { parseTodoSql } from "./todoParser";
+import { createCopilotUsageProjector, type CopilotEvent } from "./usage";
 type ToolCallProjectionPolicy = SharedToolCallProjectionPolicy | { kind: "deferred" };
 type ToolArguments = ToolCall["arguments"];
 
@@ -73,13 +74,16 @@ type ProjectionState = {
 /** Create one stateful SDK → domain projector for a session. Tool lifecycle
  *  correlation stays private to the returned function. */
 export function createSdkEventProjector(sessionId: string) {
+  const projectUsage = createCopilotUsageProjector();
   const state: ProjectionState = {
     sessionId,
     toolCallPolicies: new Map(),
     subagentParents: new Map(),
     binaryAssets: new Map(),
   };
-  return (event: SdkSessionEvent): SessionEvent[] => projectSdkEvent(event, state);
+  return (event: CopilotEvent): SessionEvent[] =>
+    projectUsage(event) ??
+    (event.type === "session.usage_record" ? [] : projectSdkEvent(event, state));
 }
 
 /** Map a single SDK event to canonical SessionEvents. */

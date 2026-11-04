@@ -3,6 +3,7 @@ import { describe, expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import * as realSessionProviders from "../providers";
 import {
   deliverSessionMessage,
+  getSessionUsage,
   registerPendingSessionCompletion,
   rejectPendingSessionCompletion,
   waitForSessions,
@@ -18,6 +19,7 @@ import {
 import * as realBroadcast from "@workspace/server/events";
 import type { SessionEvent, SessionMessage, SessionState } from "@sessions/model";
 import { createInitialSessionState } from "@sessions/model/reducer";
+import * as sessionRecords from "@sessions/server/state/sessions";
 
 const realSnapshotCacheExports = { ...realSnapshotCache };
 const realWorkspaceStateExports = { ...realWorkspaceState };
@@ -192,6 +194,40 @@ function mockStreamRuntimeModules({
 }
 
 describe("SessionStream lifecycle", () => {
+  test("usage reads project only metadata from live or idle state and do not replay drafts", async () => {
+    const id = "session-usage-read";
+    cleanUpStreamAfterTest(id, { restoreMocks: true });
+    const usage = { aiCredits: 1.25, status: "complete" as const };
+    const snapshot = createInitialSessionState({
+      usage,
+      messages: [{ role: "user", content: "private" }],
+    });
+    const read = spyOn(sessionRecords, "readSession").mockResolvedValue({
+      id,
+      provider: { id: "test" },
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    });
+    onTestFinished(() => read.mockRestore());
+    const load = mock(async (_id: string, project: (state: SessionState) => unknown) =>
+      structuredClone(project(snapshot)),
+    );
+    mockStreamRuntimeModules({ snapshotCache: { loadSessionSnapshot: load } });
+    expect(await getSessionUsage(id)).toEqual(usage);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    SessionStream.getOrCreate(id, makeFakeSession(), {
+      usage: { aiCredits: 2, status: "complete" },
+    });
+    expect(await getSessionUsage(id)).toEqual({ aiCredits: 2, status: "complete" });
+    expect(load).toHaveBeenCalledTimes(1);
+    finishStream(id);
+
+    read.mockResolvedValue({ id, createdAt: new Date(0), updatedAt: new Date(0) });
+    expect(await getSessionUsage(id)).toBeUndefined();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   test("title events update workspace metadata without entering the session stream", async () => {
     const sessionId = "session-shared-title";
     cleanUpStreamAfterTest(sessionId, { restoreMocks: true });

@@ -29,6 +29,7 @@ mock.module("@/server/database", () => ({
 const { ChannelDatabase } = await import("./database");
 const {
   createChannel,
+  getChannelUsage,
   deleteChannel,
   createChannelMember,
   createChannelMembersFromLead,
@@ -98,6 +99,25 @@ async function invokeTool(name: string, input = {}, sessionId = "coordinator") {
   if (content?.type !== "text") throw new Error("Expected a text tool result.");
   return JSON.parse(content.text);
 }
+
+test("team usage reads only the current roster's session metadata, including the lead", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Usage", ...CHANNEL_DEFAULTS });
+  await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  const usage = spyOn(sessionRuntime, "getSessionUsage").mockImplementation(async (id) =>
+    id === channel.id ? { aiCredits: 1.25, status: "complete" } : undefined,
+  );
+  onTestFinished(() => usage.mockRestore());
+  expect(await getChannelUsage(channel.id)).toEqual({
+    [channel.id]: { aiCredits: 1.25, status: "complete" },
+    builder: undefined,
+  });
+  expect(usage.mock.calls.map(([id]) => id).sort()).toEqual([channel.id, "builder"].sort());
+
+  usage.mockRejectedValue(new Error("Native history unavailable"));
+  await expect(getChannelUsage(channel.id)).rejects.toThrow("Native history unavailable");
+  await expect(getChannelUsage("missing")).rejects.toThrow("Channel not found.");
+});
 
 test("attention uses normal messages and upserts, and a user reply also wakes the lead", async () => {
   const channels = await openChannels();

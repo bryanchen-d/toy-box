@@ -47,6 +47,16 @@ test("live events do not replace initial catalog loading with a partial list", (
   expect(client.getQueryData(channelQueries.listKey())).toBeUndefined();
 });
 
+test("deleting a Channel retires its on-demand usage query as well as its detail", () => {
+  const client = createQueryClient();
+  const usageKey = channelQueries.usage(channel.id).queryKey;
+  client.setQueryData(usageKey, { [channel.id]: { aiCredits: 1, status: "complete" } });
+  client.setQueryData(detailKey, snapshot);
+  applyChannelListEvent(client, { type: "channel.deleted", channelId: channel.id });
+  expect(client.getQueryState(usageKey)).toBeUndefined();
+  expect(client.getQueryState(detailKey)).toBeUndefined();
+});
+
 test("catalog membership follows workspace events without touching detail state", () => {
   const client = createQueryClient();
   const key = channelQueries.listKey();

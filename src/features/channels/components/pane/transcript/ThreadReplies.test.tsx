@@ -44,6 +44,7 @@ function render(content: ReactNode): string {
         mention: noop,
         openArtifact: noop,
         openArtifacts: noop,
+        openMembers: noop,
       }}
     >
       {content}

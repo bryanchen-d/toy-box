@@ -51,5 +51,12 @@ acquiring a connection. Do not read native history files directly.
 Preserve the recorded live/history fixtures under `tests/fixtures`. Changes to native
 projection must produce the same canonical reducer state live and after reopen.
 
+`usage.ts` projects durable `session.usage_record` receipts, usage checkpoints, and shutdown
+totals into canonical Session usage. One AI credit is 1e9 nano-AIU. Receipts include native
+subagents; source sequence watermarks prevent duplicate charges and checkpoint overlap.
+Ephemeral `assistant.usage` is not counted again. Coverage comes from native credit status,
+not the premium-request multiplier or token counts. Legacy totals without coverage are partial
+(or unavailable for an unreported zero), never assumed complete.
+
 Keep native SQL parsing, event aliases, pending-input correlation, SDK permissions,
 FFI handling, and non-authoritative background tool completions inside this implementation.
