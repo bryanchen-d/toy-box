@@ -10,6 +10,7 @@ function channelData(artifacts: ChannelArtifact[] = []): ChannelQueryData {
     channel: {
       id: "channel",
       name: "Canvas",
+      paused: false,
       model: { provider: "copilot", name: "gpt-5.5" },
       tasks: [],
       latestSequence: 0,

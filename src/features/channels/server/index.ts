@@ -27,6 +27,7 @@ import {
 } from "@channels/model";
 import { workspaceFileFromAbsolutePath } from "@files/server/paths";
 import {
+  abortSession,
   deliverSessionMessage,
   getSessionDirectory,
   getSessionUsage,
@@ -40,8 +41,11 @@ import { deleteWorker, spawnWorker } from "@workers/server";
 import { ChannelDatabase, type StoredChannelMessage, type ChannelChange } from "./database";
 import { resolveMessageResources, resolveEventResources } from "./resources";
 import { publishChannelEvent, releaseChannelEvents } from "./events";
+import { sharedMap } from "@/shared/server/processState";
+import { SerialTaskQueue } from "@/shared/serialTaskQueue";
 
 const CHANNEL_MESSAGE_LIMIT = 100;
+const channelEditQueues = sharedMap<SerialTaskQueue>("channel-edit-queues");
 
 export async function listChannels(): Promise<ChannelList> {
   return new ChannelDatabase(await getStateDatabase()).listChannels();
@@ -162,15 +166,43 @@ export async function createChannel(input: CreateChannelInput): Promise<Channel>
 }
 
 export async function editChannel(input: EditChannelInput): Promise<Channel> {
-  const database = new ChannelDatabase(await getStateDatabase());
-  const change = await database.editChannel(input);
-  publishChannelChange(change);
-  if (change.purposeChanged) {
-    void wakeChannelAgent(change.channel.id, {
+  let queue = channelEditQueues.get(input.channelId);
+  if (!queue) {
+    queue = new SerialTaskQueue();
+    channelEditQueues.set(input.channelId, queue);
+  }
+  const change = await queue.enqueue(async () => {
+    const database = new ChannelDatabase(await getStateDatabase());
+    const change = await database.editChannel(input);
+    publishChannelChange(change);
+    if (input.paused === true) {
+      const roster = await database.getRoster(input.channelId);
+      if (!roster) throw new Error("Channel not found.");
+      const results = await Promise.allSettled(
+        [roster.lead, ...roster.members].map(({ id }) => abortSession(id)),
+      );
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      if (errors.length)
+        throw new AggregateError(errors, "Channel paused; some agents could not be stopped.");
+    }
+    return change;
+  });
+  if (
+    !change.channel.paused &&
+    (change.purposeChanged ||
+      change.events.some(
+        (event) =>
+          event.type === "message" &&
+          isChannelSystemMessage(event.message) &&
+          event.message.content.type === "channel_paused" &&
+          !event.message.content.paused,
+      ))
+  ) {
+    await wakeChannelAgent(change.channel.id, {
       type: "channel_message",
       senderName: "the user",
-    }).catch((error) => {
-      console.error(`Failed to notify Channel lead ${change.channel.id}:`, error);
     });
   }
   return change.channel;
@@ -180,6 +212,7 @@ export async function deleteChannel(channelId: string): Promise<boolean> {
   const database = new ChannelDatabase(await getStateDatabase());
   const agentIds = await database.deleteChannel(channelId);
   if (!agentIds) return false;
+  channelEditQueues.delete(channelId);
   releaseChannelEvents(channelId);
   deleteSavedDraft(`channel:${channelId}`);
   broadcast({ type: "channel.deleted", channelId });
@@ -435,7 +468,11 @@ export async function wakeDueChannelAgents(now = new Date()): Promise<void> {
 
 /** Runs a routine now without changing its schedule. Returns false when it's already gone. */
 export async function runChannelRoutine(channelId: string, routineId: string): Promise<boolean> {
-  const routines = await new ChannelDatabase(await getStateDatabase()).listRoutines(channelId);
+  const database = new ChannelDatabase(await getStateDatabase());
+  const channel = await database.getChannel(channelId);
+  if (!channel) throw new Error("Channel not found.");
+  if (channel.paused) throw new Error("Resume the channel before running a routine.");
+  const routines = await database.listRoutines(channelId);
   const routine = routines.find(({ id }) => id === routineId);
   if (!routine) return false;
   await wakeChannelAgent(channelId, {
@@ -481,6 +518,7 @@ async function postMessage(
   const change = await database.appendMessage(input);
   const lead = channelLead(change.channel.id);
   publishChannelChange(change);
+  if (change.channel.paused) return change.message;
   const audience = resolveChannelAudience({
     content,
     sender,
@@ -598,8 +636,12 @@ async function wakeChannelAgent(
   agentId: string,
   systemMessage: SessionSystemMessage,
 ): Promise<void> {
-  await deliverSessionMessage(agentId, { systemMessage, immediate: true });
   const database = new ChannelDatabase(await getStateDatabase());
+  const agent = await requireChannelAgent(database, agentId);
+  const channel = await database.getChannel(agent.channelId);
+  if (!channel) throw new Error("Channel not found.");
+  if (channel.paused) return;
+  await deliverSessionMessage(agentId, { systemMessage, immediate: true });
   const change = await database.clearAgentStatus(agentId, "waiting");
   if (change) publishChannelChange(change);
 }

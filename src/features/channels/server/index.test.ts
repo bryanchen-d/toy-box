@@ -16,6 +16,7 @@ import * as workspaceEvents from "@workspace/server/events";
 import { setSessionStatus } from "@workspace/server/state";
 import { deleteSessionState } from "@workspace/server/state/sessions";
 import startChannels from "./startup";
+import { getChannelAgentConfiguration } from "./agent";
 
 let currentDb: Bun.SQL | undefined;
 
@@ -1011,4 +1012,141 @@ test("running a routine wakes its lead now and leaves its schedule alone", async
   await wakeDueChannelAgents(new Date(Date.now() + 61 * 60_000));
 
   expect(deliver.mock.calls).toEqual([wake, wake]);
+});
+
+test("pause stops the entire roster, saves messages without delivery, and resume wakes only the lead", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Pause", ...CHANNEL_DEFAULTS });
+  await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  const routine = await setChannelRoutineFromLead(channel.id, {
+    title: "CI",
+    schedule: "0 * * * *",
+    prompt: "Check CI",
+  });
+  const deliver = spyOnDelivery();
+  const abort = spyOn(sessionRuntime, "abortSession").mockImplementation(async () => {
+    expect((await channels.getChannel(channel.id))?.paused).toBe(true);
+    return true;
+  });
+  const events: ChannelEvent[] = [];
+  onTestFinished(subscribeChannelEvents(channel.id, (event) => events.push(event)));
+  onTestFinished(() => {
+    abort.mockRestore();
+    releaseChannelEvents(channel.id);
+  });
+
+  await editChannel({ channelId: channel.id, paused: true });
+  expect(abort.mock.calls.map(([id]) => id).sort()).toEqual([channel.id, "builder"].sort());
+  for (const id of [channel.id, "builder"]) {
+    await expect(getChannelAgentConfiguration(channelAgent(channel.id, id))).rejects.toThrow(
+      "channel is paused",
+    );
+  }
+  await postChannelMessageFromSession("user", {
+    channelId: channel.id,
+    id: "paused-post",
+    content: "@everyone continue later",
+  });
+  await editChannel({ channelId: channel.id, purpose: "Updated while paused" });
+  await wakeDueChannelAgents(new Date(Date.now() + 61 * 60_000));
+  await expect(runChannelRoutine(channel.id, routine.id)).rejects.toThrow("Resume the channel");
+  await expect(createChannelMember({ channelId: channel.id, name: "Late" })).rejects.toThrow(
+    "Resume the channel",
+  );
+  expect(deliver).not.toHaveBeenCalled();
+  expect(
+    (await channels.listMessagesAfter(channel.id)).some(({ id }) => id === "paused-post"),
+  ).toBe(true);
+
+  await editChannel({ channelId: channel.id, paused: false });
+  expect(deliver.mock.calls.map(([id]) => id)).toEqual([channel.id]);
+  await editChannel({ channelId: channel.id, paused: false });
+  expect(deliver).toHaveBeenCalledTimes(1);
+  expect(
+    events.filter((event) => event.type === "message").map(({ message }) => message.content),
+  ).toContainEqual({ type: "channel_paused", paused: false });
+});
+
+test("pause attempts every abort, surfaces failures, and retrying an already paused channel stops agents again", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, {
+    name: "Stop failures",
+    ...CHANNEL_DEFAULTS,
+  });
+  await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  const abort = spyOn(sessionRuntime, "abortSession").mockImplementation(async (id) => {
+    if (id === channel.id) throw new Error("Provider abort failed");
+    return true;
+  });
+  onTestFinished(() => {
+    abort.mockRestore();
+    releaseChannelEvents(channel.id);
+  });
+  await expect(editChannel({ channelId: channel.id, paused: true })).rejects.toThrow(
+    "some agents could not be stopped",
+  );
+  expect(abort).toHaveBeenCalledTimes(2);
+  expect((await channels.getChannel(channel.id))?.paused).toBe(true);
+  abort.mockResolvedValue(true);
+  await editChannel({ channelId: channel.id, paused: true });
+  expect(abort).toHaveBeenCalledTimes(4);
+});
+
+test("a concurrent resume waits until the previous pause has stopped the agents", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, {
+    name: "Concurrent pause",
+    ...CHANNEL_DEFAULTS,
+  });
+  const stopping = Promise.withResolvers<void>();
+  const stopped = Promise.withResolvers<boolean>();
+  const abort = spyOn(sessionRuntime, "abortSession").mockImplementation(() => {
+    stopping.resolve();
+    return stopped.promise;
+  });
+  const deliver = spyOnDelivery();
+  onTestFinished(() => {
+    stopped.resolve(true);
+    abort.mockRestore();
+    releaseChannelEvents(channel.id);
+  });
+  const pause = editChannel({ channelId: channel.id, paused: true });
+  await stopping.promise;
+  const resume = editChannel({ channelId: channel.id, paused: false });
+  expect((await channels.getChannel(channel.id))?.paused).toBe(true);
+  expect(deliver).not.toHaveBeenCalled();
+  stopped.resolve(true);
+  await Promise.all([pause, resume]);
+  expect((await channels.getChannel(channel.id))?.paused).toBe(false);
+  expect(deliver.mock.calls.map(([id]) => id)).toEqual([channel.id]);
+});
+
+test("pause does not wait behind provider startup from a resume", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, {
+    name: "Starting resume",
+    ...CHANNEL_DEFAULTS,
+  });
+  await channels.editChannel({ channelId: channel.id, paused: true });
+  const starting = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  const deliver = spyOnDelivery();
+  deliver.mockImplementation(async () => {
+    starting.resolve();
+    await started.promise;
+    return { disposition: "started", waitForCompletion: async () => ({ status: "completed" }) };
+  });
+  const abort = spyOn(sessionRuntime, "abortSession").mockResolvedValue(true);
+  onTestFinished(() => {
+    started.resolve();
+    abort.mockRestore();
+    releaseChannelEvents(channel.id);
+  });
+  const resume = editChannel({ channelId: channel.id, paused: false });
+  await starting.promise;
+  await editChannel({ channelId: channel.id, paused: true });
+  expect((await channels.getChannel(channel.id))?.paused).toBe(true);
+  expect(abort).toHaveBeenCalledWith(channel.id);
+  started.resolve();
+  await resume;
 });

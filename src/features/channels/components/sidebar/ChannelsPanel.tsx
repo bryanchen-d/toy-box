@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Hash, Plus } from "lucide-react";
+import { Hash, Pause, Plus } from "lucide-react";
 import { WorkingAgents } from "@channels/components/agents/WorkingAgents";
 import { useChannels } from "@channels/useChannels";
 import { SidebarListItem } from "@/shared/sidebar/SidebarListItem";
@@ -85,6 +85,9 @@ export function ChannelsPanel({
               titleContent={
                 <span className="flex items-center gap-3">
                   <span>{channel.name}</span>
+                  {channel.paused && (
+                    <Pause className="size-3 text-muted-foreground" aria-label="Channel paused" />
+                  )}
                   <WorkingAgents
                     working={agents
                       .filter(({ isRunning }) => isRunning)
@@ -102,6 +105,7 @@ export function ChannelsPanel({
               badge={directory ? <SessionMetadataBadges cwd={directory} /> : undefined}
               menuItems={
                 <ChannelMenuItems
+                  channel={channel}
                   onEdit={() => setEditChannelId(channel.id)}
                   onBrowse={directory ? () => onBrowseDirectory(directory) : undefined}
                   onDelete={() => setDeleteChannelId(channel.id)}

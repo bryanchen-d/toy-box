@@ -1064,4 +1064,43 @@ describe("channel routines", () => {
     expect((await channels.claimDueWakes(localTime(14, 10))).routines).toEqual([]);
     expect((await channels.claimDueWakes(localTime(15))).routines).toEqual(due);
   });
+
+  test("pause persists, retains schedules and follow-ups, and excludes only paused channels from claims", async () => {
+    const { channels, channel } = await setup();
+    const other = await createStoredChannel(channels, { name: "Active", ...CHANNEL_DEFAULTS });
+    setSystemTime(localTime(10, 30));
+    onTestFinished(() => setSystemTime());
+    const input = { title: "CI", schedule: "0 * * * *", prompt: "Check CI" };
+    const { routine } = await channels.setRoutine(channel.id, input);
+    await channels.setRoutine(other.id, input);
+    const status = { state: "waiting" as const, text: "CI", wakeAt: localTime(11).toISOString() };
+    await channels.setAgentStatus(channel.id, status, false);
+
+    const change = await channels.editChannel({ channelId: channel.id, paused: true });
+    expect(change.channel.paused).toBe(true);
+    expect((await channels.getSnapshot(channel.id, 100))?.channel.paused).toBe(true);
+    expect(
+      (await channels.listChannels()).channels.find(({ id }) => id === channel.id)?.paused,
+    ).toBe(true);
+    expect((await channels.editChannel({ channelId: channel.id, paused: true })).events).toEqual(
+      [],
+    );
+    expect(await channels.listRoutines(channel.id)).toEqual([routine]);
+    await expect(channels.createMember(channelAgent(channel.id, "late", "Late"))).rejects.toThrow(
+      "Resume the channel",
+    );
+    const due = await channels.claimDueWakes(localTime(14, 10));
+    expect(due.followUps).toEqual([]);
+    expect(due.routines).toEqual([{ channelId: other.id, title: "CI", prompt: "Check CI" }]);
+    expect((await channels.getAgent(channel.id))?.status).toEqual(status);
+
+    await channels.editChannel({ channelId: channel.id, paused: false });
+    const resumed = await channels.claimDueWakes(localTime(14, 10));
+    expect(resumed.followUps.map(({ agentId }) => agentId)).toEqual([channel.id]);
+    expect(resumed.routines).toEqual([{ channelId: channel.id, title: "CI", prompt: "Check CI" }]);
+    expect(await channels.claimDueWakes(localTime(14, 10))).toEqual({
+      followUps: [],
+      routines: [],
+    });
+  });
 });

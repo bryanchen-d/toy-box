@@ -104,6 +104,8 @@ export function reduceChannel(channel: Channel, event: ChannelEvent<unknown>): C
       }
       const content = message.content;
       switch (content.type) {
+        case "channel_paused":
+          return { ...next, paused: content.paused };
         case "channel_renamed":
           return { ...next, name: content.name };
         case "channel_purpose_changed":

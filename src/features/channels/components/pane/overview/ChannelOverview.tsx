@@ -119,6 +119,7 @@ export function ChannelOverview({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <ChannelMenuItems
+          channel={channel}
           onEdit={() => openDialog({ type: "edit_channel" })}
           onBrowse={channel.directory ? browseDirectory : undefined}
           onDelete={() => openDialog({ type: "delete_channel" })}

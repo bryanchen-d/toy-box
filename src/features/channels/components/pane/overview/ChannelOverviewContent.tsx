@@ -118,6 +118,7 @@ export function ChannelOverviewContent({
           </div>
           <button
             type="button"
+            disabled={channel.paused}
             className="flex w-full items-center gap-2.5 py-1 text-left text-xs text-muted-foreground hover:text-foreground"
             onClick={onAddAgent}
           >
@@ -188,7 +189,12 @@ export function ChannelOverviewContent({
         {routines.length > 0 ? (
           <div role="list" aria-label={`Routines in #${channel.name}`} className="space-y-2">
             {routines.map((routine) => (
-              <RoutineItem key={routine.id} channelId={channel.id} routine={routine} />
+              <RoutineItem
+                key={routine.id}
+                channelId={channel.id}
+                paused={channel.paused}
+                routine={routine}
+              />
             ))}
           </div>
         ) : (
@@ -201,8 +207,18 @@ export function ChannelOverviewContent({
 
 /** A routine's title and next run, expanding to its prompt. Only the lead adds or changes one;
  *  you can run or delete it. */
-function RoutineItem({ channelId, routine }: { channelId: string; routine: ChannelRoutine }) {
-  const { mutate: runRoutine } = useMutation(channelMutations.runRoutine(channelId));
+function RoutineItem({
+  channelId,
+  paused,
+  routine,
+}: {
+  channelId: string;
+  paused: boolean;
+  routine: ChannelRoutine;
+}) {
+  const { mutate: runRoutine, error: runError } = useMutation(
+    channelMutations.runRoutine(channelId),
+  );
   const { mutate: deleteRoutine } = useMutation(channelMutations.deleteRoutine(channelId));
   const [now] = useState(() => new Date());
 
@@ -218,16 +234,25 @@ function RoutineItem({ channelId, routine }: { channelId: string; routine: Chann
             <span className="text-foreground/90">{routine.title}</span>
             <Badge variant="metadata" title={routine.schedule}>
               <Clock3 className="h-3 w-3 shrink-0" />
-              <RelativeTime date={nextCronOccurrence(routine.schedule, now)} />
+              {paused ? (
+                "Paused"
+              ) : (
+                <RelativeTime date={nextCronOccurrence(routine.schedule, now)} />
+              )}
             </Badge>
           </span>
         </summary>
         <p className="mt-1.5 ml-5.5 whitespace-pre-wrap text-xs text-muted-foreground">
           {routine.prompt}
         </p>
+        {runError && (
+          <p role="alert" className="text-xs text-destructive">
+            {runError.message}
+          </p>
+        )}
       </details>
       <RowMenu name={routine.title}>
-        <DropdownMenuItem onClick={() => runRoutine(routine.id)}>
+        <DropdownMenuItem disabled={paused} onClick={() => runRoutine(routine.id)}>
           <Play /> Run routine
         </DropdownMenuItem>
         <DropdownMenuSeparator />

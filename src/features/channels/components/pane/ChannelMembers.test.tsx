@@ -16,6 +16,7 @@ test("the team table includes lead and members, nested work, waiting details and
   const channel: Channel = {
     id: "team",
     name: "Release",
+    paused: false,
     model: { provider: "copilot", name: "claude-opus-5.5", reasoningEffort: "high" },
     tasks: [
       {
@@ -113,6 +114,7 @@ function renderUsage(usage?: SessionUsage) {
   const channel: Channel = {
     id: "team",
     name: "Team",
+    paused: false,
     model: { provider: "copilot", name: "test" },
     tasks: [],
     latestSequence: 0,

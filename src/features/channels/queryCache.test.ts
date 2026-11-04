@@ -9,6 +9,7 @@ import type { ChannelConversationMessage, ChannelState } from "./model";
 const channel: Channel = {
   id: "channel",
   name: "Planning",
+  paused: false,
   purpose: "Prepare the release plan.",
   model: { provider: "copilot", name: "gpt-5.5" },
   tasks: [],

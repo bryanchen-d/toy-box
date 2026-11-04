@@ -17,6 +17,7 @@ const snapshot: ChannelState = {
   channel: {
     id: "channel",
     name: "Planning",
+    paused: false,
     model: { provider: "codex", name: "gpt-5.5" },
     tasks: [],
     latestSequence: 101,

@@ -5,6 +5,7 @@ import { channelSidebarStatus } from "./status";
 const channel: Channel = {
   id: "channel",
   name: "Planning",
+  paused: false,
   model: { provider: "copilot", name: "default" },
   tasks: [],
   latestSequence: 2,

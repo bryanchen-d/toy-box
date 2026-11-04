@@ -23,6 +23,7 @@ function snapshot(): ChannelState {
     channel: {
       id: "channel",
       name: "Studio",
+      paused: false,
       model: { provider: "codex", name: "gpt-5.5" },
       tasks: [],
       latestSequence: 101,
@@ -65,6 +66,24 @@ function system(sequence: number, content: ChannelSystemMessageContent) {
     },
   };
 }
+
+test("pause and resume replay to the same channel state without changing attention", () => {
+  const previous = snapshot();
+  const paused = reduceChannelState(
+    previous,
+    system(102, { type: "channel_paused", paused: true }),
+  );
+  expect(paused.channel.paused).toBe(true);
+  expect(paused.channel.requestSequence).toBe(previous.channel.requestSequence);
+  expect(paused.channel.completedSequence).toBe(previous.channel.completedSequence);
+  expect(paused.revision).toBe(102);
+  const resumed = reduceChannelState(
+    paused,
+    system(103, { type: "channel_paused", paused: false }),
+  );
+  expect(resumed.channel.paused).toBe(false);
+  expect(resumed.messages).toHaveLength(previous.messages.length + 2);
+});
 
 test("quiet tasks and model changes advance the cursor without creating transcript activity", () => {
   const previous = snapshot();

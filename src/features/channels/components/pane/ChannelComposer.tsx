@@ -137,14 +137,22 @@ export function ChannelComposer({
           agentCompletionSource({
             lead,
             members,
-            createMember: (name) => createMember.mutateAsync({ channelId, name }),
+            createMember: channel?.paused
+              ? undefined
+              : (name) => createMember.mutateAsync({ channelId, name }),
           }),
         ],
         menu: (completions) => <AgentCompletionMenu completions={completions} />,
       }}
       controls={
         <>
-          <ChannelAudience audience={audience} agentCount={agents.length} />
+          {channel?.paused ? (
+            <span className="text-xs text-muted-foreground" role="status">
+              Channel paused - Messages won't wake agents
+            </span>
+          ) : (
+            <ChannelAudience audience={audience} agentCount={agents.length} />
+          )}
           {request && onShowRequest && (
             <InputNeeded request={request.content} onShow={onShowRequest} />
           )}

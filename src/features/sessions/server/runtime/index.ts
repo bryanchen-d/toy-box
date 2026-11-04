@@ -174,7 +174,7 @@ export async function steerQueuedMessage(sessionId: string, clientId: string): P
 }
 
 export async function abortSession(sessionId: string): Promise<boolean> {
-  const stream = SessionStream.get(sessionId);
+  const stream = await currentSessionStream(sessionId);
   if (!stream) return false;
   await stream.abort();
   return true;

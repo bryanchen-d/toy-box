@@ -12,6 +12,7 @@ import { screenTools } from "@screens/server/tools";
 export async function getChannelAgentConfiguration(worker: Extract<Worker, { type: "channel" }>) {
   const channel = await new ChannelDatabase(await getStateDatabase()).getChannel(worker.channelId);
   if (!channel) throw new Error("Channel agent is incomplete.");
+  if (channel.paused) throw new Error("This channel is paused. Resume it before running agents.");
   const agent = channelAgentFromWorker(worker);
   const model = agent.isLead ? channel.model : agent.model;
   return {

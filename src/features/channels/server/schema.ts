@@ -4,6 +4,7 @@ export async function initializeChannelSchema(db: Bun.SQL): Promise<void> {
     CREATE TABLE IF NOT EXISTS channels (
       id              TEXT PRIMARY KEY,
       name            TEXT NOT NULL,
+      paused          INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
       purpose         TEXT,
       directory       TEXT,
       model           TEXT NOT NULL CHECK (json_valid(model)),

@@ -97,7 +97,7 @@ export class ChannelDatabase {
       await db`
         INSERT INTO channels ${db({
           id,
-          ...channelColumns({ ...input, tasks: [] }),
+          ...channelColumns({ ...input, paused: false, tasks: [] }),
           updated_at: lead.createdAt,
         })}
       `;
@@ -208,6 +208,7 @@ export class ChannelDatabase {
   async createMember(worker: Extract<Worker, { type: "channel" }>) {
     return inStateTransaction(this.db, async (db) => {
       const channel = await requireChannel(db, worker.channelId);
+      if (channel.paused) throw new Error("Resume the channel before adding an agent.");
       await assertMemberNameAvailable(db, worker.channelId, worker.name);
       await new WorkerDatabase(db).create(worker);
       const member = channelMemberFromWorker(worker);
@@ -603,8 +604,12 @@ export class ChannelDatabase {
   async claimDueWakes(now: Date) {
     return inStateTransaction(this.db, async (db) => {
       const workers = new WorkerDatabase(db);
+      const pausedChannels = new Set(
+        (await db<{ id: string }[]>`SELECT id FROM channels WHERE paused = 1`).map(({ id }) => id),
+      );
       const followUps = [];
       for (const worker of await workers.list("channel")) {
+        if (pausedChannels.has(worker.channelId)) continue;
         const metadata = channelAgentMetadataSchema.parse(worker.metadata);
         const { status } = metadata;
         if (status?.state !== "waiting" || !status.wakeAt || new Date(status.wakeAt) > now)
@@ -625,6 +630,7 @@ export class ChannelDatabase {
       const routines = await db<(ChannelRoutine & { channel_id: string })[]>`
         SELECT id, channel_id, title, schedule, prompt FROM channel_routines
         WHERE next_at <= ${now.toISOString()}
+          AND channel_id IN (SELECT id FROM channels WHERE paused = 0)
       `;
       for (const { id, schedule } of routines) {
         await db`
@@ -677,7 +683,7 @@ async function recordChannelChange<Event extends ChannelEvent>(
 async function updateChannelFields(
   db: Bun.SQL,
   current: Channel,
-  changes: ChannelChanges,
+  changes: ChannelChanges & { paused?: boolean },
   actor: ChannelMessageActor,
 ) {
   if (changes.model && changes.model.provider !== current.model.provider) {
@@ -689,6 +695,7 @@ async function updateChannelFields(
     return { ...(await recordChannelChange(db, current, events)), purposeChanged: false };
   }
   const updates: ChannelSystemMessageContent[] = [];
+  if (next.paused !== current.paused) updates.push({ type: "channel_paused", paused: next.paused });
   if (next.name !== current.name) updates.push({ type: "channel_renamed", actor, name: next.name });
   if (next.purpose !== current.purpose)
     updates.push({ type: "channel_purpose_changed", actor, purpose: next.purpose ?? null });
@@ -740,11 +747,12 @@ async function updateChannelFields(
 function channelColumns(
   channel: Pick<
     Channel,
-    "name" | "purpose" | "directory" | "model" | "tasks" | "preview" | "canvasArtifactId"
+    "name" | "paused" | "purpose" | "directory" | "model" | "tasks" | "preview" | "canvasArtifactId"
   >,
 ) {
   return {
     name: channel.name,
+    paused: channel.paused ? 1 : 0,
     purpose: channel.purpose ?? null,
     directory: channel.directory ?? null,
     model: JSON.stringify(channel.model),
@@ -932,6 +940,7 @@ type ChannelRow = {
   id: string;
   name: string;
   purpose: string | null;
+  paused: number;
   directory: string | null;
   model: string;
   tasks: string;
@@ -982,6 +991,7 @@ function channelFromRow(row: ChannelRow): Channel {
   return {
     id: row.id,
     name: row.name,
+    paused: row.paused === 1,
     ...(row.purpose ? { purpose: row.purpose } : {}),
     ...(row.directory ? { directory: row.directory } : {}),
     model: modelConfigurationSchema.parse(JSON.parse(row.model)),

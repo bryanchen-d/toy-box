@@ -25,18 +25,22 @@ export function agentCompletionSource({
 }: {
   lead: ChannelLead;
   members: readonly ChannelMember[];
-  /** Creates a member named by an unknown handle, resolving to the created member. */
-  createMember: (name: string) => Promise<{ name: string }>;
+  /** Omit while paused; otherwise creates and onboards an unknown handle. */
+  createMember?: (name: string) => Promise<{ name: string }>;
 }): CompletionSource<AgentCompletionItem> {
   return {
     id: "agent",
     trigger: AGENT_MENTION_TRIGGER,
-    empty: "Type a name to create a member.",
-    query: (text) => agentItems(text.toLowerCase(), lead, members),
-    accept: (item) =>
-      item.kind === "create"
-        ? createMember(item.label).then(({ name }) => `@${agentHandleFromName(name)}`)
-        : item.value,
+    empty: createMember ? "Type a name to create a member." : "No matching agents.",
+    query: (text) =>
+      agentItems(text.toLowerCase(), lead, members).filter(
+        (item) => createMember || item.kind !== "create",
+      ),
+    accept: (item) => {
+      if (item.kind !== "create") return item.value;
+      if (!createMember) throw new Error("Resume the channel before adding an agent.");
+      return createMember(item.label).then(({ name }) => `@${agentHandleFromName(name)}`);
+    },
   };
 }
 

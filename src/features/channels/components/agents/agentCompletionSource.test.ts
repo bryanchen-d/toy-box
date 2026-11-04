@@ -20,6 +20,14 @@ function complete(
 }
 
 describe("agentCompletionSource", () => {
+  test("a paused channel can still mention existing agents without offering new ones", () => {
+    const source = agentCompletionSource({ lead, members });
+    expect(source.query("critic")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: "@critic" })]),
+    );
+    expect(source.query("new-agent")).toEqual([]);
+  });
+
   test("matches agent handles at mention boundaries", () => {
     const { trigger } = complete("").source;
     expect(matchCompletion(trigger, "Ask (@Res", 9)).toEqual({

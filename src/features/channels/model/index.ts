@@ -41,6 +41,7 @@ const channelReactionSchema = z
 export type Channel = {
   id: string;
   name: string;
+  paused: boolean;
   purpose?: string;
   directory?: string;
   model: ModelConfiguration;
@@ -289,6 +290,7 @@ export const channelRoutineIdentitySchema = z
   .strict();
 
 export const channelSystemMessageContentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("channel_paused"), paused: z.boolean() }).strict(),
   z.object({ type: z.literal("tasks_completed") }).strict(),
   z.object({ type: z.literal("member_joined"), member: channelMemberSchema }).strict(),
   z.object({ type: z.literal("member_left"), member: channelMemberSchema }).strict(),
@@ -488,9 +490,9 @@ export type ChannelMessageActor = z.output<typeof channelMessageActorSchema>;
 
 export const editChannelInputSchema = channelChangesSchema
   .pick({ name: true, purpose: true, model: true })
-  .extend(channelIdentitySchema.shape)
+  .extend({ ...channelIdentitySchema.shape, paused: z.boolean().optional() })
   .refine(({ channelId: _channelId, ...changes }) => hasChanges(changes), {
-    message: "Change the channel name, purpose, or lead model.",
+    message: "Change the channel name, purpose, lead model, or paused state.",
   });
 
 export const updateChannelInputSchema = channelChangesSchema

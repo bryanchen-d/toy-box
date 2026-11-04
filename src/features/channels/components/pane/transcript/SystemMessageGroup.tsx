@@ -5,6 +5,7 @@ import {
   Folder,
   MonitorPlay,
   PanelsTopLeft,
+  Pause,
   Pencil,
   UserMinus,
   UserPlus,
@@ -94,6 +95,10 @@ const SYSTEM_MESSAGES: {
     ) => { content: ReactNode; tooltip?: string };
   };
 } = {
+  channel_paused: {
+    icon: <Pause className="size-3.5 shrink-0" />,
+    present: ([{ paused }]) => ({ content: paused ? "Channel paused" : "Channel resumed" }),
+  },
   tasks_completed: {
     icon: <DoneIndicator className="size-4 shrink-0" />,
     present: () => ({ content: "All tasks completed" }),

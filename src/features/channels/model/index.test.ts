@@ -35,6 +35,16 @@ const user = { type: "user" } as const;
 const critic = { type: "agent", agentId: "critic" } as const;
 const leadSender = { type: "agent", agentId: lead.id } as const;
 
+test("only user edits can pause or resume a channel", () => {
+  for (const paused of [true, false]) {
+    expect(editChannelInputSchema.parse({ channelId: "channel", paused })).toEqual({
+      channelId: "channel",
+      paused,
+    });
+    expect(updateChannelInputSchema.safeParse({ paused }).success).toBe(false);
+  }
+});
+
 function audience(content: string, sender: typeof user | typeof critic | typeof leadSender = user) {
   return resolveChannelAudience({ content, sender, lead, members });
 }

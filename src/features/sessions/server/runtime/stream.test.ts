@@ -2,6 +2,7 @@ import type { SessionConnection } from "@providers/server/provider";
 import { describe, expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import * as realSessionProviders from "../providers";
 import {
+  abortSession,
   deliverSessionMessage,
   getSessionUsage,
   registerPendingSessionCompletion,
@@ -1824,6 +1825,31 @@ describe("createSession", () => {
 });
 
 describe("deliverSessionMessage", () => {
+  test("abort waits for an acquiring session, then stops it without leaving a live stream", async () => {
+    const id = "session-abort-acquiring";
+    cleanUpStreamAfterTest(id, { restoreMocks: true });
+    const loading = Promise.withResolvers<void>();
+    const loaded = Promise.withResolvers<void>();
+    const abort = mock(async () => {});
+    mockStreamRuntimeModules({
+      sessionRegistry: { acquireSession: async () => makeFakeSession({ abort }) },
+      snapshotCache: {
+        loadSessionSnapshot: async () => {
+          loading.resolve();
+          await loaded.promise;
+          return idleSnapshot(id, []);
+        },
+      },
+    });
+    const delivering = deliverSessionMessage(id, userMessage("start"));
+    await loading.promise;
+    const stopping = abortSession(id);
+    loaded.resolve();
+    await Promise.all([delivering, stopping]);
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(SessionStream.get(id)).toBeUndefined();
+  });
+
   test("does not acquire a session for execution when history replay fails", async () => {
     const sessionId = "session-replay-failure";
     cleanUpStreamAfterTest(sessionId, { restoreMocks: true });

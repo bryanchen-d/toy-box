@@ -30,6 +30,11 @@ accountable for the purpose and for the quality of every member's outcome.
    completes the task list. The sidebar holds each until the user replies or reads it.
 5. **Keep going.** Follow-ups and routines privately wake the lead on a schedule, so ongoing work
    advances without anyone posting.
+6. **Pause.** The user can pause or resume the Channel from either channel menu. Pausing durably
+   stops the lead and all members, including Sessions still starting, and suppresses message,
+   follow-up, and routine wakes. Messages still save, and history, members, tasks, and schedules
+   remain intact. Resuming immediately wakes the lead to read the Channel and continue.
+   The composer still completes existing mentions while paused, but never offers to create an agent.
 
 ## Domain model
 
@@ -44,7 +49,7 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
 ```
 
 - `Channel` owns its name, optional purpose and working directory, lead model, public
-  tasks, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
+  tasks, paused state, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
   Its `requestSequence` and `completedSequence` refer to transcript milestones. Completion is unread
   when it follows `seenThrough`; a request remains pending until a user reply clears its sequence.
 - `ChannelTask` has a short, stable, channel-unique ID such as `t12`, title, status, optional owner
@@ -174,6 +179,13 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
 - Wake a lead privately when its follow-up or one of its routines comes due, or when the user runs a
   routine, through ordinary Session delivery. A run adds nothing to the transcript, and the lead
   posts only if something needs the channel. Running a routine leaves its schedule unchanged.
+- Paused Channels are excluded from due claims without consuming their follow-ups or advancing
+  routine schedules. On resume, missed routine occurrences collapse into one as usual. Manual runs
+  and new member admission reject while paused; user messages save without waking anyone.
+  Only user edits can change `paused`; `channel_paused` messages synchronize and replay this fact.
+  Channel edits serialize stop/resume effects, and agent configuration rejects execution while
+  paused, including direct private-Session starts. This does not disable unrelated workspace
+  Automations or terminate detached programs an agent previously launched.
 
 ## Agent execution
 
