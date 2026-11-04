@@ -30,6 +30,7 @@ export function ChannelMembers({
 }) {
   const { lead, members, presence } = useChannelPane();
   const [editingId, setEditingId] = useState<string>();
+  const [showModel, setShowModel] = useState(true);
   const [showCredits, setShowCredits] = useState(false);
   const editingMember = members.find(({ id }) => id === editingId);
   const agents = [lead, ...[...members].sort(compareChannelAgents)];
@@ -48,6 +49,9 @@ export function ChannelMembers({
         <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <h2 className="min-w-0 truncate text-sm font-medium">Team members ({agents.length})</h2>
         <RowMenu name="Team">
+          <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>
+            Show model
+          </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={showCredits} onCheckedChange={setShowCredits}>
             Show AI credits
           </DropdownMenuCheckboxItem>
@@ -104,7 +108,7 @@ export function ChannelMembers({
               <th scope="col">Current task</th>
               <th scope="col">Pending tasks</th>
               <th scope="col">Blocking</th>
-              <th scope="col">Model</th>
+              {showModel && <th scope="col">Model</th>}
               {showCredits && (
                 <th scope="col" className="text-right">
                   AI credits spent
@@ -157,13 +161,15 @@ export function ChannelMembers({
                       <TaskTitles tasks={blocked} />
                     )}
                   </td>
-                  <td className="max-w-60 break-words">
-                    {model ? (
-                      formatModelConfiguration(model)
-                    ) : (
-                      <span className="text-muted-foreground">Workspace default</span>
-                    )}
-                  </td>
+                  {showModel && (
+                    <td className="max-w-60 break-words">
+                      {model ? (
+                        formatModelConfiguration(model)
+                      ) : (
+                        <span className="text-muted-foreground">Workspace default</span>
+                      )}
+                    </td>
+                  )}
                   {showCredits && (
                     <td className="whitespace-nowrap text-right tabular-nums">
                       <CreditUsage

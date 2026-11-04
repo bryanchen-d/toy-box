@@ -379,6 +379,9 @@ subtotal. Load and refresh failures are explicit and retryable. The total covers
 roster, not removed members or a cross-provider currency conversion. No billing data is
 stored by Channels.
 
+The same title menu's "Show model" toggle shows or hides the Model column for every agent,
+including the lead. It is local to the mounted view, defaults on, and is independent of AI credits.
+
 `ChannelPane` takes a Channel ID and owns one cached `ChannelState` for its transcript, overview,
 and composer. It does not read the workspace catalog or derive agent presence from Session state.
 The sidebar uses the catalog and workspace activity independently; private Session previews and
