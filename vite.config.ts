@@ -6,8 +6,8 @@ import { resolve } from "node:path";
 import { constants } from "node:zlib";
 import compression from "compression";
 import tailwindcss from "@tailwindcss/vite";
-import { removeUncompressedAssets } from "./cli/build/publicAssets";
-import { socketDevelopment } from "./src/server/socketDevelopment";
+import { removeUncompressedAssets } from "./cli/build/publicAssets.ts";
+import { socketDevelopment } from "./src/server/socketDevelopment.ts";
 
 export default defineConfig(({ mode }) => {
   const isProduction = mode === "production";
