@@ -321,9 +321,7 @@ function WorkspacePage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(initialLayout.sidebarCollapsed);
   const [isTerminalOpen, setIsTerminalOpen] = useState(initialLayout.terminalOpen);
   const [sidebarPanels, setSidebarPanels] = useState<SidebarPanels>(initialLayout.panels);
-  const [isTeamOverviewPinned, setIsTeamOverviewPinned] = useState(
-    initialLayout.teamOverviewPinned,
-  );
+  const [teamPanel, setTeamPanel] = useState(initialLayout.teamPanel);
   const [teamAsideSizes, setTeamAsideSizes] = useState(initialLayout.teamAsideSizes);
 
   const hasModels = useHasModels();
@@ -577,7 +575,7 @@ function WorkspacePage() {
     panels: sidebarPanels,
     hyperOpen: hyper.isOpen,
     hyperPosition: hyperSession?.position ?? initialLayout.hyperPosition,
-    teamOverviewPinned: isTeamOverviewPinned,
+    teamPanel,
     teamAsideSizes,
   });
   useEffect(() => {
@@ -772,8 +770,8 @@ function WorkspacePage() {
         onOpenFile={openFile}
         onRevealFile={revealFile}
         onOpenScreen={openScreen}
-        teamOverviewPinned={isTeamOverviewPinned}
-        onTeamOverviewPinnedChange={setIsTeamOverviewPinned}
+        teamPanel={teamPanel}
+        onTeamPanelChange={setTeamPanel}
         teamAsideSizes={teamAsideSizes}
         onTeamAsideSizeChange={(kind, size) =>
           setTeamAsideSizes((sizes) => ({ ...sizes, [kind]: size }))

@@ -8,6 +8,7 @@ import type {
 } from "@teams/model";
 import type { TeamAgentPresence } from "@teams/model/presence";
 import type { WorkspaceFile } from "@files/model";
+import type { TeamPanel } from "./panels";
 
 /** The open Team's agents, its threads and artifacts, and the drafts its transcript and
  *  overview start. */
@@ -31,9 +32,8 @@ type TeamPane = {
   mention: () => void;
   /** Brings a shared artifact's editor forward, opening it when it isn't showing. */
   openArtifact: (file: WorkspaceFile) => void;
-  /** Shows the artifacts panel, where the user arranges what the composer tray shows. */
-  openArtifacts: () => void;
-  openMembers: () => void;
+  /** Shows one of the Team's panels beside chat, as its panel bar button would. */
+  openPanel: (panel: TeamPanel) => void;
 };
 
 const TeamPaneContext = createContext<TeamPane | undefined>(undefined);

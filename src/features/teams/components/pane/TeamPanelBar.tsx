@@ -1,0 +1,83 @@
+import {
+  Clock3,
+  Files,
+  Hash,
+  ListChecks,
+  PanelsTopLeft,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn } from "@/shared/utils";
+import { TEAM_PANELS, type TeamPanel } from "./panels";
+
+const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
+  overview: { icon: Hash, label: "Overview" },
+  canvas: { icon: PanelsTopLeft, label: "Canvas" },
+  members: { icon: Users, label: "Members" },
+  tasks: { icon: ListChecks, label: "Tasks" },
+  artifacts: { icon: Files, label: "Artifacts" },
+  routines: { icon: Clock3, label: "Routines" },
+};
+
+/** The Team pane's right edge: one toggle per panel, so each is a click from chat. */
+export function TeamPanelBar({
+  panel,
+  hasCanvas,
+  variant,
+  onToggle,
+}: {
+  panel: TeamPanel | undefined;
+  hasCanvas: boolean;
+  variant: PaneVariant;
+  onToggle: (panel: TeamPanel) => void;
+}) {
+  return (
+    <nav
+      aria-label="Team panels"
+      className={cn(
+        "flex w-10 shrink-0 flex-col items-center gap-1 border-l bg-background pb-3",
+        // A normal pane floats its actions over its top-right corner.
+        variant === "normal" ? "pt-12" : "pt-2",
+      )}
+    >
+      {TEAM_PANELS.map((kind) => {
+        const { icon: Icon, label } = PANEL_BUTTONS[kind];
+        const isOpen = panel === kind;
+        const unavailable = kind === "canvas" && !hasCanvas;
+        const tooltip = unavailable ? "No canvas yet" : label;
+
+        return (
+          <Tooltip key={kind}>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={label}
+                  aria-pressed={isOpen}
+                  aria-disabled={unavailable || undefined}
+                  className={cn(
+                    isOpen ? "bg-muted text-foreground" : "text-muted-foreground",
+                    unavailable ? "cursor-not-allowed opacity-40" : "hover:text-foreground",
+                  )}
+                  onClick={() => {
+                    if (!unavailable) onToggle(kind);
+                  }}
+                >
+                  <Icon />
+                </Button>
+              }
+            />
+            <TooltipContent side="left" sideOffset={6}>
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </nav>
+  );
+}

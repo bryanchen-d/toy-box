@@ -40,6 +40,7 @@ import { Input } from "@/shared/ui/input";
 import { RelativeTime } from "@/shared/ui/relative-time";
 import { cn } from "@/shared/utils";
 import { useTeamPane } from "./TeamPaneContext";
+import { TeamPanelHeader } from "./TeamPanelHeader";
 import { RowMenu } from "./overview/RowMenu";
 
 /** Shared artifacts appear in the composer tray; archived ones are filed away from it. */
@@ -152,20 +153,12 @@ export function TeamArtifacts({
 
   return (
     <section aria-label="Artifacts" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
-      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-3 pr-24">
-        <Files className="size-4 shrink-0 text-muted-foreground" />
-        <h2 className="min-w-0 truncate text-sm font-medium">Artifacts</h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Close artifacts"
-          title="Close artifacts"
-          onClick={onClose}
-        >
-          <X />
-        </Button>
-      </div>
+      <TeamPanelHeader
+        icon={Files}
+        title="Artifacts"
+        closeLabel="Close artifacts"
+        onClose={onClose}
+      />
 
       <div className="shrink-0 space-y-2 border-b bg-background px-4 py-3">
         <div className="relative">

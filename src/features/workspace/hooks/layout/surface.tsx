@@ -39,9 +39,9 @@ const { StoreProvider, useStoreContext: useWorkspaceSurface } = createStoreConte
     /** Brings a file's pane forward, opening the file when it isn't showing. */
     revealFile?: (file: WorkspaceFile) => void;
     revealScreen: (screenId: string) => boolean;
-    /** Whether Team overviews stay pinned open, where the surface remembers it. */
-    teamOverviewPinned?: boolean;
-    setTeamOverviewPinned?: (pinned: boolean) => void;
+    /** The Team panel wide panes open beside chat, where the surface remembers it. */
+    teamPanel?: string;
+    setTeamPanel?: (panel: string | undefined) => void;
     /** Each Team aside kind's resized share of a wide pane, where the surface remembers it. */
     teamAsideSizes?: Readonly<Record<string, number>>;
     setTeamAsideSize?: (kind: string, size: number) => void;
@@ -65,8 +65,8 @@ export function WorkspaceSurfaceProvider({
   onOpenFile,
   onRevealFile,
   onOpenScreen,
-  teamOverviewPinned,
-  onTeamOverviewPinnedChange,
+  teamPanel,
+  onTeamPanelChange,
   teamAsideSizes,
   onTeamAsideSizeChange,
   children,
@@ -77,8 +77,8 @@ export function WorkspaceSurfaceProvider({
   onOpenFile?: (path: string) => void;
   onRevealFile?: (file: WorkspaceFile) => void;
   onOpenScreen?: (screenId: string) => Promise<void>;
-  teamOverviewPinned?: boolean;
-  onTeamOverviewPinnedChange?: (pinned: boolean) => void;
+  teamPanel?: string;
+  onTeamPanelChange?: (panel: string | undefined) => void;
   teamAsideSizes?: Readonly<Record<string, number>>;
   onTeamAsideSizeChange?: (kind: string, size: number) => void;
   children: ReactNode;
@@ -161,8 +161,8 @@ export function WorkspaceSurfaceProvider({
         openFile: onOpenFile,
         revealFile: onRevealFile,
         revealScreen,
-        teamOverviewPinned,
-        setTeamOverviewPinned: onTeamOverviewPinnedChange,
+        teamPanel,
+        setTeamPanel: onTeamPanelChange,
         teamAsideSizes,
         setTeamAsideSize: onTeamAsideSizeChange,
       }}

@@ -72,8 +72,7 @@ test("the team table includes lead and members, nested work, waiting details and
           isSending: () => false,
           mention: noop,
           openArtifact: noop,
-          openArtifacts: noop,
-          openMembers: noop,
+          openPanel: noop,
         }}
       >
         <TeamMembers team={team} onClose={noop} />
@@ -138,8 +137,7 @@ function renderUsage(usage?: SessionUsage) {
           isSending: () => false,
           mention: noop,
           openArtifact: noop,
-          openArtifacts: noop,
-          openMembers: noop,
+          openPanel: noop,
         }}
       >
         <TeamMembers team={team} onClose={noop} />

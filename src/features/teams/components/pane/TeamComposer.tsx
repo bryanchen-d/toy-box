@@ -77,7 +77,7 @@ export function TeamComposer({
   const inThread = threadSequence !== undefined;
   const request = state?.request;
   const needsReply = team ? teamHasPendingRequest(team) : false;
-  const { lead, members, agents, openArtifact, openArtifacts } = useTeamPane();
+  const { lead, members, agents, openArtifact, openPanel } = useTeamPane();
   // The arrangement puts pins before new shares; archived artifacts stay off the tray.
   const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived, pinned }) =>
     archived ? [] : [{ file, label: title, time: Date.parse(sharedAt), pinned }],
@@ -139,7 +139,7 @@ export function TeamComposer({
             onPinArtifact={(file, pinned) =>
               arrangeArtifacts({ artifactIds: [workspaceFileId(file)], pinned })
             }
-            onManageArtifacts={openArtifacts}
+            onManageArtifacts={() => openPanel("artifacts")}
           >
             {arrangementError && (
               <p role="alert" className="px-2 py-1 text-xs text-destructive">

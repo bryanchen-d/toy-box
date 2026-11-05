@@ -90,7 +90,8 @@ const workspaceLayoutSchema = z.object({
   hyperPosition: z
     .object({ x: z.number().finite(), y: z.number().finite() })
     .default(DEFAULT_HYPER_POSITION),
-  teamOverviewPinned: z.boolean().default(false),
+  /** The Team panel a wide pane opens beside chat, which Teams names and validates. */
+  teamPanel: z.string().min(1).optional(),
   /** Each Team aside kind's resized share of a wide pane; unresized kinds keep their default. */
   teamAsideSizes: z
     .record(z.string(), z.number().finite().transform(clampTeamAsideSize))
@@ -139,7 +140,7 @@ export function serializeWorkspaceLayout(layout: WorkspaceLayout): string {
     layout.hyperPosition.y !== DEFAULT_HYPER_POSITION.y
       ? { hyperPosition: layout.hyperPosition }
       : {}),
-    ...(layout.teamOverviewPinned ? { teamOverviewPinned: true } : {}),
+    ...(layout.teamPanel ? { teamPanel: layout.teamPanel } : {}),
     ...(Object.keys(layout.teamAsideSizes).length > 0
       ? { teamAsideSizes: layout.teamAsideSizes }
       : {}),

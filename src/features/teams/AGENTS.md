@@ -480,19 +480,26 @@ Choosing a Team result reuses the message-reference path: open its containing th
 history through the root, and reveal and highlight the selected message. Within a thread,
 selection scrolls and highlights in place without remounting its composer or restoring end following.
 
-`TeamArtifacts` is the third aside, where the user manages what the composer tray shows. It
-opens from the tray's full list and the overview, and lists the Shared or Archived shelf with
+`TeamArtifacts` is the artifacts panel, where the user manages what the composer tray shows. It
+opens from the panel bar, the tray's full list, and the overview, and lists the Shared or Archived shelf with
 search. Each artifact opens on click, drags by a gutter grip on the Shared shelf while unfiltered,
 and has a menu to move it to the top, up, or down, or to archive or restore it. Moves stay relative
 to the artifact's pinned or unpinned group while searching. A selection of visible artifacts archives, restores, or moves
 to the top together, and Sort arranges only unpinned Shared artifacts once by newest, oldest, or name. A drag
 reorders locally until its optimistic arrangement replaces the list.
 
+The pane's right edge is `TeamPanelBar`, one toggle per panel: overview, canvas (available once
+the lead sets one), members, tasks, artifacts, and routines. One aside shows beside chat at a time.
+Choosing a panel replaces the current one, and choosing it again returns to chat. A thread, a
+message search result, or a members or agent reference opens over the panel, and closing it returns
+to the panel. A normal pane opens the panel the Workspace surface remembers in the layout cookie,
+so it persists across reloads and Teams; a compact pane keeps its own and opens on chat.
+
 In a wide pane, chat and the aside form one resizable panel group divided by the shared
 `ResizableHandle`; a narrow pane hides chat and the divider, so the aside fills it. Each aside
-kind is its own panel with its own share of the pane, 50% for the canvas and 35% otherwise until
-resized within 25–75%. The divider commits the share a drag or keyboard step leaves, and the
-Workspace surface remembers it per kind in the layout cookie, as it does the overview pin.
+kind is its own panel with its own share of the pane, 50% for the canvas, 65% for members, and
+30–35% otherwise until resized within 25–75%. The divider commits the share a drag or keyboard
+step leaves, and the Workspace surface remembers it per kind in the layout cookie.
 
 `useTeam.postMessage` returns the persisted message, or rejects on delivery
 failure. The composer returns that promise to its draft lifecycle for restoration
@@ -527,7 +534,7 @@ presents one deleted identity everywhere.
   each kind's static icon and presentation function together in one local object; each function
   receives its kind's typed contents. Its shared row renders the resulting content and tooltip;
   grouping and the durable message model stay separate.
-  A pane-local view, chosen beside the overview's trigger and hidden with it while pinned, shows
+  A pane-local view, chosen in the pane's actions, shows
   all messages or only the user's own and the agent messages that never collapse. Rows form from
   the shown messages, so runs and dividers follow what the reader sees; changing the view lands
   the transcript afresh, and read state stays Team-wide.
@@ -540,7 +547,7 @@ presents one deleted identity everywhere.
   The "New" position comes from the current read position on arrival and holds
   while it's read, so arrivals during reading are never marked. A flagged question is marked until a
   later user message acknowledges it. The activity row shows working agents; waiting
-  shows in the overview, since a request already marks what the user needs to answer.
+  shows in the members panel, since a request already marks what the user needs to answer.
 - The composer docks Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx)
   for shared artifacts in the user's arrangement, without archived ones, plus the tasks and
   preview. Each artifact in the tray's full list offers to archive it, and the list ends with
@@ -553,12 +560,14 @@ presents one deleted identity everywhere.
   An "Input needed" button beside the composer's audience stays visible
   until the user replies. Hover previews `state.request`; clicking loads
   any older pages needed and scrolls to the question. Scrolling never changes the composer height.
-- The overview opens as a sheet or pins beside the transcript, which the workspace layout remembers.
-  It shows the purpose, directory, and preview, then the team with its presence, the shared
-  artifacts with when each was shared, the tasks, and any routines by title with their next
-  run, each expanding to its prompt and offering Run routine and Delete routine. A waiting lead shows
-  when its follow-up checks back. Its artifacts are the Shared shelf in order, with Manage opening
-  the artifacts panel.
+- The overview panel shows the purpose, directory, and preview, then summarizes each other panel
+  under a View all link that opens it: the roster's avatars and how many are working, task progress
+  with up to three tasks in progress, the first three Shared artifacts, and the next routine to run.
+  Its header holds the team menu.
+- The tasks panel holds the full task checklist. The routines panel lists routines by title with
+  their next run, each expanding to its prompt and offering Run routine and Delete routine. The
+  members panel adds an agent through the composer's mention and removes members after
+  confirmation, alongside its roster table.
 - Both checklists share a task projection with stable identity and compact diff totals (exact counts
   on hover and for assistive technology). Naturally sized counts and owners float beside the first
   title line, without reserved columns. Pending rows omit diff counts; reported zeros use the same
@@ -567,7 +576,7 @@ presents one deleted identity everywhere.
   share that detail slot and open ordinary file panes without toggling the parent; their hover
   and accessible labels identify the artifact, while full titles stay in the artifact list.
   Inline disclosures keep direct-child progress with the title in the same count badge as section
-  headings; a parent's own artifact action remains visible while collapsed. The overview and popup
+  headings; a parent's own artifact action remains visible while collapsed. The tasks panel and popup
   share a heading layout with a count badge and the whole-list diff at the right. The progress bar
   appears only in the desktop composer-tray pill.
 - Sidebar priority is waiting, unread completion, ordinary unread, then live lead/member activity;

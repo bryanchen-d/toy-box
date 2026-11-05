@@ -14,7 +14,6 @@ const defaultLayout = {
   panels: { teams: true, sessions: true, apps: false, automations: false },
   hyperOpen: false,
   hyperPosition: { x: 24, y: 24 },
-  teamOverviewPinned: false,
   teamAsideSizes: {},
 };
 
@@ -43,7 +42,7 @@ describe("workspace layout", () => {
       panels: { teams: true, sessions: false, apps: true, automations: false },
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
-      teamOverviewPinned: true,
+      teamPanel: "tasks",
       teamAsideSizes: { thread: 40 },
     });
 
@@ -55,7 +54,7 @@ describe("workspace layout", () => {
       panels: { sessions: false, apps: true },
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
-      teamOverviewPinned: true,
+      teamPanel: "tasks",
       teamAsideSizes: { thread: 40 },
     });
     expect(readWorkspaceLayout(`other=value; ${cookie}`)).toEqual({
@@ -66,7 +65,7 @@ describe("workspace layout", () => {
       panels: { teams: true, sessions: false, apps: true, automations: false },
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
-      teamOverviewPinned: true,
+      teamPanel: "tasks",
       teamAsideSizes: { thread: 40 },
     });
   });

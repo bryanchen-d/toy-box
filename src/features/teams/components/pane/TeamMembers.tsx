@@ -1,19 +1,26 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Users, X } from "lucide-react";
+import { UserMinus, UserPlus, Users } from "lucide-react";
 import { AgentEditor } from "@teams/components/agents/AgentEditor";
 import { AgentItem } from "@teams/components/agents/AgentItem";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { teamTasksForAgent, compareTeamAgents, type Team, type TeamTask } from "@teams/model";
+import { teamMutations } from "@teams/mutations";
 import { formatModelConfiguration } from "@providers/model";
 import { teamQueries } from "@teams/queries";
 import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
+import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { useTeamPane } from "./TeamPaneContext";
+import { TeamPanelHeader } from "./TeamPanelHeader";
 import { CopyTeamUri } from "@teams/components/CopyTeamUri";
 import { RowMenu } from "./overview/RowMenu";
-import { DropdownMenuCheckboxItem, DropdownMenuItem } from "@/shared/ui/dropdown-menu";
+import {
+  DropdownMenuCheckboxItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/shared/ui/dropdown-menu";
 
 export function TeamMembers({
   team,
@@ -26,11 +33,13 @@ export function TeamMembers({
   isVisible?: boolean;
   selectedAgentId?: string;
 }) {
-  const { lead, members, presence } = useTeamPane();
+  const { lead, members, presence, mention } = useTeamPane();
   const [editingId, setEditingId] = useState<string>();
+  const [removingId, setRemovingId] = useState<string>();
   const [showModel, setShowModel] = useState(true);
   const [showCredits, setShowCredits] = useState(false);
   const editingMember = members.find(({ id }) => id === editingId);
+  const removingMember = members.find(({ id }) => id === removingId);
   const agents = [lead, ...[...members].sort(compareTeamAgents)];
   const usage = useQuery({
     ...teamQueries.usage(team.id),
@@ -47,9 +56,12 @@ export function TeamMembers({
       aria-label={`Team members in #${team.name}`}
       className="flex h-full min-h-0 min-w-0 flex-col bg-panel"
     >
-      <header className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-3 pr-24">
-        <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <h2 className="min-w-0 truncate text-sm font-medium">Team members ({agents.length})</h2>
+      <TeamPanelHeader
+        icon={Users}
+        title={`Team members (${agents.length})`}
+        closeLabel="Close team members"
+        onClose={onClose}
+      >
         <RowMenu name="Members">
           <CopyTeamUri target={{ type: "members", teamId: team.id }} label="Copy members URI" />
           <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>
@@ -63,13 +75,14 @@ export function TeamMembers({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Close team members"
-          title="Close team members"
-          onClick={onClose}
+          aria-label="Add an agent"
+          title="Add an agent"
+          disabled={team.paused}
+          onClick={mention}
         >
-          <X />
+          <UserPlus />
         </Button>
-      </header>
+      </TeamPanelHeader>
       <p className="border-b px-4 py-2 text-xs text-muted-foreground">
         Model settings apply on the next turn. Hover an agent to inspect live activity.
       </p>
@@ -200,6 +213,17 @@ export function TeamMembers({
                       <DropdownMenuItem onClick={() => setEditingId(agent.id)}>
                         Edit {agent.name}
                       </DropdownMenuItem>
+                      {agent.id !== lead.id && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setRemovingId(agent.id)}
+                          >
+                            <UserMinus /> Remove from team
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </RowMenu>
                   </td>
                 </tr>
@@ -218,6 +242,19 @@ export function TeamMembers({
       )}
       {editingMember && (
         <AgentEditor agent={editingMember} onClose={() => setEditingId(undefined)} />
+      )}
+      {removingMember && (
+        <DestructiveConfirmationDialog
+          key={removingMember.id}
+          title={`Remove ${removingMember.name}?`}
+          description={`This removes ${removingMember.name} from #${team.name} and deletes their private team session. Their messages and reactions remain attributed to Deleted agent.`}
+          confirmLabel="Remove"
+          pendingLabel="Removing…"
+          mutation={teamMutations.removeMember(removingMember.id)}
+          onOpenChange={(open) => {
+            if (!open) setRemovingId(undefined);
+          }}
+        />
       )}
     </section>
   );

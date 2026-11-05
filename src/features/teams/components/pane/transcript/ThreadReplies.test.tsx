@@ -40,8 +40,7 @@ function render(content: ReactNode): string {
         isSending: () => false,
         mention: noop,
         openArtifact: noop,
-        openArtifacts: noop,
-        openMembers: noop,
+        openPanel: noop,
       }}
     >
       {content}
