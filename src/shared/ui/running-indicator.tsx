@@ -1,9 +1,10 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/shared/utils";
 
-/** An agent is doing work: a slow arc on a faint track, turning in step with every other one. While
- *  it waits on the user, the arc holds still and turns amber, its track raised in dark mode so the
- *  bright arc still reads as part of a ring. */
+/** An agent is doing work: a slow arc on a faint track, turning in step with every other one. It
+ *  turns under reduced motion too, since the turning is the status itself. While it waits on the
+ *  user, the arc holds still and turns amber, its track raised in dark mode so the bright arc still
+ *  reads as part of a ring. */
 export function RunningIndicator({
   waiting = false,
   className,
@@ -24,10 +25,7 @@ export function RunningIndicator({
       strokeLinecap="round"
       aria-hidden={!props["aria-label"]}
       {...props}
-      className={cn(
-        !waiting && "animate-[spin_1.5s_linear_infinite] motion-reduce:animate-none",
-        className,
-      )}
+      className={cn(!waiting && "animate-[spin_1.5s_linear_infinite]", className)}
     >
       <circle cx={12} cy={12} r={9} opacity={0.25} className={cn(waiting && "dark:opacity-40")} />
       <path
@@ -42,7 +40,7 @@ export function RunningIndicator({
 export const waitingOutlineClassName = "border-amber-500/40 ring-[3px] ring-amber-500/10";
 
 // Starting every turn at the document's time origin keeps arcs that mount at
-// different moments pointing the same way. Under reduced motion there is nothing to align.
+// different moments pointing the same way.
 function alignToDocumentTimeline(indicator: SVGSVGElement | null) {
   for (const animation of indicator?.getAnimations() ?? []) animation.startTime = 0;
 }
