@@ -13,7 +13,6 @@ import { useEditSavedDraft } from "@workspace/hooks/useSavedDraft";
 import { TEAM_ASIDE_MAX_SIZE, TEAM_ASIDE_MIN_SIZE } from "@workspace/model/config/layoutPrefs";
 import { createEditorPaneId } from "@workspace/model/panes";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
-import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/shared/ui/resizable";
 import { cn } from "@/shared/utils";
 import { TeamCanvas } from "./TeamCanvas";
@@ -212,9 +211,6 @@ function TeamContent({
         openPanel,
       }}
     >
-      <PaneActions>
-        <TranscriptViewMenu view={view} onViewChange={setView} variant={variant} />
-      </PaneActions>
       <div className="flex h-full min-h-0">
         <div className="@container/team h-full min-h-0 min-w-0 flex-1">
           {referenceThread.error && selectedSequence !== undefined && (
@@ -254,6 +250,13 @@ function TeamContent({
                           selectedSequence: match.sequence,
                         })
                       }
+                      actions={<TranscriptViewMenu view={view} onViewChange={setView} />}
+                      // Chat meets the panel bar while no aside is open, so the row keeps its end
+                      // clear of the pane's floating actions beyond the bar's 2.5rem.
+                      className={cn(
+                        !asideKind &&
+                          "pr-[max(0.75rem,calc(var(--agent-teams-pane-actions-inset,0px)-2.5rem))]",
+                      )}
                     />
                   )}
                   <div className="min-h-0 flex-1">

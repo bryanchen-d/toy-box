@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { teamQueries } from "@teams/queries";
 import type { TeamMessageMatch } from "@teams/model/search";
 import { MessageSearch } from "@/shared/messages/MessageSearch";
@@ -14,6 +14,8 @@ export function TeamMessageSearch({
   isVisible: boolean;
   hotkeyTarget: RefObject<HTMLElement | null>;
   onSelect: (match: TeamMessageMatch) => void;
+  actions?: ReactNode;
+  className?: string;
 }) {
   const { agent } = useTeamPane();
   return (

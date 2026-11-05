@@ -1,9 +1,4 @@
 import { MessagesSquare, UserRound, type LucideIcon } from "lucide-react";
-import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
-import {
-  PANE_OVERLAY_BUTTON_CLASS,
-  PANE_OVERLAY_ICON_CLASS,
-} from "@workspace/components/panes/shell/paneControls";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -23,39 +18,27 @@ const VIEWS = [
 export function TranscriptViewMenu({
   view,
   onViewChange,
-  variant,
 }: {
   view: TranscriptView;
   onViewChange: (view: TranscriptView) => void;
-  variant: PaneVariant;
 }) {
   const { label, Icon } = VIEWS.find(({ value }) => value === view)!;
   const triggerLabel = `Showing ${label.toLowerCase()}`;
-  const isNormal = variant === "normal";
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          isNormal ? (
-            <button
-              type="button"
-              aria-label={triggerLabel}
-              title={triggerLabel}
-              className={PANE_OVERLAY_BUTTON_CLASS}
-            />
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={triggerLabel}
-              title={triggerLabel}
-            />
-          )
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={triggerLabel}
+            title={triggerLabel}
+          />
         }
       >
-        <Icon className={isNormal ? PANE_OVERLAY_ICON_CLASS : undefined} />
+        <Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" finalFocus={false}>
         <DropdownMenuRadioGroup value={view} onValueChange={onViewChange}>

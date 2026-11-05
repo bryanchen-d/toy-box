@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { formatForDisplay, useHotkey } from "@tanstack/react-hotkeys";
 import { useQuery, type QueryKey, type UseQueryOptions } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Command, CommandInput, CommandItem, CommandList } from "@/shared/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { cn } from "@/shared/utils";
 import {
   MESSAGE_SEARCH_LIMIT,
   MESSAGE_SEARCH_QUERY_LIMIT,
@@ -20,6 +21,9 @@ type MessageSearchProps<TMatch extends MessageSearchMatch, TKey extends QueryKey
   hotkeyTarget: RefObject<HTMLElement | null>;
   onSelect: (match: TMatch) => void;
   placeholder?: string;
+  /** Controls that follow the search button in its row. */
+  actions?: ReactNode;
+  className?: string;
 };
 
 export function MessageSearch<TMatch extends MessageSearchMatch, TKey extends QueryKey>({
@@ -30,6 +34,8 @@ export function MessageSearch<TMatch extends MessageSearchMatch, TKey extends Qu
   hotkeyTarget,
   onSelect,
   placeholder = "Search this chat...",
+  actions,
+  className,
 }: MessageSearchProps<TMatch, TKey>) {
   const [open, setOpen] = useState(false);
   useHotkey("Mod+F", () => setOpen(true), {
@@ -38,7 +44,12 @@ export function MessageSearch<TMatch extends MessageSearchMatch, TKey extends Qu
     ignoreInputs: false,
   });
   return (
-    <div className="flex shrink-0 justify-end border-b bg-panel px-3 py-1">
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-end gap-1 border-b bg-panel px-3 py-1",
+        className,
+      )}
+    >
       <Popover open={open && isVisible} onOpenChange={setOpen}>
         <PopoverTrigger
           title={`Search messages (${formatForDisplay("Mod+F")})`}
@@ -63,6 +74,7 @@ export function MessageSearch<TMatch extends MessageSearchMatch, TKey extends Qu
           )}
         </PopoverContent>
       </Popover>
+      {actions}
     </div>
   );
 }

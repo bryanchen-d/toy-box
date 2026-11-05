@@ -534,7 +534,7 @@ presents one deleted identity everywhere.
   each kind's static icon and presentation function together in one local object; each function
   receives its kind's typed contents. Its shared row renders the resulting content and tooltip;
   grouping and the durable message model stay separate.
-  A pane-local view, chosen in the pane's actions, shows
+  A pane-local view, chosen beside the transcript's message search, shows
   all messages or only the user's own and the agent messages that never collapse. Rows form from
   the shown messages, so runs and dividers follow what the reader sees; changing the view lands
   the transcript afresh, and read state stays Team-wide.
