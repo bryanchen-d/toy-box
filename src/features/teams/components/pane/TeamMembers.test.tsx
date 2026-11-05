@@ -75,7 +75,7 @@ test("the team table includes lead and members, nested work, waiting details and
           openPanel: noop,
         }}
       >
-        <TeamMembers team={team} onClose={noop} />
+        <TeamMembers team={team} />
       </TeamPaneProvider>
     </QueryClientProvider>,
   );
@@ -140,7 +140,7 @@ function renderUsage(usage?: SessionUsage) {
           openPanel: noop,
         }}
       >
-        <TeamMembers team={team} onClose={noop} />
+        <TeamMembers team={team} />
       </TeamPaneProvider>
     </QueryClientProvider>,
   );

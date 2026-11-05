@@ -3,6 +3,8 @@ import {
   Files,
   Hash,
   ListChecks,
+  PanelRightClose,
+  PanelRightOpen,
   PanelsTopLeft,
   Users,
   type LucideIcon,
@@ -25,15 +27,21 @@ const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
 /** The Team pane's right edge: one toggle per panel, so each is a click from chat. */
 export function TeamPanelBar({
   panel,
+  asideOpen,
   hasCanvas,
   variant,
   onToggle,
+  onToggleAside,
 }: {
   panel: TeamPanel | undefined;
+  asideOpen: boolean;
   hasCanvas: boolean;
   variant: PaneVariant;
   onToggle: (panel: TeamPanel) => void;
+  onToggleAside: () => void;
 }) {
+  const toggleLabel = asideOpen ? "Close panel" : "Open panel";
+
   return (
     <nav
       aria-label="Team panels"
@@ -43,6 +51,26 @@ export function TeamPanelBar({
         variant === "normal" ? "pt-12" : "pt-2",
       )}
     >
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={toggleLabel}
+              aria-expanded={asideOpen}
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onToggleAside}
+            >
+              {asideOpen ? <PanelRightClose /> : <PanelRightOpen />}
+            </Button>
+          }
+        />
+        <TooltipContent side="left" sideOffset={6}>
+          {toggleLabel}
+        </TooltipContent>
+      </Tooltip>
       {TEAM_PANELS.map((kind) => {
         const { icon: Icon, label } = PANEL_BUTTONS[kind];
         const isOpen = panel === kind;

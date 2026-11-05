@@ -63,12 +63,10 @@ const SORTS: {
 export function TeamArtifacts({
   teamId,
   artifacts,
-  onClose,
 }: {
   teamId: string;
   /** In the user's arrangement, archived or not. */
   artifacts: TeamArtifact[];
-  onClose: () => void;
 }) {
   const { openArtifact } = useTeamPane();
   const { mutate: arrange, error: arrangementError } = useMutation(
@@ -153,12 +151,7 @@ export function TeamArtifacts({
 
   return (
     <section aria-label="Artifacts" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
-      <TeamPanelHeader
-        icon={Files}
-        title="Artifacts"
-        closeLabel="Close artifacts"
-        onClose={onClose}
-      />
+      <TeamPanelHeader icon={Files} title="Artifacts" />
 
       <div className="shrink-0 space-y-2 border-b bg-background px-4 py-3">
         <div className="relative">

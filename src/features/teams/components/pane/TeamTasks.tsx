@@ -7,27 +7,14 @@ import { TeamPanelHeader } from "./TeamPanelHeader";
 import { teamTaskItems, TaskDiff } from "./teamTaskItems";
 
 /** The lead's public task list, with each task's owner, artifact, and reported diff. */
-export function TeamTasks({
-  team,
-  artifacts,
-  onClose,
-}: {
-  team: Team;
-  artifacts: TeamArtifact[];
-  onClose: () => void;
-}) {
+export function TeamTasks({ team, artifacts }: { team: Team; artifacts: TeamArtifact[] }) {
   const { agents, openArtifact } = useTeamPane();
   const completedCount = team.tasks.filter(({ status }) => status === "done").length;
   const diff = teamTasksDiff(team.tasks);
 
   return (
     <section aria-label="Task list" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
-      <TeamPanelHeader
-        icon={ListChecks}
-        title="Task list"
-        closeLabel="Close task list"
-        onClose={onClose}
-      >
+      <TeamPanelHeader icon={ListChecks} title="Task list">
         <Badge variant="count">
           {completedCount}/{team.tasks.length}
         </Badge>

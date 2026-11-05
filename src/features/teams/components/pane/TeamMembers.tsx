@@ -24,12 +24,10 @@ import {
 
 export function TeamMembers({
   team,
-  onClose,
   isVisible = true,
   selectedAgentId,
 }: {
   team: Team;
-  onClose: () => void;
   isVisible?: boolean;
   selectedAgentId?: string;
 }) {
@@ -56,12 +54,7 @@ export function TeamMembers({
       aria-label={`Team members in #${team.name}`}
       className="flex h-full min-h-0 min-w-0 flex-col bg-panel"
     >
-      <TeamPanelHeader
-        icon={Users}
-        title={`Team members (${agents.length})`}
-        closeLabel="Close team members"
-        onClose={onClose}
-      >
+      <TeamPanelHeader icon={Users} title={`Team members (${agents.length})`}>
         <RowMenu name="Members">
           <CopyTeamUri target={{ type: "members", teamId: team.id }} label="Copy members URI" />
           <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>

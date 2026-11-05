@@ -93,6 +93,8 @@ function TeamContent({
   const remembersPanel = variant === "normal" && setTeamPanel !== undefined;
   const [ownPanel, setOwnPanel] = useState<TeamPanel>();
   const panel = remembersPanel ? (isTeamPanel(teamPanel) ? teamPanel : undefined) : ownPanel;
+  const [lastPanel, setLastPanel] = useState<TeamPanel>(panel ?? "overview");
+  if (panel && panel !== lastPanel) setLastPanel(panel);
   // A thread or reference opens over the panel until it closes.
   const [opened, setOpened] = useState<TeamAside>();
   const location = useRouterState({ select: ({ location }) => location });
@@ -327,16 +329,10 @@ function TeamContent({
                       team={state.team}
                       artifacts={state.artifacts}
                       routines={state.routines}
-                      onClose={closeAside}
                     />
                   )}
                   {aside.type === "canvas" && canvas && (
-                    <TeamCanvas
-                      key={canvas.id}
-                      teamId={teamId}
-                      artifact={canvas}
-                      onClose={closeAside}
-                    />
+                    <TeamCanvas key={canvas.id} teamId={teamId} artifact={canvas} />
                   )}
                   {aside.type === "thread" && (
                     <TeamThread
@@ -351,7 +347,6 @@ function TeamContent({
                       onReply={(message) =>
                         postMessage({ ...message, threadSequence: aside.sequence })
                       }
-                      onClose={closeAside}
                     />
                   )}
                   {aside.type === "members" && (
@@ -359,25 +354,16 @@ function TeamContent({
                       team={state.team}
                       isVisible={isVisible}
                       selectedAgentId={aside.selectedAgentId}
-                      onClose={closeAside}
                     />
                   )}
                   {aside.type === "tasks" && (
-                    <TeamTasks team={state.team} artifacts={state.artifacts} onClose={closeAside} />
+                    <TeamTasks team={state.team} artifacts={state.artifacts} />
                   )}
                   {aside.type === "artifacts" && (
-                    <TeamArtifacts
-                      teamId={teamId}
-                      artifacts={state.artifacts}
-                      onClose={closeAside}
-                    />
+                    <TeamArtifacts teamId={teamId} artifacts={state.artifacts} />
                   )}
                   {aside.type === "routines" && (
-                    <TeamRoutines
-                      team={state.team}
-                      routines={state.routines}
-                      onClose={closeAside}
-                    />
+                    <TeamRoutines team={state.team} routines={state.routines} />
                   )}
                 </ResizablePanel>
               </>
@@ -386,9 +372,14 @@ function TeamContent({
         </div>
         <TeamPanelBar
           panel={isTeamPanel(asideKind) ? asideKind : undefined}
+          asideOpen={asideKind !== undefined}
           hasCanvas={!!canvas}
           variant={variant}
           onToggle={togglePanel}
+          onToggleAside={() => {
+            if (asideKind) closeAside();
+            else openPanel(lastPanel === "canvas" && !canvas ? "overview" : lastPanel);
+          }}
         />
       </div>
     </TeamPaneProvider>

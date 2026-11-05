@@ -18,12 +18,10 @@ export function TeamOverview({
   team,
   artifacts,
   routines,
-  onClose,
 }: {
   team: Team;
   artifacts: TeamArtifact[];
   routines: TeamRoutine[];
-  onClose: () => void;
 }) {
   const { openFile } = useWorkspaceSurface();
   const [dialog, setDialog] = useState<OverviewDialog>();
@@ -39,7 +37,7 @@ export function TeamOverview({
       aria-label={`#${team.name} overview`}
       className="flex h-full min-h-0 min-w-0 flex-col bg-panel"
     >
-      <TeamPanelHeader icon={Hash} title={team.name} closeLabel="Close overview" onClose={onClose}>
+      <TeamPanelHeader icon={Hash} title={team.name}>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

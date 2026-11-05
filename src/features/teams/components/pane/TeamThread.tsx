@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { MessageSquareReply, X } from "lucide-react";
+import { MessageSquareReply } from "lucide-react";
 import type { TeamState, PostTeamMessageInput } from "@teams/model";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
-import { Button } from "@/shared/ui/button";
 import { PaneMessage } from "@/shared/ui/pane-message";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { TeamComposer, type TeamComposerHandle } from "./TeamComposer";
 import { TeamPaneProvider, useTeamPane } from "./TeamPaneContext";
 import { TeamMessageSearch } from "./TeamMessageSearch";
+import { TeamPanelHeader } from "./TeamPanelHeader";
 import type { TeamMessageMatch } from "@teams/model/search";
 import { TranscriptRowContent } from "./transcript/TeamTranscript";
 import { threadRows } from "./transcript/transcriptRows";
@@ -29,7 +29,6 @@ export function TeamThread({
   composerRef,
   onLoadThrough,
   onReply,
-  onClose,
 }: {
   teamId: string;
   /** The thread's top-level message. */
@@ -41,7 +40,6 @@ export function TeamThread({
   /** Loads older history through the thread's top-level message. */
   onLoadThrough: (sequence: number) => Promise<void>;
   onReply: (message: Pick<PostTeamMessageInput, "content" | "attachments">) => Promise<unknown>;
-  onClose: () => void;
 }) {
   const pane = useTeamPane();
   const { lead, members } = pane;
@@ -95,21 +93,7 @@ export function TeamThread({
         aria-label="Thread"
         className="flex h-full min-h-0 min-w-0 flex-col bg-panel outline-none"
       >
-        <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-3 pr-24">
-          <MessageSquareReply className="size-4 shrink-0 text-muted-foreground" />
-          <h2 className="min-w-0 truncate text-sm font-medium">Thread</h2>
-          {/* Beside the title, clear of the pane's own actions in the top-right corner. */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Close thread"
-            title="Close thread"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+        <TeamPanelHeader icon={MessageSquareReply} title="Thread" />
         <TeamMessageSearch
           teamId={teamId}
           threadSequence={sequence}

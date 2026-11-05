@@ -11,18 +11,10 @@ import { RowMenu } from "./overview/RowMenu";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 
 /** The lead's scheduled prompts, each of which the user can run now or delete. */
-export function TeamRoutines({
-  team,
-  routines,
-  onClose,
-}: {
-  team: Team;
-  routines: TeamRoutine[];
-  onClose: () => void;
-}) {
+export function TeamRoutines({ team, routines }: { team: Team; routines: TeamRoutine[] }) {
   return (
     <section aria-label="Routines" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
-      <TeamPanelHeader icon={Clock3} title="Routines" closeLabel="Close routines" onClose={onClose}>
+      <TeamPanelHeader icon={Clock3} title="Routines">
         <Badge variant="count">{routines.length}</Badge>
       </TeamPanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
