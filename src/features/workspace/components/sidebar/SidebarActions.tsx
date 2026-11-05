@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Hash,
   MessageCirclePlus,
+  MessageSquarePlus,
   Monitor,
   PanelLeft,
   PanelLeftClose,
@@ -163,6 +164,17 @@ function SidebarCreationMenu({
         <ChevronDown className={rail ? "size-2.5" : "size-3.5"} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align={rail ? "start" : "end"} side={rail ? "right" : "bottom"}>
+        <DropdownMenuItem onClick={onCreateTeam}>
+          <Hash />
+          Create team
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={(event) => onCreateSession({ addToWorkspace: event.metaKey || event.ctrlKey })}
+        >
+          <MessageSquarePlus />
+          New session
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => createArtifactDraft("document.md")}>
           <FileText />
           New document
@@ -183,10 +195,6 @@ function SidebarCreationMenu({
           <Clock3 />
           Create automation
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCreateTeam}>
-          <Hash />
-          Create team
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -202,7 +210,7 @@ export function SidebarSplitButton({
   return (
     <div className={cn("flex", rail && "group/create relative shrink-0")}>
       <SidebarAction
-        label="New session"
+        label="Create team"
         variant="accent"
         className={cn(
           !rail && "size-7 rounded-r-none",
@@ -212,9 +220,7 @@ export function SidebarSplitButton({
         )}
         disabled={!hasModels}
         showTooltip={false}
-        onClick={(event) =>
-          actions.onCreateSession({ addToWorkspace: event.metaKey || event.ctrlKey })
-        }
+        onClick={actions.onCreateTeam}
       >
         <Plus />
       </SidebarAction>

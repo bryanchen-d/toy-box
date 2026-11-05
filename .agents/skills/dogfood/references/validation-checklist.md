@@ -46,7 +46,7 @@ playwright-cli close-all
 ### Sessions List (Global State)
 
 1. Baseline list loads with sessions metadata.
-2. New draft session appears immediately after clicking `New`.
+2. New draft session appears immediately after choosing `New session` from the sidebar's create menu.
 3. First message in draft transitions cleanly to persisted session state.
 4. Streaming state updates quickly (`session.running` -> `session.idle`) in list.
 5. Unread state appears when a session finishes while not open.
