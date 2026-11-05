@@ -1,6 +1,6 @@
 // Shared application database.
 //
-// Opens a single SQLite connection at ~/.toy-box/toy-box.sqlite and creates
+// Opens a single SQLite connection at ~/.agent-teams/agent-teams.sqlite and creates
 // the current feature tables on startup. Each feature owns its schema and row
 // lifecycle; this module owns the connection, pragmas, and schema ordering.
 
@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { initializeAppSchema } from "@apps/server/schema";
 import { initializeAutomationSchema } from "@automations/server/schema";
-import { initializeChannelSchema } from "@channels/server/schema";
+import { initializeTeamSchema } from "@teams/server/schema";
 import { initializeSessionSchema } from "@sessions/server/schema";
 import { initializeWorkerSchema } from "@workers/server/schema";
 import { initializeWorkspaceSchema } from "@workspace/server/state/schema";
@@ -58,8 +58,8 @@ export async function inStateTransaction<Result>(
 
 function resolveDefaultPath(): string {
   const home = homedir().trim();
-  if (home.length > 0) return join(home, ".toy-box", "toy-box.sqlite");
-  return join(process.cwd(), ".toy-box", "toy-box.sqlite");
+  if (home.length > 0) return join(home, ".agent-teams", "agent-teams.sqlite");
+  return join(process.cwd(), ".agent-teams", "agent-teams.sqlite");
 }
 
 function createRuntimeDatabase(path: string): Bun.SQL {
@@ -78,7 +78,7 @@ async function initializeSchema(db: Bun.SQL, path: string): Promise<void> {
   // and transaction behavior without owning each feature's persistence model.
   await initializeSessionSchema(db);
   await initializeWorkerSchema(db);
-  await initializeChannelSchema(db);
+  await initializeTeamSchema(db);
   await initializeAutomationSchema(db);
   await initializeAppSchema(db);
   await initializeWorkspaceSchema(db);

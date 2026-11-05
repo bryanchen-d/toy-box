@@ -1,27 +1,27 @@
 # Workers
 
 Workers are owner-bound Session identities. They let a Session delegate work, a file run a background
-edit, an app run private implementation work, Inbox supervise background results, or a Channel retain its lead and members without
+edit, an app run private implementation work, Inbox supervise background results, or a Team retain its lead and members without
 introducing another execution model.
 
 ## Model
 
 A `Worker` has one Session ID, creation time, immutable owner, and lifetime. Spawning constructs
-and persists that identity and starts its first execution. Channel members start onboarding when
+and persists that identity and starts its first execution. Team members start onboarding when
 they join; subsequent mentions use normal Session delivery. Optional `name` and opaque `metadata`
 are owner-provided details. Owners validate their metadata's meaning; Workers validates bounded JSON
 before publishing a new Worker or updating its metadata.
 
 `WorkerSpawn` combines a Session launch with an owner, optional name and metadata, and a retention
-policy. Trusted owners may supply a shared Session ID. Channels uses its own ID for its lead.
+policy. Trusted owners may supply a shared Session ID. Teams uses its own ID for its lead.
 
 - A session-owned Worker inherits its parent's model and directory unless overridden and is retained
   by default. Spawning does not open a pane; children are discoverable under their parent in the
   sidebar, and `open_session` explicitly opens them.
 - A file-owned Worker belongs to one exact session file and is always ephemeral.
 - An app-owned Worker belongs to one saved app and is ephemeral by default.
-- A channel-owned Worker is durable until member or Channel deletion. Channels interprets its name
-  and metadata as member identity, read position, and collaboration status. The Channel derives its
+- A team-owned Worker is durable until member or Team deletion. Teams interprets its name
+  and metadata as member identity, read position, and collaboration status. The Team derives its
   intrinsic lead's fixed identity and owns its model.
 - An Inbox-owned Worker supplies a retention callback that keeps reported results and failures.
   Workers deletes clean completions without a result. Its metadata carries the Inbox message and
@@ -41,7 +41,7 @@ execution exceptions after admission become failed completion data with an error
 before admission and cancellation during startup clean up the reservation. Worktree isolation
 remains a Session concern.
 
-The Worker model deliberately knows no Agent role, Channel status, file editor task, or app state.
+The Worker model deliberately knows no Agent role, Team status, file editor task, or app state.
 Owners validate and interpret metadata at their own boundary. This is the same pattern used by
 `useFile`: Files selects its Workers by owner, presents their names and metadata, and invokes generic
 spawn or cancel operations.
@@ -76,9 +76,9 @@ without capturing mutable outer state or re-reading storage. Its `waitForComplet
 covers configuration inheritance, provider startup, execution, retention, and lifetime cleanup.
 Admission failures reject spawning; retention and cleanup exceptions reject completion. File, App,
 and Session tool ingress await the same admission boundary and return the serializable Session ID.
-Inbox and Channels use this path for creation. Channel admission commits the lead with its Channel,
+Inbox and Teams use this path for creation. Team admission commits the lead with its Team,
 or a member with its membership message, before execution begins. Later mentions use Session delivery;
-Channels has no separate activation operation or startup queue.
+Teams has no separate activation operation or startup queue.
 
 Waiting remains a Session operation. Admission registers completion before publishing
 `worker.started`, so fast ephemeral work cannot disappear before `waitForSessions` observes it.
@@ -94,9 +94,9 @@ ownership.
 - Application composition projects those records into Sessions' typed ownership index, including
   parent relationships, so generic consumers need no separate Worker-classification cache.
 - `server/registry.ts` contains only currently admitted background work and publishes
-  `worker.started` and `worker.finished`. Durable Channel membership is not active work.
+  `worker.started` and `worker.finished`. Durable Team membership is not active work.
 - `components/WorkersMenu.tsx` presents active background work. Files and Apps select the Workers they
-  own. Channels presents its durable Workers as the lead and members.
+  own. Teams presents its durable Workers as the lead and members.
 - Sessions owns execution, history, streaming, completion, provider configuration, and worktrees.
 - Owners own all interpretation of their metadata and any richer public projection.
 - Worker persistence and metadata operations do not publish owner-specific events. Owners publish

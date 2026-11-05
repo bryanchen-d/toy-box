@@ -1,6 +1,6 @@
 // File-backed installed app definitions.
 //
-// Each definition lives under `~/.toy-box/apps/<id>/` as an inspectable
+// Each definition lives under `~/.agent-teams/apps/<id>/` as an inspectable
 // manifest and one TSX component. Saved instances live separately in SQLite and
 // reference the definition by id.
 
@@ -213,7 +213,7 @@ function definitionFromSource(source: AppDefinitionSource): AppDefinition {
 }
 
 function defaultAppsRoot(): string {
-  return join(homedir(), ".toy-box", "apps");
+  return join(homedir(), ".agent-teams", "apps");
 }
 
 function parseDefinitionId(value: string): string {

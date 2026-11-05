@@ -3,7 +3,7 @@ import {
   createEditorPane,
   createScreenPane,
   createAppPane,
-  createChannelPane,
+  createTeamPane,
   createCanvasPaneId,
   createLinkedCanvasPane,
   createLinkedPanes,
@@ -15,6 +15,7 @@ import {
   createSessionPaneId,
   deriveVisibleWorkspacePanes,
   deriveWorkspaceRootPanes,
+  focusedTeamId,
   INBOX_PANE,
   resolveEditorAutoFocus,
   resolveEditorPaneMode,
@@ -104,8 +105,8 @@ describe("workspace pane derivation", () => {
       createAppPane("app-a"),
       editorPane,
     ]);
-    expect(deriveWorkspaceRootPanes([], [machineFile(path)], [], ["channel-a"])).toEqual([
-      createChannelPane("channel-a"),
+    expect(deriveWorkspaceRootPanes([], [machineFile(path)], [], ["team-a"])).toEqual([
+      createTeamPane("team-a"),
       editorPane,
     ]);
   });
@@ -482,5 +483,28 @@ describe("artifact auto-focus", () => {
     expect(
       resolveEditorAutoFocus(closed.seenPaneIds, [chatPane, artifactPane], "always").focusPane,
     ).toEqual(artifactPane);
+  });
+});
+
+describe("focused team", () => {
+  const session = createSessionPane("session-1", false);
+  const planning = createTeamPane("planning");
+  const release = createTeamPane("release");
+
+  test("is the first team showing when no pane holds focus", () => {
+    expect(focusedTeamId([session, planning, release], null)).toBe("planning");
+  });
+
+  test("follows a focused team pane", () => {
+    expect(focusedTeamId([session, planning, release], release.id)).toBe("release");
+  });
+
+  test("is absent while another kind of pane holds focus or no team is showing", () => {
+    expect(focusedTeamId([session, planning], session.id)).toBeUndefined();
+    expect(focusedTeamId([session], null)).toBeUndefined();
+  });
+
+  test("ignores focus on a pane that is no longer showing", () => {
+    expect(focusedTeamId([session, planning], "team:departed")).toBe("planning");
   });
 });

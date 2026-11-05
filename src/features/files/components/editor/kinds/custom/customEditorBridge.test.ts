@@ -10,13 +10,13 @@ import {
 import { sessionFile } from "@files/model";
 
 describe("custom editor iframe bridge", () => {
-  test("defines the Toybox contract before the template runs", () => {
+  test("defines the AgentTeams contract before the template runs", () => {
     const templateScript = "window.templateStarted = true";
     const document = injectCustomEditorBridge(
       `<html><head><script>${templateScript}</script></head><body></body></html>`,
     );
 
-    expect(document.indexOf("window.Toybox =")).toBeLessThan(document.indexOf(templateScript));
+    expect(document.indexOf("window.AgentTeams =")).toBeLessThan(document.indexOf(templateScript));
     expect(document).toContain(CUSTOM_EDITOR_RENDER_MESSAGE_TYPE);
     expect(document).toContain(CUSTOM_EDITOR_CHANGE_MESSAGE_TYPE);
     expect(document).toContain(CUSTOM_EDITOR_WORKER_MESSAGE_TYPE);

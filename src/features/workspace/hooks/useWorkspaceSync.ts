@@ -5,7 +5,7 @@ import { invalidateSessionsStateQuery } from "@sessions/queryCache";
 import { sessionQueries } from "@sessions/queries";
 import { applyWorkspaceEvent, invalidateWorkspaceStateQuery } from "@workspace/queries";
 import type { WorkspaceEvent } from "@workspace/model/events";
-import { invalidateChannelListQuery } from "@channels/queryCache";
+import { invalidateTeamListQuery } from "@teams/queryCache";
 import { invalidateAutomationListQuery } from "@automations/queryCache";
 import { invalidateInboxListQuery } from "@inbox/queryCache";
 import { invalidateAppListQuery } from "@apps/queryCache";
@@ -33,7 +33,7 @@ export function useWorkspaceSync(ssrRevision?: string): void {
         invalidateWorkspaceStateQuery(queryClient),
         invalidateSessionsStateQuery(queryClient),
         queryClient.invalidateQueries({ queryKey: sessionQueries.artifactPinsKey() }),
-        invalidateChannelListQuery(queryClient),
+        invalidateTeamListQuery(queryClient),
         invalidateAutomationListQuery(queryClient),
         invalidateInboxListQuery(queryClient),
         invalidateAppListQuery(queryClient),
@@ -51,7 +51,7 @@ export function useWorkspaceSync(ssrRevision?: string): void {
         if (event.type === "workspace.connected") {
           const unchanged = initialRevision.current === event.revision;
           // Only the initial connection may trust SSR. Reconnects also discover
-          // native provider history changed outside Toy Box's broadcast plane.
+          // native provider history changed outside Agent Teams' broadcast plane.
           initialRevision.current = undefined;
           if (!unchanged) refresh();
           return;

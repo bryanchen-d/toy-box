@@ -8,7 +8,7 @@ import { createSdkEventProjector } from "@providers/server/copilot/projector";
 import type { SessionEvent } from "@sessions/model";
 
 function createStreamingContext() {
-  return createSdkEventProjector("toy-box-session");
+  return createSdkEventProjector("agent-teams-session");
 }
 
 function projectSdkEvent(
@@ -40,23 +40,24 @@ const OMITTED_TOOL_NAMES = [
 
 // Shared apply_patch fixtures (the SDK sends the patch as a bare string).
 const PATCH_TEXT = `*** Begin Patch
-*** Update File: /Users/lostintangent/Desktop/toy-box/docs/notes.md
+*** Update File: /Users/lostintangent/Desktop/agent-teams/docs/notes.md
 @@
 -old
 +new
 *** End Patch`;
-const PATCH_DIFF = `diff --git a/Users/lostintangent/Desktop/toy-box/docs/notes.md b/Users/lostintangent/Desktop/toy-box/docs/notes.md
---- a/Users/lostintangent/Desktop/toy-box/docs/notes.md
-+++ b/Users/lostintangent/Desktop/toy-box/docs/notes.md
+const PATCH_DIFF = `diff --git a/Users/lostintangent/Desktop/agent-teams/docs/notes.md b/Users/lostintangent/Desktop/agent-teams/docs/notes.md
+--- a/Users/lostintangent/Desktop/agent-teams/docs/notes.md
++++ b/Users/lostintangent/Desktop/agent-teams/docs/notes.md
 @@ -1 +1 @@
 -old
 +new`;
-const ARTIFACT_PATCH_PATH = `${homedir()}/.toy-box/sessions/toy-box-session/artifacts/plan.md`;
-const ARTIFACT_HTML_PATCH_PATH = `${homedir()}/.toy-box/sessions/toy-box-session/artifacts/plan.html`;
-const HOME_RELATIVE_ARTIFACT_PATCH_PATH = ".toy-box/sessions/toy-box-session/artifacts/plan.html";
-const SESSION_STATE_PATCH_PATH = `${homedir()}/.toy-box/sessions/toy-box-session/plan.md`;
-const OTHER_SESSION_ARTIFACT_PATH = `${homedir()}/.toy-box/sessions/other-session/artifacts/plan.md`;
-const NON_ARTIFACT_PATCH_PATH = `${homedir()}/.toy-box/sessions/toy-box-session/artifacts/run-tests.sh`;
+const ARTIFACT_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/plan.md`;
+const ARTIFACT_HTML_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/plan.html`;
+const HOME_RELATIVE_ARTIFACT_PATCH_PATH =
+  ".agent-teams/sessions/agent-teams-session/artifacts/plan.html";
+const SESSION_STATE_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/plan.md`;
+const OTHER_SESSION_ARTIFACT_PATH = `${homedir()}/.agent-teams/sessions/other-session/artifacts/plan.md`;
+const NON_ARTIFACT_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/run-tests.sh`;
 const ARTIFACT_PATCH_TEXT = `*** Begin Patch
 *** Add File: ${ARTIFACT_PATCH_PATH}
 +# Plan
@@ -80,7 +81,7 @@ const ARTIFACT_CONVERSION_PATCH_TEXT = `*** Begin Patch
 const MIXED_ARTIFACT_PATCH_TEXT = `*** Begin Patch
 *** Add File: ${ARTIFACT_PATCH_PATH}
 +# Plan
-*** Update File: /Users/lostintangent/Desktop/toy-box/docs/notes.md
+*** Update File: /Users/lostintangent/Desktop/agent-teams/docs/notes.md
 @@
 -old
 +new
@@ -325,8 +326,8 @@ describe("projector", () => {
     });
 
     test.each([
-      { sessionId: "toy-box-created-1" },
-      { sessionId: "toy-box-created-1", opened: true },
+      { sessionId: "agent-teams-created-1" },
+      { sessionId: "agent-teams-created-1", opened: true },
     ])("spawn_worker stays visible without opening a pane for result %j", (result) => {
       expectVisibleToolLifecycle(createStreamingContext(), {
         toolName: "spawn_worker",
@@ -730,17 +731,17 @@ describe("projector", () => {
       expectOmittedToolLifecycle(context, {
         toolName: "open_session",
         toolCallId: "tool-open-session",
-        argumentsRecord: { sessionId: "toy-box-linked-1" },
-        startEvents: [{ type: "linked_session_added", sessionId: "toy-box-linked-1" }],
-        completionResultContent: "Session toy-box-linked-1 opened.",
+        argumentsRecord: { sessionId: "agent-teams-linked-1" },
+        startEvents: [{ type: "linked_session_added", sessionId: "agent-teams-linked-1" }],
+        completionResultContent: "Session agent-teams-linked-1 opened.",
       });
 
       expectOmittedToolLifecycle(context, {
         toolName: "close_session",
         toolCallId: "tool-close-session",
-        argumentsRecord: { sessionId: "toy-box-linked-1" },
-        startEvents: [{ type: "linked_session_removed", sessionId: "toy-box-linked-1" }],
-        completionResultContent: "Session toy-box-linked-1 closed.",
+        argumentsRecord: { sessionId: "agent-teams-linked-1" },
+        startEvents: [{ type: "linked_session_removed", sessionId: "agent-teams-linked-1" }],
+        completionResultContent: "Session agent-teams-linked-1 closed.",
       });
     });
 
@@ -750,15 +751,15 @@ describe("projector", () => {
       expectOmittedToolLifecycle(context, {
         toolName: "delete_session",
         toolCallId: "tool-delete-session",
-        argumentsRecord: { sessionId: "toy-box-created-1" },
-        startEvents: [{ type: "linked_session_removed", sessionId: "toy-box-created-1" }],
+        argumentsRecord: { sessionId: "agent-teams-created-1" },
+        startEvents: [{ type: "linked_session_removed", sessionId: "agent-teams-created-1" }],
         completionResultContent: '{"deleted":true}',
       });
     });
 
     test("create stays hidden without publishing artifact membership", () => {
       const context = createStreamingContext();
-      const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
+      const artifactPath = "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md";
 
       expectOmittedToolLifecycle(context, {
         toolName: "create",
@@ -775,7 +776,7 @@ describe("projector", () => {
         toolName: "create",
         toolCallId: "tool-create-other-session",
         argumentsRecord: {
-          path: "~/.toy-box/sessions/other-session/artifacts/report.md",
+          path: "~/.agent-teams/sessions/other-session/artifacts/report.md",
         },
         progressMessage: "Creating report.md",
         resultContent: "Created report.md",
@@ -788,7 +789,7 @@ describe("projector", () => {
       expectVisibleToolLifecycle(context, {
         toolName: "create",
         toolCallId: "tool-create-session-state",
-        argumentsRecord: { path: "~/.toy-box/sessions/toy-box-session/report.md" },
+        argumentsRecord: { path: "~/.agent-teams/sessions/agent-teams-session/report.md" },
         progressMessage: "Creating report.md",
         resultContent: "Created report.md",
       });
@@ -808,7 +809,7 @@ describe("projector", () => {
 
     test("successful artifact edits stay hidden without publishing artifact membership", () => {
       const context = createStreamingContext();
-      const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
+      const artifactPath = "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md";
 
       expect(
         projectSdkEvent(
@@ -834,7 +835,7 @@ describe("projector", () => {
 
     test("edit normalizes the str_replace alias for artifacts", () => {
       const context = createStreamingContext();
-      const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
+      const artifactPath = "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md";
 
       expect(
         projectSdkEvent(
@@ -855,7 +856,7 @@ describe("projector", () => {
 
     test("edit emits no artifact and stays hidden when the edit fails", () => {
       const context = createStreamingContext();
-      const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
+      const artifactPath = "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md";
 
       expect(
         projectSdkEvent(
@@ -889,7 +890,7 @@ describe("projector", () => {
 
     test("read tools are omitted for artifact paths", () => {
       const context = createStreamingContext();
-      const artifactPath = "~/.toy-box/sessions/toy-box-session/artifacts/report.md";
+      const artifactPath = "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md";
 
       expectOmittedToolLifecycle(context, {
         toolName: "view",
@@ -912,7 +913,7 @@ describe("projector", () => {
       expect(
         projectSdkEvent(
           toolExecutionStart("view", "tool-read-session-state", {
-            path: "~/.toy-box/sessions/toy-box-session/report.md",
+            path: "~/.agent-teams/sessions/agent-teams-session/report.md",
           }),
           context,
         ),
@@ -921,7 +922,7 @@ describe("projector", () => {
           type: "tool_start",
           toolName: "read",
           toolCallId: "tool-read-session-state",
-          arguments: { path: "~/.toy-box/sessions/toy-box-session/report.md" },
+          arguments: { path: "~/.agent-teams/sessions/agent-teams-session/report.md" },
         },
       ]);
 
@@ -1205,7 +1206,7 @@ describe("projector", () => {
         projectSdkEvent(
           toolExecutionComplete("tool-create-session", {
             success: true,
-            resultContent: JSON.stringify({ sessionId: "toy-box-created-1", opened: false }),
+            resultContent: JSON.stringify({ sessionId: "agent-teams-created-1", opened: false }),
           }),
           context,
         ),
@@ -1226,11 +1227,11 @@ describe("projector", () => {
         projectSdkEvent(
           toolExecutionComplete("tool-create-session", {
             success: true,
-            resultContent: JSON.stringify({ sessionId: "toy-box-created-1", opened: true }),
+            resultContent: JSON.stringify({ sessionId: "agent-teams-created-1", opened: true }),
           }),
           context,
         ),
-      ).toEqual([{ type: "linked_session_added", sessionId: "toy-box-created-1" }]);
+      ).toEqual([{ type: "linked_session_added", sessionId: "agent-teams-created-1" }]);
     });
 
     test("failed create_session completions are omitted and emit no linked session", () => {
@@ -1599,7 +1600,7 @@ describe("projector", () => {
       { path: "/repo/src/foo.ts", file: { kind: "machine", path: "/repo/src/foo.ts" } },
       {
         path: ARTIFACT_PATCH_PATH,
-        file: { kind: "session", sessionId: "toy-box-session", path: "plan.md" },
+        file: { kind: "session", sessionId: "agent-teams-session", path: "plan.md" },
       },
     ])("file visibility derives $file.kind identity from the recorded path", ({ path, file }) => {
       const project = createStreamingContext();
@@ -1978,7 +1979,7 @@ describe("projector", () => {
               skills: [
                 {
                   name: "review",
-                  description: "Review Toy Box code.",
+                  description: "Review Agent Teams code.",
                   source: "project",
                   userInvocable: true,
                   enabled: true,

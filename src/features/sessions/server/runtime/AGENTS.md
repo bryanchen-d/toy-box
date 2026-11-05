@@ -1,6 +1,6 @@
 # Session Runtime
 
-A session is Toy Box's core compute primitive: an addressable agent process that can outlive the browser that started it, receive queued messages, and serve multiple subscribers and callers. Its durable identity, provider history, workspace, and owned resources survive individual executions; `SessionStream` is the one live incarnation currently processing that session's mailbox. This resembles the Erlang/Elixir process model as an architectural analogy, not as an implementation claim about isolation or fault tolerance.
+A session is Agent Teams' core compute primitive: an addressable agent process that can outlive the browser that started it, receive queued messages, and serve multiple subscribers and callers. Its durable identity, provider history, workspace, and owned resources survive individual executions; `SessionStream` is the one live incarnation currently processing that session's mailbox. This resembles the Erlang/Elixir process model as an architectural analogy, not as an implementation claim about isolation or fault tolerance.
 
 The end user directly supervises an ordinary session. Managed features instead govern sessions they own. Every waiter uses the same session completion mechanism; a supervisor is distinguished by lifecycle authority, not a special kind of wait. It owns admission, concurrency, context, cancellation, recovery, and what to retain, delete, record, or publish when execution ends. The runtime supplies the common process mechanics and exact execution receipts without defining a generic supervisor abstraction.
 
@@ -59,7 +59,7 @@ A managed feature may announce work before its live stream exists. `registerPend
 Managed features supervise sessions because their terminal policies differ. The runtime centralizes execution and exact completion; scenario-specific policy stays with its owner rather than entering an enum, strategy interface, or alternate execution model.
 
 1. Acquisition is single-flight. Before a new execution acquires a provider connection, the registry refreshes
-   configuration when its application-supplied lifetime requires it. This lets a Channel-owned Worker
+   configuration when its application-supplied lifetime requires it. This lets a Team-owned Worker
    receive current identity and collaboration instructions between executions. Active delivery never
    refreshes that session. A caller joins an existing stream, shares an in-progress creation, creates a
    new provider connection, or resumes an idle session from its reduced snapshot and cached provider
@@ -91,7 +91,7 @@ Subscriptions are either `active` or `passive`. Both receive the same live data.
 
 ## Realtime planes
 
-Toy Box keeps two event planes separate because they promise different things:
+Agent Teams keeps two event planes separate because they promise different things:
 
 | Plane                | Contract                                                                                                                      |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |

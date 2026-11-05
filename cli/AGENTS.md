@@ -1,4 +1,4 @@
-# Toy Box CLI
+# Agent Teams CLI
 
 The CLI bundles two parts into one Bun binary: the browser app and the Nitro server that renders and serves it, including server functions and HTTP, SSE, and WebSocket routes. Launch the binary in any working directory and it runs one server process, with no dependencies to install and no services to wire up. The launcher itself (`cli/index.ts`) is small on purpose. What deserves explaining in this folder is the composition: how those parts get built and then collapsed into one file. That runs through Vite and Rolldown, then Nitro, then Bun, driven by two `package.json` scripts (`build` and `build:cli`) and configured in `vite.config.ts`.
 
@@ -14,7 +14,7 @@ compiler. Public app packages come from the shared runtime dependency catalog;
 compiler-only and type-support packages are listed alongside the writer. `Bun.build()`
 starts at the launcher and follows its dynamic `import()` of the Nitro server and the
 chunks it loads. It packs that graph, the browser assets, the app type library, and a
-copy of the Bun runtime into one `toy-box` file. The temporary library is removed after
+copy of the Bun runtime into one `agent-teams` file. The temporary library is removed after
 compilation, and the finished binary reads nothing from `.output` or `node_modules` on
 disk. The npm package ships only this binary and its metadata, currently for Apple
 silicon on macOS; new platforms mean extending the build matrix, not changing the model.

@@ -3,7 +3,7 @@
 import type { JSONType } from "zod";
 import type { AppInstance, AppShare, AppUpdate, AppUpdateResult } from "@apps/model";
 
-const APP_ID_PREFIX = "toy-box-app-";
+const APP_ID_PREFIX = "agent-teams-app-";
 
 /** Durable repository for saved app instances, independent of their TSX definitions. */
 export class AppDatabase {
@@ -71,7 +71,7 @@ export class AppDatabase {
     input: Pick<AppShare, "sourceAppId" | "targetAppId" | "mimeType" | "content">,
   ): Promise<AppShare> {
     const share: AppShare = {
-      id: `toy-box-app-share-${crypto.randomUUID()}`,
+      id: `agent-teams-app-share-${crypto.randomUUID()}`,
       ...input,
       createdAt: new Date().toISOString(),
     };

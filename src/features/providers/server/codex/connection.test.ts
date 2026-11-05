@@ -50,7 +50,7 @@ function sessionState(events: SessionEvent[]) {
 }
 
 function setup(tools: SessionConfiguration["tools"] = []) {
-  const sessionId = `toy-box-test-${crypto.randomUUID()}`;
+  const sessionId = `agent-teams-test-${crypto.randomUUID()}`;
   const written: Record<string, unknown>[] = [];
   const responses = new Map<string, (value: unknown) => void>();
   const events: SessionEvent[] = [];
@@ -128,7 +128,7 @@ function setup(tools: SessionConfiguration["tools"] = []) {
     written,
     events,
     sessionId,
-    callTool: (id: string, name: string, args: unknown, namespace = "toy_box") =>
+    callTool: (id: string, name: string, args: unknown, namespace = "agent_teams") =>
       new Promise<unknown>((resolve) => {
         responses.set(id, resolve);
         request(id, "item/tool/call", {
@@ -326,7 +326,7 @@ test("subagent activity stays nested under one agent call live and after replay"
 
 test("imported local images are restored while unavailable images retain their reference", async () => {
   const { readHistory, setThread } = setup();
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-media-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-media-test-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const image = join(directory, "image.png");
   await Bun.write(image, "image bytes");
@@ -561,7 +561,7 @@ test("Codex replays images and system messages entirely from native input", asyn
   const system: SessionMessage = {
     role: "system",
     clientId: "system",
-    content: { type: "channel_message", senderName: "Ada" },
+    content: { type: "team_message", senderName: "Ada" },
   };
   await connection.send(system);
   const systemInput = (
@@ -662,7 +662,7 @@ test("native tools validate arguments, retain public identity, and terminate aft
     item: {
       type: "dynamicToolCall",
       id: "valid-call",
-      namespace: "toy_box",
+      namespace: "agent_teams",
       tool: "finish_test",
       arguments: { value: "ok" },
       status: "completed",
@@ -706,7 +706,7 @@ test.each(["abort", "completion", "disconnect"] as const)(
   },
 );
 
-test("native tools return text and images and reject calls outside the Toy Box namespace", async () => {
+test("native tools return text and images and reject calls outside the Agent Teams namespace", async () => {
   const preview = defineTool("preview", {
     handler: () => ({
       content: [

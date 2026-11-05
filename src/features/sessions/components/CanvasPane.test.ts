@@ -3,16 +3,16 @@ import { resolveCanvasUrl } from "./CanvasPane";
 
 describe("canvas pane URLs", () => {
   test("rewrites SDK loopback URLs to the browser hostname", () => {
-    expect(resolveCanvasUrl("http://127.0.0.1:51460/view?id=one", "toybox.local")).toBe(
-      "http://toybox.local:51460/view?id=one",
+    expect(resolveCanvasUrl("http://127.0.0.1:51460/view?id=one", "agent-teams.local")).toBe(
+      "http://agent-teams.local:51460/view?id=one",
     );
   });
 
   test("preserves public HTTP URLs and rejects non-web URLs", () => {
-    expect(resolveCanvasUrl("https://example.com/canvas", "toybox.local")).toBe(
+    expect(resolveCanvasUrl("https://example.com/canvas", "agent-teams.local")).toBe(
       "https://example.com/canvas",
     );
-    expect(resolveCanvasUrl("javascript:alert(1)", "toybox.local")).toBeUndefined();
-    expect(resolveCanvasUrl("not a URL", "toybox.local")).toBeUndefined();
+    expect(resolveCanvasUrl("javascript:alert(1)", "agent-teams.local")).toBeUndefined();
+    expect(resolveCanvasUrl("not a URL", "agent-teams.local")).toBeUndefined();
   });
 });

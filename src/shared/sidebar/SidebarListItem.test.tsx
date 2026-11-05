@@ -47,7 +47,7 @@ test("shows an item status in place of its menu", () => {
       status={{
         kind: "unread",
         ariaLabel: "Product Lab has unread messages",
-        tooltip: "Channel has unread messages",
+        tooltip: "Team has unread messages",
       }}
     />,
   );

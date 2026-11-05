@@ -9,23 +9,23 @@ import { writeAppTypeLibrary } from "./index";
 const projectRoot = resolve(Bun.fileURLToPath(new URL("../../", import.meta.url)));
 
 test("packaged types can check an app without the source checkout", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "toy-box-app-types-test-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "agent-teams-app-types-test-")));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
   await writeAppTypeLibrary(projectRoot, root);
   const source = join(root, "app.tsx");
   await Bun.write(
     source,
     `
-    import { useChannel, useFile } from "./src/features/apps/sdk";
+    import { useTeam, useFile } from "./src/features/apps/sdk";
     import type { FromSchema } from "json-schema-to-ts";
     import { z } from "zod";
     import * as m from "motion/react-m";
     const Article = m.article;
     const state: FromSchema<{ type: "object", properties: { count: { type: "number" } }, required: ["count"] }> = { count: 3 };
     export default function App() {
-      const channel = useChannel("channel");
+      const team = useTeam("team");
       const file = useFile({ kind: "session", sessionId: "session", path: "notes.md" }, "shared");
-      return <Article layout="position">{channel.state?.channel.name}{file.content}{z.number().parse(state.count)}</Article>;
+      return <Article layout="position">{team.state?.team.name}{file.content}{z.number().parse(state.count)}</Article>;
     }
   `,
   );

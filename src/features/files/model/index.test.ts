@@ -9,19 +9,19 @@ import {
 
 const sessionFile: WorkspaceFile = {
   kind: "session",
-  sessionId: "toy-box-session",
+  sessionId: "agent-teams-session",
   path: "plan.md",
 };
 const machineFile: WorkspaceFile = { kind: "machine", path: "/repo/src/foo.ts" };
 
 describe("workspace files", () => {
   test("identity distinguishes session and machine files", () => {
-    expect(workspaceFileId(sessionFile)).toBe("session:toy-box-session:plan.md");
+    expect(workspaceFileId(sessionFile)).toBe("session:agent-teams-session:plan.md");
     expect(workspaceFileId(machineFile)).toBe("machine:/repo/src/foo.ts");
   });
 
   test("owner is the session for session files and absent for machine files", () => {
-    expect(ownerSessionId(sessionFile)).toBe("toy-box-session");
+    expect(ownerSessionId(sessionFile)).toBe("agent-teams-session");
     expect(ownerSessionId(machineFile)).toBeUndefined();
   });
 
@@ -41,7 +41,7 @@ describe("workspace files", () => {
   });
 
   test("session URLs stay bare while machine files use the machine scope", () => {
-    expect(encodeFileRoute(sessionFile)).toEqual({ scope: "toy-box-session", path: "plan.md" });
+    expect(encodeFileRoute(sessionFile)).toEqual({ scope: "agent-teams-session", path: "plan.md" });
     expect(encodeFileRoute(machineFile)).toEqual({ scope: "machine", path: "repo/src/foo.ts" });
   });
 });

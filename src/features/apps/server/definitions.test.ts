@@ -31,7 +31,7 @@ async function createRegistry(): Promise<{
   registry: AppDefinitionRegistry;
   root: string;
 }> {
-  const root = await mkdtemp(join(tmpdir(), "toy-box-app-definitions-"));
+  const root = await mkdtemp(join(tmpdir(), "agent-teams-app-definitions-"));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
   return { registry: new AppDefinitionRegistry(root), root };
 }

@@ -39,7 +39,7 @@ describe.serial("snapshot cache", () => {
   });
 
   test("cold and cached snapshots derive artifacts from current files", async () => {
-    const sessionId = `toy-box-test-${crypto.randomUUID()}`;
+    const sessionId = `agent-teams-test-${crypto.randomUUID()}`;
     spyOn(providers, "isHistoryCurrent").mockResolvedValue(true);
     onTestFinished(async () => {
       mock.restore();

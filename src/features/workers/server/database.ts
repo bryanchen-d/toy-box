@@ -149,8 +149,8 @@ function workerColumns(worker: WorkerOwner) {
       return { parent_session_id: worker.file.sessionId, file_path: worker.file.path };
     case "app":
       return { app_id: worker.appId };
-    case "channel":
-      return { channel_id: worker.channelId };
+    case "team":
+      return { team_id: worker.teamId };
     case "inbox":
       return {};
   }
@@ -170,8 +170,8 @@ function ownerPredicate(db: Bun.SQL, owner: WorkerOwner) {
       return db`AND parent_session_id = ${owner.file.sessionId} AND file_path = ${owner.file.path}`;
     case "app":
       return db`AND app_id = ${owner.appId}`;
-    case "channel":
-      return db`AND channel_id = ${owner.channelId}`;
+    case "team":
+      return db`AND team_id = ${owner.teamId}`;
     case "inbox":
       return db``;
   }
@@ -202,8 +202,8 @@ function workerFromRow(row: WorkerRow): Worker {
       };
     case "app":
       return { ...common, type: "app", appId: row.app_id! };
-    case "channel":
-      return { ...common, type: "channel", channelId: row.channel_id! };
+    case "team":
+      return { ...common, type: "team", teamId: row.team_id! };
     case "inbox":
       return { ...common, type: "inbox", ephemeral: false };
   }
@@ -216,7 +216,7 @@ type WorkerRow = {
   parent_session_id: string | null;
   file_path: string | null;
   app_id: string | null;
-  channel_id: string | null;
+  team_id: string | null;
   ephemeral: number;
   name: string | null;
   metadata: string | null;

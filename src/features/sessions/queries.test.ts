@@ -9,22 +9,16 @@ import type { SessionsState } from "./model";
 
 describe("session list projection", () => {
   test("sidebar roots and composer references exclude every managed surface", () => {
-    const sessions = [
-      "standard",
-      "external",
-      "child",
-      "inbox",
-      "channel",
-      "automation",
-      "hyper",
-    ].map((id) => ({ id, createdAt: new Date(0), updatedAt: new Date(0) }));
+    const sessions = ["standard", "external", "child", "inbox", "team", "automation", "hyper"].map(
+      (id) => ({ id, createdAt: new Date(0), updatedAt: new Date(0) }),
+    );
     const state: SessionsState = {
       sessions,
       worktrees: {},
       ownership: {
         child: { type: "worker", parentSessionId: "standard" },
         inbox: { type: "worker", parentSessionId: null },
-        channel: { type: "worker", parentSessionId: null },
+        team: { type: "worker", parentSessionId: null },
         automation: { type: "automation" },
       },
     };
@@ -74,7 +68,7 @@ describe("session list projection", () => {
       "file-worker",
       "grandchild",
       "app-worker",
-      "channel-worker",
+      "team-worker",
       "inbox-worker",
       "automation",
     ].map((id) => ({ id, createdAt: new Date(0), updatedAt: new Date(0) }));
@@ -86,7 +80,7 @@ describe("session list projection", () => {
         "file-worker": { type: "worker", parentSessionId: "parent" },
         grandchild: { type: "worker", parentSessionId: "child" },
         "app-worker": { type: "worker", parentSessionId: null },
-        "channel-worker": { type: "worker", parentSessionId: null },
+        "team-worker": { type: "worker", parentSessionId: null },
         "inbox-worker": { type: "worker", parentSessionId: null },
         automation: { type: "automation" },
         reserved: { type: "worker", parentSessionId: "parent" },

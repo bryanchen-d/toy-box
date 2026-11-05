@@ -3,7 +3,7 @@ import { addDuplicateIssues } from "./issues";
 import { validateDocument } from "./validation";
 
 /**
- * The `.brief` schema: one flexible document composed from Toy Box section
+ * The `.brief` schema: one flexible document composed from Agent Teams section
  * primitives. Findings ground the change, spec sections define what should
  * become true, and zero or more plan sections form the optional plan that makes
  * that spec executable. The file is durable truth and the editor is a lens over

@@ -1,4 +1,4 @@
-# Toy Box Dogfooding Checklist
+# Agent Teams Dogfooding Checklist
 
 ## Setup
 

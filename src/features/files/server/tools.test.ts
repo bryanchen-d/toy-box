@@ -3,7 +3,12 @@ import type { ToolInvocation } from "@sessions/server/tools/definition";
 import { fileTools } from "./tools";
 
 function invocation(): ToolInvocation {
-  return { sessionId: "toy-box-session", toolCallId: "call", toolName: "open_file", arguments: {} };
+  return {
+    sessionId: "agent-teams-session",
+    toolCallId: "call",
+    toolName: "open_file",
+    arguments: {},
+  };
 }
 
 test.each(fileTools)("$name validates an absolute path and acknowledges success", (tool) => {

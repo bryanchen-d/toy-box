@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 export const SCREEN_NATIVE_DIRECTORY = "screen-native";
-export const SCREEN_HELPER_EXECUTABLE = "ToyBoxScreens";
+export const SCREEN_HELPER_EXECUTABLE = "AgentTeamsScreens";
 
 /** Compiles the helper, unless it was already built from its current source. */
 export async function buildScreenNative(destination?: string): Promise<string> {

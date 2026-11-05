@@ -3,7 +3,7 @@ import type { Automation } from "@automations/model";
 import type { CustomEditorKind } from "@files/model";
 import type { SessionUpdate } from "@sessions/model";
 import type { WorkerEvent } from "@workers/model";
-import type { Channel, ChannelList } from "@channels/model";
+import type { Team, TeamList } from "@teams/model";
 import type { Settings } from "./config/settings";
 import type { WorkspaceAction } from "./state/actions";
 
@@ -13,10 +13,10 @@ export type WorkspaceEvent =
   | WorkerEvent
   | { type: "workspace.connected"; revision: string }
   | { type: "providers.changed" }
-  | { type: "channel.upserted"; channel: Channel }
-  | { type: "channel.deleted"; channelId: string }
-  | { type: "channel.member.upserted"; member: ChannelList["members"][number] }
-  | { type: "channel.member.deleted"; channelId: string; agentId: string }
+  | { type: "team.upserted"; team: Team }
+  | { type: "team.deleted"; teamId: string }
+  | { type: "team.member.upserted"; member: TeamList["members"][number] }
+  | { type: "team.member.deleted"; teamId: string; agentId: string }
   | {
       type: "settings.changed";
       settings: Settings;

@@ -135,7 +135,7 @@ test("listing saved app summaries is independent of definitions and pending shar
 });
 
 test("artifact validation compiles the invoking session's current .toy file", async () => {
-  const sessionId = `toy-box-artifact-tool-${crypto.randomUUID()}`;
+  const sessionId = `agent-teams-artifact-tool-${crypto.randomUUID()}`;
   const artifactPath = resolveSessionArtifactPath(sessionId, "board.toy");
   if (!artifactPath) throw new Error("Expected a valid artifact path.");
   const sessionRoot = dirname(dirname(artifactPath));
@@ -165,6 +165,6 @@ test("artifact validation compiles the invoking session's current .toy file", as
   expect(JSON.parse(String(invalid))).toMatchObject({
     valid: false,
     path: "board.toy",
-    error: expect.stringMatching(/\.toybox-app\.tsx.*Cannot find name 'MissingComponent'/s),
+    error: expect.stringMatching(/\.agent-teams-app\.tsx.*Cannot find name 'MissingComponent'/s),
   });
 });

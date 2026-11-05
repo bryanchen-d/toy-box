@@ -27,7 +27,7 @@ export default definePlugin((nitroApp) => {
     await stopProviders();
   });
 
-  // Keep Toy Box-owned skills and their bundled resources current on disk.
+  // Keep Agent Teams-owned skills and their bundled resources current on disk.
   void start("install bundled skills", () => installBundledSkills(featureSkillFiles));
 
   void start("observe session artifacts", () => {

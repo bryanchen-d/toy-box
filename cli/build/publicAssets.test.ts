@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { removeUncompressedAssets } from "./publicAssets";
 
 test("omits originals only when both browser encodings are available", async () => {
-  const publicDir = await mkdtemp(join(tmpdir(), "toy-box-public-assets-"));
+  const publicDir = await mkdtemp(join(tmpdir(), "agent-teams-public-assets-"));
   const files = [
     "assets/app.js",
     "assets/app.js.gz",

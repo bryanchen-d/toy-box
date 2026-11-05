@@ -53,15 +53,15 @@ export function parseServerSetting(value) {
   const url = new URL(input);
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("The Toy Box server must use HTTP or HTTPS.");
+    throw new Error("The Agent Teams server must use HTTP or HTTPS.");
   }
 
   if (url.username || url.password) {
-    throw new Error("The Toy Box server URL cannot include credentials.");
+    throw new Error("The Agent Teams server URL cannot include credentials.");
   }
 
   if (url.search || url.hash) {
-    throw new Error("The Toy Box server URL cannot include a query string or fragment.");
+    throw new Error("The Agent Teams server URL cannot include a query string or fragment.");
   }
 
   const path = url.pathname.replace(/\/+$/, "");
@@ -81,7 +81,7 @@ function getHostPermission(serverUrl) {
   const url = new URL(serverUrl);
 
   // Firefox match patterns do not support ports. Omitting it grants only this
-  // scheme and host, across whichever port hosts the configured Toy Box server.
+  // scheme and host, across whichever port hosts the configured Agent Teams server.
   url.port = "";
   return `${url.origin}/*`;
 }

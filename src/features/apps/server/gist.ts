@@ -26,7 +26,7 @@ export async function downloadGistApp(url: string, fetcher: Fetcher = fetch) {
     {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "Toy-Box",
+        "User-Agent": "Agent-Teams",
       },
     },
   );

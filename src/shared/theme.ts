@@ -1,7 +1,7 @@
 export type ColorScheme = "light" | "dark";
 export type ThemePreference = "system" | ColorScheme;
 
-const THEME_COOKIE = "toybox_theme";
+const THEME_COOKIE = "agent_teams_theme";
 const PREFERS_DARK_QUERY = "(prefers-color-scheme: dark)";
 const listeners = new Set<() => void>();
 let media: MediaQueryList | undefined;
@@ -52,7 +52,7 @@ function notifyThemeChange(): void {
 export function setThemePreference(preference: ThemePreference): void {
   document.cookie = serializeThemePreference(preference);
   if (getThemePreference() !== preference) {
-    throw new Error("Unable to save the theme preference. Enable cookies for Toy Box.");
+    throw new Error("Unable to save the theme preference. Enable cookies for Agent Teams.");
   }
   notifyThemeChange();
 }

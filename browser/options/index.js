@@ -29,7 +29,7 @@ async function handleSubmit(event) {
   try {
     serverUrl = parseServerSetting(ui.serverUrl.value).serverUrl;
   } catch (error) {
-    const message = getErrorMessage(error, "Enter a valid Toy Box server URL.");
+    const message = getErrorMessage(error, "Enter a valid Agent Teams server URL.");
     ui.serverUrl.setCustomValidity(message);
     ui.serverUrl.reportValidity();
     renderStatus(message, "error");
@@ -44,7 +44,7 @@ async function handleSubmit(event) {
     renderServerSetting(setting);
     renderStatus(`Saved. Inbox tasks will be sent to ${setting.inboxEndpoint}.`, "success");
   } catch (error) {
-    renderStatus(getErrorMessage(error, "Couldn’t save the Toy Box server."), "error");
+    renderStatus(getErrorMessage(error, "Couldn’t save the Agent Teams server."), "error");
   } finally {
     ui.form.removeAttribute("aria-busy");
     ui.save.disabled = false;

@@ -1,6 +1,6 @@
 // Disk-backed storage for user-registered custom editors.
 //
-// Each editor is a folder under `~/.toy-box/editors/<name>/` holding its metadata
+// Each editor is a folder under `~/.agent-teams/editors/<name>/` holding its metadata
 // (`editor.json`) and its viewer template (`index.html`). The folder — not a
 // database — is the source of truth, so an editor is inspectable, editable, and
 // removable as plain files, and the disk is the only place that needs to persist.
@@ -108,7 +108,7 @@ function parseCustomEditor(
 }
 
 function editorsRoot(): string {
-  return join(homedir(), ".toy-box", "editors");
+  return join(homedir(), ".agent-teams", "editors");
 }
 
 function editorDirectory(name: string): string {

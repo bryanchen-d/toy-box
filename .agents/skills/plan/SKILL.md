@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Plan a Toy Box change before building it, so the work starts from the right outcome, the existing design, and the smallest shape that fits, with explicit expectations that review and dogfood can check. Use when the user asks for a plan, proposal, or approach, or asks whether or how something could be done ("can we", "how would we", "what would it take", "thoughts?", "think this through"); and before implementing a change that adds or reshapes a domain concept, public contract, schema or wire format, agent tool or instructions, stream or lifecycle, persistence, cache semantics, or shared UI primitive. Skip small local edits, copy or style tweaks, and documentation-only changes.
+description: Plan an Agent Teams change before building it, so the work starts from the right outcome, the existing design, and the smallest shape that fits, with explicit expectations that review and dogfood can check. Use when the user asks for a plan, proposal, or approach, or asks whether or how something could be done ("can we", "how would we", "what would it take", "thoughts?", "think this through"); and before implementing a change that adds or reshapes a domain concept, public contract, schema or wire format, agent tool or instructions, stream or lifecycle, persistence, cache semantics, or shared UI primitive. Skip small local edits, copy or style tweaks, and documentation-only changes.
 ---
 
 # Plan
@@ -52,7 +52,7 @@ Name the assumption most likely to invalidate the plan, such as a platform or li
 
 ## Present the plan
 
-Lead with the recommendation, then include only what applies: the outcome (what changes, what stays the same, what you're not doing), the shape (what it reuses, and each new concept with its reason), the risk and what any probe showed, the footprint, validation, the sequence, and decisions for the user. Size the plan to the change; a small change needs a few lines. Keep the plan in the conversation. Write a brief only when the user asks or the work spans sessions or agents, following the `create-toy-box-brief` skill.
+Lead with the recommendation, then include only what applies: the outcome (what changes, what stays the same, what you're not doing), the shape (what it reuses, and each new concept with its reason), the risk and what any probe showed, the footprint, validation, the sequence, and decisions for the user. Size the plan to the change; a small change needs a few lines. Keep the plan in the conversation. Write a brief only when the user asks or the work spans sessions or agents, following the `create-agent-teams-brief` skill.
 
 ## Build to the plan
 

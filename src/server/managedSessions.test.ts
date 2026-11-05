@@ -1,4 +1,4 @@
-import { createStoredChannel } from "@channels/server/testFixtures";
+import { createStoredTeam } from "@teams/server/testFixtures";
 import { describe, expect, mock, onTestFinished, test } from "bun:test";
 import { createTestDatabase } from "@/server/database";
 import type { Session } from "@sessions/model";
@@ -20,7 +20,7 @@ mock.module("@/server/database", () => ({
 }));
 
 const { AutomationDatabase } = await import("@automations/server/database");
-const { ChannelDatabase } = await import("@channels/server/database");
+const { TeamDatabase } = await import("@teams/server/database");
 const { registerWorkerSession, unregisterWorkerSession, WorkerDatabase } =
   await import("@workers/server/database");
 const { addHyperSession, deleteHyperState } = await import("@workspace/server/state/hyperSessions");
@@ -47,7 +47,7 @@ function createInboxWorker(sessionId: string) {
 describe("session type resolution", () => {
   test("defaults sessions without a managing record to standard", async () => {
     await openSessionTypeTestDatabase();
-    expect(await resolveSessionType("toy-box-standard")).toBe("standard");
+    expect(await resolveSessionType("agent-teams-standard")).toBe("standard");
   });
 
   test("resolves every managed session type from its authoritative record", async () => {
@@ -58,10 +58,10 @@ describe("session type resolution", () => {
       model: { provider: "copilot", name: "gpt-5" },
       cron: "0 9 * * *",
     });
-    const inboxId = `toy-box-${crypto.randomUUID()}`;
-    const hyperId = `toy-box-${crypto.randomUUID()}`;
-    const workerId = `toy-box-${crypto.randomUUID()}`;
-    const channelWorkerId = `toy-box-${crypto.randomUUID()}`;
+    const inboxId = `agent-teams-${crypto.randomUUID()}`;
+    const hyperId = `agent-teams-${crypto.randomUUID()}`;
+    const workerId = `agent-teams-${crypto.randomUUID()}`;
+    const teamWorkerId = `agent-teams-${crypto.randomUUID()}`;
     await createInboxWorker(inboxId);
     addHyperSession(hyperId);
     await registerWorkerSession({
@@ -73,9 +73,9 @@ describe("session type resolution", () => {
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
-      type: "channel",
-      channelId: "channel",
-      sessionId: channelWorkerId,
+      type: "team",
+      teamId: "team",
+      sessionId: teamWorkerId,
       ephemeral: false,
       name: "Architect",
       metadata: { seenThrough: 0 },
@@ -86,7 +86,7 @@ describe("session type resolution", () => {
     expect(await resolveSessionType(inboxId)).toBe("worker");
     expect(await resolveSessionType(hyperId)).toBe("hyper");
     expect(await resolveSessionType(workerId)).toBe("worker");
-    expect(await resolveSessionType(channelWorkerId)).toBe("worker");
+    expect(await resolveSessionType(teamWorkerId)).toBe("worker");
     expect(await readSessionCatalog(async () => [[], {}])).toEqual({
       sessions: [],
       worktrees: {},
@@ -94,14 +94,14 @@ describe("session type resolution", () => {
         [automation.id]: { type: "automation" },
         [inboxId]: { type: "worker", parentSessionId: null },
         [workerId]: { type: "worker", parentSessionId: null },
-        [channelWorkerId]: { type: "worker", parentSessionId: null },
+        [teamWorkerId]: { type: "worker", parentSessionId: null },
       },
     });
   });
 
   test("rejects conflicting managed records", async () => {
     await openSessionTypeTestDatabase();
-    const sessionId = `toy-box-${crypto.randomUUID()}`;
+    const sessionId = `agent-teams-${crypto.randomUUID()}`;
     await createInboxWorker(sessionId);
     addHyperSession(sessionId);
     onTestFinished(() => deleteHyperState(sessionId));
@@ -146,9 +146,9 @@ describe("Session catalog projection", () => {
     onTestFinished(() => deleteHyperState("old-hyper"));
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
-      type: "channel",
-      channelId: "channel",
-      sessionId: "old-channel-member",
+      type: "team",
+      teamId: "team",
+      sessionId: "old-team-member",
       ephemeral: false,
     });
     await new SettingsDatabase(currentDb!).set({
@@ -156,7 +156,7 @@ describe("Session catalog projection", () => {
       pinnedSessionIds: ["old-pin", "new-pin"],
     });
     const history = Array.from({ length: 260 }, (_, i) => catalogSession(`history-${i}`, i + 1));
-    const required = [automation.id, "old-inbox", "old-hyper", "old-channel-member", "old-pin"];
+    const required = [automation.id, "old-inbox", "old-hyper", "old-team-member", "old-pin"];
     const sessions = [
       ...required.map((id) => catalogSession(id, 0)),
       catalogSession("new-pin", 1000),
@@ -172,7 +172,7 @@ describe("Session catalog projection", () => {
     expect(catalog.ownership).toEqual({
       [automation.id]: { type: "automation" },
       "old-inbox": { type: "worker", parentSessionId: null },
-      "old-channel-member": { type: "worker", parentSessionId: null },
+      "old-team-member": { type: "worker", parentSessionId: null },
     });
     // Resource ownership is independent of the browsing window.
     expect(catalog.worktrees["history-0"]).toEqual(worktree);
@@ -225,9 +225,9 @@ describe("Session catalog projection", () => {
         await createInboxWorker("inbox");
         await registerWorkerSession({
           createdAt: new Date(0).toISOString(),
-          type: "channel",
-          channelId: "channel",
-          sessionId: "channel-worker",
+          type: "team",
+          teamId: "team",
+          sessionId: "team-worker",
           ephemeral: false,
           name: "Reviewer",
           metadata: { seenThrough: 0 },
@@ -241,7 +241,7 @@ describe("Session catalog projection", () => {
         });
       };
       if (change === "deletion") await admit();
-      const sessions = ["ordinary", "channel-worker", "worker", "inbox"].map((sessionId) => ({
+      const sessions = ["ordinary", "team-worker", "worker", "inbox"].map((sessionId) => ({
         id: sessionId,
         createdAt: new Date(0),
         updatedAt: new Date(0),
@@ -253,18 +253,18 @@ describe("Session catalog projection", () => {
         if (change === "creation") {
           await admit();
         } else {
-          await unregisterWorkerSession("channel-worker");
+          await unregisterWorkerSession("team-worker");
           await unregisterWorkerSession("worker");
           await new WorkerDatabase(currentDb!).delete("inbox");
         }
-        return [sessions, { "channel-worker": worktree, worker: worktree }];
+        return [sessions, { "team-worker": worktree, worker: worktree }];
       });
 
       expect(catalog).toEqual({
         sessions,
-        worktrees: { "channel-worker": worktree, worker: worktree },
+        worktrees: { "team-worker": worktree, worker: worktree },
         ownership: {
-          "channel-worker": { type: "worker", parentSessionId: null },
+          "team-worker": { type: "worker", parentSessionId: null },
           worker: { type: "worker", parentSessionId: "parent" },
           inbox: { type: "worker", parentSessionId: null },
         },
@@ -283,18 +283,18 @@ function catalogSession(id: string, updatedAt: number): Session {
   };
 }
 
-test("detaching a Channel Agent removes its Worker and records its departure", async () => {
+test("detaching a Team Agent removes its Worker and records its departure", async () => {
   await openSessionTypeTestDatabase();
-  const channels = new ChannelDatabase(currentDb!);
-  const channel = await createStoredChannel(channels, {
+  const teams = new TeamDatabase(currentDb!);
+  const team = await createStoredTeam(teams, {
     name: "Dormant team",
     purpose: "Coordinate a dormant team.",
     model: { provider: "copilot", name: "gpt-5.5" },
   });
-  const { member } = await channels.createMember({
+  const { member } = await teams.createMember({
     createdAt: new Date(0).toISOString(),
-    type: "channel",
-    channelId: channel.id,
+    type: "team",
+    teamId: team.id,
     sessionId: "dormant-reviewer",
     ephemeral: false,
     name: "Reviewer",
@@ -303,8 +303,8 @@ test("detaching a Channel Agent removes its Worker and records its departure", a
 
   await detachManagedSession(member.id);
 
-  expect(await channels.getMember(member.id)).toBeNull();
-  expect((await channels.listMessagesAfter(channel.id)).map(({ content }) => content)).toEqual([
+  expect(await teams.getMember(member.id)).toBeNull();
+  expect((await teams.listMessagesAfter(team.id)).map(({ content }) => content)).toEqual([
     { type: "member_joined", member },
     { type: "member_left", member },
   ]);

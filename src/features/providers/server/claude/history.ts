@@ -83,7 +83,7 @@ async function readAcrossCompactions(
   return [...new Map(parts.flat().map((message) => [message.uuid, message])).values()];
 }
 
-// The CLI records Toy Box's model switches as this command, in native history only.
+// The CLI records Agent Teams' model switches as this command, in native history only.
 const MODEL_SWITCH = /^<command-name>\/model<\/command-name>/;
 
 /** Replays native history, the main transcript and each subagent's, as the live stream sent it.

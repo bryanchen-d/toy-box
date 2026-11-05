@@ -36,7 +36,7 @@ type Call = {
 const CLI_TEXT =
   /^(?:\[Request interrupted by user(?: for tool use)?\]$|<local-command-std(?:out|err)>)/;
 
-// Native tools as Toy Box's canonical tools. Glob and Grep exist only on npm and Windows builds;
+// Native tools as Agent Teams' canonical tools. Glob and Grep exist only on npm and Windows builds;
 // native macOS and Linux builds search through Bash.
 const TOOL_NAMES: Record<string, string> = {
   Bash: "bash",
@@ -323,8 +323,8 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
 }
 
 function toolName(name: string): string {
-  return name.startsWith("mcp__toy_box__")
-    ? name.slice("mcp__toy_box__".length)
+  return name.startsWith("mcp__agent_teams__")
+    ? name.slice("mcp__agent_teams__".length)
     : (TOOL_NAMES[name] ?? name);
 }
 

@@ -1,6 +1,6 @@
 # Golden Tests
 
-Golden tests protect the two pipelines behind a central Toy Box promise: Copilot activity should produce the same session whether it is watched live or reconstructed from history. They play back real, sanitized Copilot sessions through production history, projector, reducer, and runtime code with narrow boundary mocks, then lock each result with Bun snapshots.
+Golden tests protect the two pipelines behind a central Agent Teams promise: Copilot activity should produce the same session whether it is watched live or reconstructed from history. They play back real, sanitized Copilot sessions through production history, projector, reducer, and runtime code with narrow boundary mocks, then lock each result with Bun snapshots.
 
 Unit tests remain beside their source files to localize projector, reducer, runtime, and protocol failures. These project-level tests exercise the whole pipeline in its two consumption modes:
 
@@ -19,4 +19,4 @@ After an intentional behavior change, run `bun test -u` and review the `.snap` d
 
 Fixtures are contiguous, sanitized slices of real `events.jsonl` logs. Truncate user content and remove `encryptedContent`, `reasoningOpaque`, and `toolTelemetry` before committing them.
 
-When Toy Box misrenders a real session, curate the smallest event slice that preserves the behavior, add named invariants for the regression, and snapshot the complete result. `fixtures/subagents.jsonl` is the canonical complex fixture: parallel background agents, todo SQL, failure, compaction, and interleaved subagent activity.
+When Agent Teams misrenders a real session, curate the smallest event slice that preserves the behavior, add named invariants for the regression, and snapshot the complete result. `fixtures/subagents.jsonl` is the canonical complex fixture: parallel background agents, todo SQL, failure, compaction, and interleaved subagent activity.

@@ -1,8 +1,8 @@
 # Workspace
 
-Workspace is Toy Box's application composition feature. It owns two sibling capabilities:
+Workspace is Agent Teams' application composition feature. It owns two sibling capabilities:
 
-- the shared projection and update plane that composes authoritative facts from Sessions, Channels,
+- the shared projection and update plane that composes authoritative facts from Sessions, Teams,
   Inbox, Automations, Workers, Files, and Apps without becoming another source of truth;
   and
 - the browser-local shell that composes feature-owned panes into the desktop, mobile, and Hyper
@@ -23,7 +23,7 @@ presentation; those reusable capabilities remain independent of their consuming 
 It includes settings, sparse session activity, Hyper membership, active workers, custom editors,
 and environment capabilities. Feature databases, registries, files, and session history remain
 authoritative; Workspace only assembles the shared coordination values.
-Sessions, Channels, Automations, Inbox, Apps, and Providers have independent Query catalogs
+Sessions, Teams, Automations, Inbox, Apps, and Providers have independent Query catalogs
 preloaded by the main route. The session catalog supplies durable ownership for generic session
 classification; feature catalogs supply the records needed by their own surfaces.
 
@@ -55,9 +55,9 @@ Background sessions remain live but do not count as foreground work. Draft sessi
 the Sessions catalog; ordinary read-idle sessions have no workspace activity entry.
 
 [`model/state/drafts.ts`](model/state/drafts.ts) defines saved drafts: each composer's unsent
-text, keyed by its owner (`session:<id>`, `channel:<id>`, or `inbox`). A `draft.changed` action
+text, keyed by its owner (`session:<id>`, `team:<id>`, or `inbox`). A `draft.changed` action
 carries a client's edit; the server stamps it, keeps it in a process-local map for a day after its
-last edit, and broadcasts it. Deleting a session or channel drops its draft. A session's draft
+last edit, and broadcasts it. Deleting a session or team drops its draft. A session's draft
 marks its sidebar row and keeps it in the catalog. [`hooks/useSavedDraft.ts`](hooks/useSavedDraft.ts)
 is the composer-facing hook: it applies edits locally, debounces them out, adopts other clients'
 edits but not its own echoes, syncs a cleared draft at once, and flushes on unmount. It returns
@@ -72,15 +72,15 @@ narrow reactive selectors and the two client command hooks; it does not copy ser
 at-most-once workspace SSE stream. The root route captures the process-scoped broadcast revision
 before its SSR loaders run. The stream's opening message checks that revision without another
 request: an unchanged initial connection reuses the hydrated queries, while a mismatch refreshes
-the aggregate snapshot and Session, Channel, Automation, Inbox, Apps, and Provider catalogs in the
+the aggregate snapshot and Session, Team, Automation, Inbox, Apps, and Provider catalogs in the
 background. Reconnects always refresh, including after page visibility changes, so native history
-changed outside Toy Box is rediscovered. Subsequent events update their owning Query caches. The revision survives HMR,
+changed outside Agent Teams is rediscovered. Subsequent events update their owning Query caches. The revision survives HMR,
 changes after a server restart, and requires no event buffer. Events announce accepted changes;
 they are synchronization hints, not durable truth or a replay log.
 The shared SSE response bounds queued encoded bytes, including retry and heartbeat frames,
 to 8 MiB. A single oversized frame may stand alone plus the opening retry prelude; this is
 not a strict maximum-frame limit. Overflow errors only that response and releases its
-listener and timer. Workspace reconnect refreshes authoritative queries; Channels retains its
+listener and timer. Workspace reconnect refreshes authoritative queries; Teams retains its
 revision replay/snapshot recovery and Files registers with the current modification time.
 
 [`server/functions.ts`](server/functions.ts) validates remote ingress for hydration, shared
@@ -110,7 +110,7 @@ server projection.
   Each visible canvas owns its connection and renderer. Closing a pane
   does not stop the source application.
 - An app pane presents one durable app instance and is not inherently session-backed.
-- A channel pane presents one durable shared bus. Its artifacts retain their Files-owned identity
+- A team pane presents one durable shared bus. Its artifacts retain their Files-owned identity
   when revealed as ordinary root editor panes rather than published as linked panes.
 
 A session `.toy` artifact app remains an editor pane. Reusing the app compiler
@@ -119,9 +119,9 @@ source file.
 
 Each pane has a stable ID that represents mounted identity. [`model/panes.ts`](model/panes.ts) owns
 identity, source relationships, reachability, ordering, and focus policy as pure functions. Root
-sessions, files, apps, channels, and screens are deduplicated and capped at four panes. Active session,
+sessions, files, apps, teams, and screens are deduplicated and capped at four panes. Active session,
 Inbox, and app panes can publish linked panes through a browser-local graph owned by their workspace
-surface. That graph contains composition only; it never copies transcripts, Channel messages, file
+surface. That graph contains composition only; it never copies transcripts, Team messages, file
 content, Inbox rows, or app state.
 Explicit focus can bring an overflow artifact or child into the capped layout by replacing an
 unrelated pane while retaining its publishers. Clearing focus restores the ordinary ordering.
@@ -160,8 +160,8 @@ owns the single-pane feature adapter and the chrome slots supplied by those host
 feature state rendered inside a pane.
 
 [`components/outputs/`](components/outputs/) groups `ComposerTray.tsx`, `ArtifactPill.tsx`,
-`ChecklistPopup.tsx`, and `PagePreview.tsx` for Session and Channel output presentation;
-`PagePreview` is the sandboxed thumbnail that HTML artifacts and a Channel's preview share. They combine Files identity and
+`ChecklistPopup.tsx`, and `PagePreview.tsx` for Session and Team output presentation;
+`PagePreview` is the sandboxed thumbnail that HTML artifacts and a Team's preview share. They combine Files identity and
 previews with the current surface's pane focus and file-worker activity. Callers supply their
 artifacts in their own order, checklist, and additional controls; an owner that lets the user
 archive artifacts supplies `onArchiveArtifact` and leaves archived ones out, and one with its own
@@ -169,8 +169,8 @@ arrangement surface supplies `onManageArtifacts`.
 
 One sparse browser cookie retains non-default `WorkspaceLayout` values across reloads and SSR.
 `sidebarCollapsed` is the shared visibility fact: it produces the desktop rail or reveals the
-mobile workspace, whose no-root fallback is Inbox. The main surface also hands Channel panes the
-overview pin and each Channel aside kind's resized share, keyed by kinds Channels names.
+mobile workspace, whose no-root fallback is Inbox. The main surface also hands Team panes the
+overview pin and each Team aside kind's resized share, keyed by kinds Teams names.
 
 [`components/layout/HyperSession.tsx`](components/layout/HyperSession.tsx) is an independent
 mini-workspace around a managed session. It has its own roots, focus, and publication graph while
@@ -195,9 +195,9 @@ is the reusable follow-up surface for session-backed output shown without its so
 - [`components/panes/shell/WorkspacePaneView.tsx`](components/panes/shell/WorkspacePaneView.tsx) is
   the single host-to-feature adapter. Feature components own content behavior; Workspace owns
   placement, focus, and chrome.
-- [Sessions](../sessions/AGENTS.md), [Channels](../channels/AGENTS.md),
+- [Sessions](../sessions/AGENTS.md), [Teams](../teams/AGENTS.md),
   [Inbox](../inbox/AGENTS.md), [Files](../files/AGENTS.md), and
-  [Apps](../apps/AGENTS.md) own the data and behavior rendered in their panes. Channels owns
+  [Apps](../apps/AGENTS.md) own the data and behavior rendered in their panes. Teams owns
   its Agent identity and membership UI.
 - [Terminal](../terminal/AGENTS.md) owns its PTY and connection lifecycle; the main route
   owns only shared drawer visibility and size, while each responsive layout owns placement and

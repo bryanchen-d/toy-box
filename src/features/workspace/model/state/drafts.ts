@@ -3,7 +3,7 @@ import { z } from "zod";
 /** The composer a saved draft belongs to. */
 export const draftKeySchema = z.union([
   z.templateLiteral(["session:", z.string().min(1)]),
-  z.templateLiteral(["channel:", z.string().min(1)]),
+  z.templateLiteral(["team:", z.string().min(1)]),
   z.literal("inbox"),
 ]);
 export type DraftKey = z.infer<typeof draftKeySchema>;

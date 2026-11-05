@@ -7,10 +7,10 @@ import { cn } from "@/shared/utils";
 import { isPromptReference, type PromptReference } from "../../model/references";
 import "./PromptReferences.css";
 import {
-  channelReferenceComponents,
-  channelReferenceTags,
-  remarkChannelReferences,
-} from "@channels/components/ChannelReferences";
+  teamReferenceComponents,
+  teamReferenceTags,
+  remarkTeamReferences,
+} from "@teams/components/TeamReferences";
 
 /** Each kind's presentation. Its icon is the stylesheet's mask, which its pills also show. */
 export const promptReferenceKinds = {
@@ -19,7 +19,7 @@ export const promptReferenceKinds = {
     Icon: referenceIcon("session"),
   },
   file: { title: ({ target }) => `File: ${target}`, Icon: referenceIcon("file") },
-  channel: { title: ({ target }) => `Channel: ${target}`, Icon: referenceIcon("channel") },
+  team: { title: ({ target }) => `Team: ${target}`, Icon: referenceIcon("team") },
 } satisfies Record<
   PromptReference["kind"],
   {
@@ -107,7 +107,7 @@ function remarkPromptReferences() {
           child.type === "link" && from !== undefined && to !== undefined
             ? decodeReference(content.slice(from, to))
             : undefined;
-        if (reference && isPromptReference(reference) && reference.kind !== "channel") {
+        if (reference && isPromptReference(reference) && reference.kind !== "team") {
           return {
             type: "text",
             value: reference.label,
@@ -128,12 +128,12 @@ function remarkPromptReferences() {
 const plugins = [
   ...Object.values(defaultRemarkPlugins),
   remarkPromptReferences,
-  remarkChannelReferences,
+  remarkTeamReferences,
 ];
-const allowedTags = { [REFERENCE_TAG]: ["kind", "title"], ...channelReferenceTags };
+const allowedTags = { [REFERENCE_TAG]: ["kind", "title"], ...teamReferenceTags };
 const components = {
   [REFERENCE_TAG]: ReferencePill,
-  ...channelReferenceComponents,
+  ...teamReferenceComponents,
 } satisfies Components;
 
 export function PromptReferenceMarkdown({ content }: { content: string }) {

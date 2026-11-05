@@ -13,7 +13,7 @@ describe("file watch", () => {
   });
 
   test("starts with the current file revision", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "toy-box-file-watch-"));
+    const directory = await mkdtemp(join(tmpdir(), "agent-teams-file-watch-"));
     directories.push(directory);
     const path = join(directory, "document.md");
     await Bun.write(path, "current");
@@ -39,7 +39,7 @@ describe("file watch", () => {
   });
 
   test("disconnecting one client leaves the other client's shared file subscription live", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "toy-box-file-watch-"));
+    const directory = await mkdtemp(join(tmpdir(), "agent-teams-file-watch-"));
     directories.push(directory);
     const path = join(directory, "document.md");
     await Bun.write(path, "Before");

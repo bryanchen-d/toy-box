@@ -1,0 +1,596 @@
+import { z } from "zod";
+import { workspaceFileSchema } from "@files/model";
+import { modelConfigurationSchema, type ModelConfiguration } from "@providers/model";
+import {
+  attachmentsSchema,
+  type Attachment,
+  type AttachmentReference,
+} from "@/shared/attachments/model";
+import { cronSchema } from "@/shared/cron";
+import { previewSchema, type Preview } from "@/shared/preview";
+import type { TeamAgentPresence } from "./presence";
+import { hasChanges } from "./changes";
+import { teamTasksSchema, type TeamTask } from "./tasks";
+import {
+  agentAvatarSchema,
+  agentHandleFromName,
+  agentNameSchema,
+  agentRoleSchema,
+  TEAM_LEAD_PROFILE,
+  extractAgentMentionHandles,
+} from "./agent";
+
+export * from "./agent";
+export * from "./tasks";
+
+const durableIdSchema = z.string().trim().min(1).max(255);
+const teamNameSchema = z.string().trim().min(1).max(100);
+const teamPurposeSchema = z.string().trim().min(1).max(12_000);
+const teamDirectorySchema = z.string().trim().min(1).max(4_096);
+const teamMessageTextSchema = z.string().trim().max(12_000);
+export const teamMessageContentSchema = teamMessageTextSchema.min(1);
+export const teamReactionKindSchema = z.enum(["done", "agree", "celebrate", "love", "laugh"]);
+
+const teamReactionSchema = z
+  .object({
+    agentId: durableIdSchema,
+    reaction: teamReactionKindSchema,
+  })
+  .strict();
+
+export type Team = {
+  id: string;
+  name: string;
+  paused: boolean;
+  purpose?: string;
+  directory?: string;
+  model: ModelConfiguration;
+  tasks: TeamTask[];
+  preview?: Preview;
+  canvasArtifactId?: string;
+  latestSequence: number;
+  seenThrough: number;
+  /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
+  completedSequence: number | null;
+  requestSequence: number | null;
+  updatedAt: string;
+};
+
+/** Attention refers to transcript milestones; reading never answers a request. */
+export function teamHasUnreadCompletion(team: Team): boolean {
+  return (team.completedSequence ?? 0) > team.seenThrough;
+}
+
+export function teamHasPendingRequest(team: Team): boolean {
+  return team.requestSequence !== null;
+}
+
+export function teamStatus(team: Team): "waiting" | "finished" | "unread" | null {
+  if (teamHasPendingRequest(team)) return "waiting";
+  if (teamHasUnreadCompletion(team)) return "finished";
+  if (teamHasUnread(team)) return "unread";
+  return null;
+}
+
+export type TeamList = {
+  teams: Team[];
+  members: Pick<TeamMember, "id" | "teamId" | "name" | "avatar">[];
+};
+
+/** The catalog identifies teammates; their live details belong to the open Team. */
+export function teamMemberIdentity({
+  id,
+  teamId,
+  name,
+  avatar,
+}: TeamMember): TeamList["members"][number] {
+  return { id, teamId, name, ...(avatar ? { avatar } : {}) };
+}
+
+const teamStatusTextSchema = z.string().trim().min(1).max(100);
+
+const teamStatusTargetSchema = z
+  .object({
+    lookingAt: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("The message sequence requesting review of a referenced resource."),
+    workingOn: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("The message sequence requesting other substantive work."),
+  })
+  .strict()
+  .refine(({ lookingAt, workingOn }) => lookingAt === undefined || workingOn === undefined, {
+    message: "Choose either lookingAt or workingOn.",
+  });
+
+export const teamAgentStatusSchema = z.discriminatedUnion("state", [
+  teamStatusTargetSchema.safeExtend({
+    state: z.literal("working"),
+    text: teamStatusTextSchema,
+  }),
+  z
+    .object({
+      state: z.literal("waiting"),
+      text: teamStatusTextSchema,
+      /** A lead follow-up: when to wake if nothing else wakes it first. */
+      wakeAt: z.iso.datetime().optional(),
+    })
+    .strict(),
+]);
+export type TeamAgentStatus = z.output<typeof teamAgentStatusSchema>;
+
+/** Team-owned configuration and collaboration state stored on its Worker. */
+export const teamAgentMetadataSchema = z
+  .object({
+    role: agentRoleSchema.optional(),
+    model: modelConfigurationSchema.optional(),
+    avatar: agentAvatarSchema.optional(),
+    seenThrough: z.number().int().nonnegative(),
+    status: teamAgentStatusSchema.optional(),
+  })
+  .strict();
+
+export const setTeamAgentStatusInputSchema = teamStatusTargetSchema.safeExtend({
+  status: teamStatusTextSchema.describe("A very brief description of the work being performed."),
+});
+export type SetTeamAgentStatusInput = z.output<typeof setTeamAgentStatusInputSchema>;
+
+const teamMemberSchema = teamAgentMetadataSchema
+  .omit({ seenThrough: true })
+  .extend({
+    teamId: durableIdSchema,
+    id: durableIdSchema,
+    name: agentNameSchema,
+  })
+  .strict();
+export type TeamMember = z.output<typeof teamMemberSchema>;
+
+export type TeamAgent = Pick<TeamMember, "id" | "name" | "role" | "avatar" | "status">;
+export type TeamLead = TeamAgent & {
+  role: string;
+  avatar: NonNullable<TeamAgent["avatar"]>;
+};
+
+export function compareTeamAgents(
+  left: Pick<TeamAgent, "name" | "id">,
+  right: Pick<TeamAgent, "name" | "id">,
+): number {
+  return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+}
+
+export function teamLead(id: string, status?: TeamAgentStatus): TeamLead {
+  return {
+    id,
+    ...TEAM_LEAD_PROFILE,
+    ...(status ? { status } : {}),
+  };
+}
+
+export type TeamMessageSender = TeamMessageActor | { type: "system" };
+
+export type TeamReaction = z.output<typeof teamReactionSchema>;
+
+/** Client attachments carry either uploaded bytes or one resolved file address. */
+export type TeamAttachment = Attachment | AttachmentReference;
+
+/** A shared file. Sharing it again only changes its title, never when it was first shared. */
+const teamArtifactSchema = z
+  .object({
+    file: workspaceFileSchema,
+    title: z.string().trim().min(1).max(160),
+    sharedAt: z.string(),
+  })
+  .strict();
+export type TeamArtifact = z.output<typeof teamArtifactSchema> & {
+  /** The shared file's identity, which tasks reference as `artifactId`. */
+  id: string;
+  /** Public resource address supplied by the server; never accepted as a command input. */
+  url?: string;
+  /** The user filed it away from the composer tray; it stays shared and openable. */
+  archived?: true;
+  pinned?: true;
+};
+
+const teamArtifactIdSchema = z.string().min(1);
+
+/** How the user arranges shared artifacts. Omitted fields keep their places, pins and archive state. */
+export const arrangeTeamArtifactsInputSchema = z
+  .object({
+    teamId: durableIdSchema,
+    /** The artifacts to arrange, in the order a move places them. */
+    artifactIds: z
+      .array(teamArtifactIdSchema)
+      .min(1)
+      .refine((ids) => new Set(ids).size === ids.length, "List each artifact once."),
+    /** The artifact they move before, or null to move them last. */
+    beforeArtifactId: teamArtifactIdSchema.nullable().optional(),
+    archived: z.boolean().optional(),
+    pinned: z.boolean().optional(),
+  })
+  .strict();
+export type ArrangeTeamArtifactsInput = z.output<typeof arrangeTeamArtifactsInputSchema>;
+
+/** Moves or archives some artifacts, leaving the rest of the user's arrangement in place. A move
+ *  places them together, in the given order. */
+export function applyTeamArtifactArrangement(
+  artifacts: readonly TeamArtifact[],
+  { artifactIds, beforeArtifactId, archived, pinned }: Omit<ArrangeTeamArtifactsInput, "teamId">,
+): TeamArtifact[] {
+  const shared = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+  if (
+    artifactIds.some((id) => !shared.has(id)) ||
+    (beforeArtifactId && !shared.has(beforeArtifactId))
+  ) {
+    throw new Error("Arrange artifacts shared in this team.");
+  }
+  if (beforeArtifactId && artifactIds.includes(beforeArtifactId)) {
+    throw new Error("Move artifacts before one that isn't moving.");
+  }
+  const arranged = new Map(
+    artifactIds.map((id) => [id, withArrangement(shared.get(id)!, archived, pinned)] as const),
+  );
+  if (beforeArtifactId === undefined) {
+    return orderTeamArtifacts(artifacts.map((artifact) => arranged.get(artifact.id) ?? artifact));
+  }
+  const others = artifacts.filter(({ id }) => !arranged.has(id));
+  const index =
+    beforeArtifactId === null
+      ? others.length
+      : others.findIndex(({ id }) => id === beforeArtifactId);
+  return orderTeamArtifacts([
+    ...others.slice(0, index),
+    ...arranged.values(),
+    ...others.slice(index),
+  ]);
+}
+
+export function orderTeamArtifacts(artifacts: readonly TeamArtifact[]): TeamArtifact[] {
+  return [
+    ...artifacts.filter(({ pinned }) => pinned),
+    ...artifacts.filter(({ pinned }) => !pinned),
+  ];
+}
+
+function withArrangement(
+  artifact: TeamArtifact,
+  archived: boolean | undefined,
+  pinned: boolean | undefined,
+): TeamArtifact {
+  const isArchived = archived ?? !!artifact.archived;
+  if (pinned && isArchived) throw new Error("Restore an artifact before pinning it.");
+  const isPinned = !isArchived && (pinned ?? !!artifact.pinned);
+  if (isArchived === !!artifact.archived && isPinned === !!artifact.pinned) return artifact;
+  const { archived: _archived, pinned: _pinned, ...rest } = artifact;
+  return {
+    ...rest,
+    ...(isArchived ? { archived: true } : {}),
+    ...(isPinned ? { pinned: true } : {}),
+  };
+}
+
+const teamMessageActorSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("user") }).strict(),
+  z.object({ type: z.literal("agent"), agentId: durableIdSchema }).strict(),
+]);
+
+/** A titled, recurring prompt that privately wakes the lead. Only the lead adds or changes one. */
+export const teamRoutineInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(80).describe("A short name for the routine."),
+    schedule: cronSchema
+      // One fixed minute can match at most once an hour.
+      .refine(
+        (schedule) => /^\d+(\s+\S+){4}$/.test(schedule),
+        "Routines run at most hourly. Use a 5-field cron with one fixed minute, like 0 9 * * 1-5.",
+      )
+      .describe("A 5-field cron in local time with one fixed minute, like 0 9 * * 1-5."),
+    prompt: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2_000)
+      .describe("What to check or do each time the routine wakes you."),
+  })
+  .strict();
+
+const teamRoutineSchema = teamRoutineInputSchema.extend({ id: durableIdSchema });
+export type TeamRoutine = z.output<typeof teamRoutineSchema>;
+
+export const setTeamRoutineInputSchema = teamRoutineInputSchema.extend({
+  routineId: durableIdSchema.optional().describe("The routine to change. Omit it to add one."),
+});
+export type SetTeamRoutineInput = z.output<typeof setTeamRoutineInputSchema>;
+
+export const teamRoutineIdentitySchema = z
+  .object({ teamId: durableIdSchema, routineId: durableIdSchema })
+  .strict();
+
+export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("team_paused"), paused: z.boolean() }).strict(),
+  z.object({ type: z.literal("tasks_completed") }).strict(),
+  z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
+  z.object({ type: z.literal("member_left"), member: teamMemberSchema }).strict(),
+  z
+    .object({
+      type: z.literal("team_renamed"),
+      actor: teamMessageActorSchema,
+      name: teamNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("team_purpose_changed"),
+      actor: teamMessageActorSchema,
+      purpose: teamPurposeSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("team_directory_changed"),
+      actor: teamMessageActorSchema,
+      directory: teamDirectorySchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("preview_changed"),
+      actor: teamMessageActorSchema,
+      preview: previewSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("canvas_changed"),
+      actor: teamMessageActorSchema,
+      canvasArtifactId: z.string().min(1).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("artifact_shared"),
+      actor: teamMessageActorSchema,
+      // The message's own timestamp records when it was shared.
+      artifact: teamArtifactSchema.omit({ sharedAt: true }),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.enum(["routine_scheduled", "routine_edited", "routine_deleted"]),
+      routine: teamRoutineSchema,
+    })
+    .strict(),
+]);
+export type TeamSystemMessageContent = z.output<typeof teamSystemMessageContentSchema>;
+
+type TeamMessageBase = {
+  id: string;
+  sequence: number;
+  timestamp: string;
+};
+
+export type TeamConversationMessage<A = TeamAttachment> = TeamMessageBase & {
+  sender: TeamMessageActor;
+  content: string;
+  /** The lead asks for the user's response; a later user message acknowledges it. */
+  request?: true;
+  /** A reply's thread: the sequence of the top-level message that starts it. */
+  threadSequence?: number;
+  attachments?: A[];
+  reactions?: TeamReaction[];
+};
+
+export type TeamSystemMessage = TeamMessageBase & {
+  sender: { type: "system" };
+  content: TeamSystemMessageContent;
+  attachments?: never;
+  reactions?: never;
+  request?: never;
+  threadSequence?: never;
+};
+
+/** Replying to any message in a thread replies to that thread; system messages start none. */
+export const teamThreadSequenceSchema = z
+  .number()
+  .int()
+  .positive()
+  .describe(
+    "Replies in the thread of the user or agent message with this sequence, or of the thread that message belongs to.",
+  );
+
+export type TeamMessage<A = TeamAttachment> = TeamConversationMessage<A> | TeamSystemMessage;
+
+export function isTeamSystemMessage(message: TeamMessage<unknown>): message is TeamSystemMessage {
+  return message.sender.type === "system";
+}
+
+/** Canonical reduced state of one Team; a snapshot is this value at one revision. */
+export type TeamState = {
+  /** Advances with every durable detail change; messages have their own sequence. */
+  revision: number;
+  team: Team;
+  lead: TeamLead;
+  members: TeamMember[];
+  messages: TeamMessage[];
+  /** The newest unanswered public request, including one outside the message window. */
+  request: TeamConversationMessage | null;
+  /** In the user's arrangement: pins first, then new shares. */
+  artifacts: TeamArtifact[];
+  /** Oldest first. */
+  routines: TeamRoutine[];
+  presence: Record<string, TeamAgentPresence>;
+};
+
+export type TeamEvent<A = TeamAttachment> = (
+  | {
+      type: "message";
+      message: TeamMessage<A>;
+    }
+  | {
+      type: "reaction";
+      sequence: number;
+      agentId: string;
+      reaction: TeamReaction["reaction"] | null;
+    }
+  | { type: "tasks"; tasks: TeamTask[] }
+  | { type: "artifacts"; artifacts: TeamArtifact[] }
+  | { type: "model"; model: ModelConfiguration; updatedAt: string }
+  | { type: "read"; seenThrough: number }
+  | { type: "member"; member: TeamMember }
+  | { type: "status"; agentId: string; status?: TeamAgent["status"] }
+) & { revision: number };
+
+/** Cached clients replay ordered details; only a new client or expired cursor needs a snapshot. */
+export type TeamObservationEvent =
+  | { type: "snapshot"; state: TeamState }
+  | { type: "resumed"; presence: Record<string, TeamAgentPresence> }
+  | { type: "presence"; presence: Record<string, TeamAgentPresence> }
+  | TeamEvent
+  | { type: "deleted"; teamId: string };
+
+export const createTeamInputSchema = z
+  .object({
+    name: teamNameSchema,
+    purpose: teamPurposeSchema
+      .optional()
+      .describe("What the team is for. Omit it to let the lead ask the user."),
+    directory: teamDirectorySchema.optional(),
+    model: modelConfigurationSchema,
+  })
+  .strict();
+
+export const teamIdentitySchema = z.object({ teamId: durableIdSchema }).strict();
+
+export const removeTeamMemberInputSchema = z.object({ agentId: durableIdSchema }).strict();
+
+const teamChangesSchema = z
+  .object({
+    model: modelConfigurationSchema.optional(),
+    name: teamNameSchema.optional().describe("The team's new title."),
+    purpose: teamPurposeSchema
+      .nullable()
+      .optional()
+      .describe("What the team is currently for, or null to clear it."),
+    directory: teamDirectorySchema
+      .nullable()
+      .optional()
+      .describe(
+        "The working directory for all team agents on their next execution, or null to clear it.",
+      ),
+    tasks: teamTasksSchema
+      .optional()
+      .describe(
+        "The complete task list for initial planning or intentional replacement. Preserve retained task IDs and outcomes; use edit_team_tasks for progress updates.",
+      ),
+    preview: previewSchema
+      .nullable()
+      .optional()
+      .describe(
+        "The current runnable preview: a URL or an existing screenId, or null to clear it.",
+      ),
+    canvasArtifactId: z
+      .string()
+      .min(1)
+      .nullable()
+      .optional()
+      .describe(
+        "The artifactId of a shared session-owned .toy app to present beside team chat, or null to clear it. Create, validate, and share the app first.",
+      ),
+  })
+  .strict();
+export type TeamChanges = z.output<typeof teamChangesSchema>;
+export type TeamMessageActor = z.output<typeof teamMessageActorSchema>;
+
+export const editTeamInputSchema = teamChangesSchema
+  .pick({ name: true, purpose: true, model: true })
+  .extend({ ...teamIdentitySchema.shape, paused: z.boolean().optional() })
+  .refine(({ teamId: _teamId, ...changes }) => hasChanges(changes), {
+    message: "Change the team name, purpose, lead model, or paused state.",
+  });
+
+export const updateTeamInputSchema = teamChangesSchema.omit({ model: true }).refine(hasChanges, {
+  message:
+    "Update the name, purpose, directory, tasks, preview, canvas, or any combination of them.",
+});
+
+export const postTeamMessageInputSchema = z
+  .object({
+    id: durableIdSchema,
+    teamId: durableIdSchema,
+    content: teamMessageTextSchema,
+    attachments: attachmentsSchema.optional(),
+    threadSequence: teamThreadSequenceSchema.optional(),
+  })
+  .strict()
+  .refine(({ content, attachments }) => content.length > 0 || (attachments?.length ?? 0) > 0, {
+    message: "A message or attachment is required",
+  });
+
+export const markTeamReadInputSchema = z
+  .object({
+    teamId: durableIdSchema,
+    sequence: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type CreateTeamInput = z.output<typeof createTeamInputSchema>;
+export type EditTeamInput = z.output<typeof editTeamInputSchema>;
+export type PostTeamMessageInput = z.output<typeof postTeamMessageInputSchema>;
+export type UpdateTeamInput = z.output<typeof updateTeamInputSchema>;
+
+type TeamReadPosition = Pick<Team, "latestSequence" | "seenThrough">;
+
+export function teamHasUnread(team: TeamReadPosition): boolean {
+  return team.latestSequence > team.seenThrough;
+}
+
+/** The read position that unread messages follow, or null when everything has been read. */
+export function teamUnreadAfter(team: TeamReadPosition): number | null {
+  return teamHasUnread(team) ? team.seenThrough : null;
+}
+
+/** Complete delivery policy for user, lead, and member messages. */
+export function resolveTeamAudience({
+  content,
+  sender,
+  lead,
+  members,
+  acknowledgedRequest = false,
+}: {
+  content: string;
+  sender: TeamMessageActor;
+  lead: TeamAgent;
+  members: readonly TeamAgent[];
+  /** Persistence established that this user reply acknowledged a pending request. */
+  acknowledgedRequest?: boolean;
+}): TeamAgent[] {
+  const { handles, mentionAll } = extractAgentMentionHandles(content);
+  const mentionedHandles = new Set(handles);
+  const agents = [lead, ...members];
+  const mentionedIds = new Set(
+    agents
+      .filter(({ name }) => mentionedHandles.has(agentHandleFromName(name)))
+      .map(({ id }) => id),
+  );
+  const senderId = sender.type === "agent" ? sender.agentId : undefined;
+  if (!mentionAll && handles.length === 0) {
+    return lead.id === senderId ? [] : [lead];
+  }
+  return agents.filter(
+    ({ id }) =>
+      id !== senderId &&
+      (mentionAll || mentionedIds.has(id) || (acknowledgedRequest && id === lead.id)),
+  );
+}
+
+/** An audience by name, or "Everyone" when it's every agent the sender could reach. */
+export function teamAudienceLabel(audience: readonly TeamAgent[], reachableCount: number): string {
+  return audience.length > 1 && audience.length === reachableCount
+    ? "Everyone"
+    : audience.map(({ name }) => name).join(", ");
+}

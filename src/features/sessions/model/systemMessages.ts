@@ -11,20 +11,20 @@ export const sessionSystemMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      type: z.literal("channel_message"),
+      type: z.literal("team_message"),
       senderName: z.string().min(1),
     })
     .strict(),
   z
     .object({
-      type: z.literal("channel_routine"),
+      type: z.literal("team_routine"),
       title: z.string().min(1),
       prompt: z.string().min(1),
     })
     .strict(),
   z
     .object({
-      type: z.literal("channel_follow_up"),
+      type: z.literal("team_follow_up"),
       waitingFor: z.string().min(1),
     })
     .strict(),
@@ -32,7 +32,7 @@ export const sessionSystemMessageSchema = z.discriminatedUnion("type", [
 
 export type SessionSystemMessage = z.infer<typeof sessionSystemMessageSchema>;
 
-const SYSTEM_MESSAGE_PREFIX = "toybox-system:";
+const SYSTEM_MESSAGE_PREFIX = "agent-teams-system:";
 
 /** Providers keep this display representation in native history alongside the model prompt. */
 export function encodeSystemMessage(message: SessionSystemMessage): string {
@@ -54,13 +54,13 @@ export function decodeSystemMessage(content: string): SessionSystemMessage | und
 export function systemMessagePrompt(message: SessionSystemMessage): string {
   switch (message.type) {
     case "file_edited":
-      return `The user edited a file open in Toy Box: ${JSON.stringify(message.file)}. A \`session\` file's \`path\` is relative to that session's artifacts folder, usually your own. A \`machine\` file's \`path\` is an absolute host path. Review its latest contents and respond only if a follow-up would help.`;
-    case "channel_message":
-      return `A new public message from ${message.senderName} is waiting in a channel you belong to. Call \`read_channel\` to consume messages since your last read.`;
-    case "channel_routine":
-      return `Your routine ${JSON.stringify(message.title)} is due: ${JSON.stringify(message.prompt)}. Call \`read_channel\`, then do it. If nothing needs the channel's attention, finish quietly.`;
-    case "channel_follow_up":
-      return `Your follow-up is due. You were waiting for ${message.waitingFor}. Call \`read_channel\` and check whether you can continue.`;
+      return `The user edited a file open in Agent Teams: ${JSON.stringify(message.file)}. A \`session\` file's \`path\` is relative to that session's artifacts folder, usually your own. A \`machine\` file's \`path\` is an absolute host path. Review its latest contents and respond only if a follow-up would help.`;
+    case "team_message":
+      return `A new public message from ${message.senderName} is waiting in a team you belong to. Call \`read_team\` to consume messages since your last read.`;
+    case "team_routine":
+      return `Your routine ${JSON.stringify(message.title)} is due: ${JSON.stringify(message.prompt)}. Call \`read_team\`, then do it. If nothing needs the team's attention, finish quietly.`;
+    case "team_follow_up":
+      return `Your follow-up is due. You were waiting for ${message.waitingFor}. Call \`read_team\` and check whether you can continue.`;
   }
 }
 
@@ -68,11 +68,11 @@ export function systemMessageLabel(message: SessionSystemMessage): string {
   switch (message.type) {
     case "file_edited":
       return `Edited ${getPathBasename(message.file.path)}`;
-    case "channel_message":
+    case "team_message":
       return `Message from ${message.senderName}`;
-    case "channel_routine":
+    case "team_routine":
       return `Routine: ${message.title}`;
-    case "channel_follow_up":
+    case "team_follow_up":
       return `Follow-up: ${message.waitingFor}`;
   }
 }
@@ -82,11 +82,11 @@ export function systemMessageCoalesceKey(message: SessionSystemMessage): string 
   switch (message.type) {
     case "file_edited":
       return `file_edited:${workspaceFileId(message.file)}`;
-    case "channel_message":
-      return "channel_message";
-    case "channel_routine":
-      return `channel_routine:${message.prompt}`;
-    case "channel_follow_up":
-      return "channel_follow_up";
+    case "team_message":
+      return "team_message";
+    case "team_routine":
+      return `team_routine:${message.prompt}`;
+    case "team_follow_up":
+      return "team_follow_up";
   }
 }

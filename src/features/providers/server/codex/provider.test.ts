@@ -167,7 +167,7 @@ test("history reads every stored turn page without acquiring the thread's writer
 });
 
 test("resumed threads apply the current workspace, model, and session skills", async () => {
-  const root = await mkdtemp(join(tmpdir(), "toy-box-codex-skills-"));
+  const root = await mkdtemp(join(tmpdir(), "agent-teams-codex-skills-"));
   const nextDirectory = join(root, "next");
   await mkdir(nextDirectory);
   await Bun.write(
@@ -242,7 +242,7 @@ test("resumed threads apply the current workspace, model, and session skills", a
   expect(requests[0]!.params.dynamicTools).toMatchObject([
     {
       type: "namespace",
-      name: "toy_box",
+      name: "agent_teams",
       tools: [
         {
           type: "function",

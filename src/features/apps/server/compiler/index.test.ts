@@ -22,12 +22,12 @@ function definition(tsx: string) {
 }
 
 describe("app compiler", () => {
-  test("renders with shared libraries and generates scoped Toy Box styles", async () => {
+  test("renders with shared libraries and generates scoped Agent Teams styles", async () => {
     const bundle = await compileAppDefinition(
       definition(`
         import React, { lazy } from "react";
         import { z } from "zod";
-        import { AppAlert } from "@toy-box/sdk";
+        import { AppAlert } from "@agent-teams/sdk";
         import { Kanban } from "lucide-react";
         import * as m from "motion/react-m";
 
@@ -54,30 +54,30 @@ describe("app compiler", () => {
     expect(html).toContain("<svg");
     expect(html).toContain('role="alert"');
     expect(html).toContain(">3</div>");
-    expect(bundle.css).toContain('[data-toybox-app="test-app"] .grid');
+    expect(bundle.css).toContain('[data-agent-teams-app="test-app"] .grid');
     expect(bundle.css).toContain("background-color: var(--background)");
   });
 
   test("typechecks portable SDK capabilities and schema-derived state", async () => {
     await compileAppDefinition(
       definition(`
-        import { useApp, useChannels, useChannel, useFile, useWorkspace, channelTasksDiff } from "@toy-box/sdk";
+        import { useApp, useTeams, useTeam, useFile, useWorkspace, teamTasksDiff } from "@agent-teams/sdk";
         export default function App() {
           const { state, updateState, actions } = useApp();
-          const channels = useChannels();
-          const channel = useChannel("channel-id", { mode: "passive" });
-          const task = channel.state?.channel.tasks[0];
-          const artifact = channel.state?.artifacts.find(({ id }) => id === task?.artifactId);
+          const teams = useTeams();
+          const team = useTeam("team-id", { mode: "passive" });
+          const task = team.state?.team.tasks[0];
+          const artifact = team.state?.artifacts.find(({ id }) => id === task?.artifactId);
           const file = useFile({ kind: "session", sessionId: "session", path: "notes.md" }, "shared");
           const sessions = useWorkspace(workspace => workspace.sessions);
           return <button onClick={async () => {
             await updateState(draft => { draft.count += 1; });
             if (artifact) actions.openFile(artifact.file);
-            const receipt = await channel.postMessage({ content: file.content ?? "" });
+            const receipt = await team.postMessage({ content: file.content ?? "" });
             const deliveredSequence: number = receipt.sequence;
             void deliveredSequence;
             await actions.createSession({ message: { content: "Start", model: { provider: "codex", name: "model" } } });
-          }}>{state.count}{channels.length}{sessions[0]?.context?.directory}{channelTasksDiff(channel.state?.channel.tasks ?? [])?.added}</button>;
+          }}>{state.count}{teams.length}{sessions[0]?.context?.directory}{teamTasksDiff(team.state?.team.tasks ?? [])?.added}</button>;
         }
       `),
     );
@@ -119,7 +119,7 @@ describe("app compiler", () => {
     await expect(
       compileAppDefinition(
         definition(`
-          import { useApp } from "@toy-box/sdk";
+          import { useApp } from "@agent-teams/sdk";
           export default function TestApp() {
             useApp().actions.openFile({ kind: "session", path: "notes.md" });
             return <main />;
@@ -133,7 +133,7 @@ describe("app compiler", () => {
     await expect(
       compileAppDefinition(
         definition(`
-          import { useApp } from "@toy-box/sdk";
+          import { useApp } from "@agent-teams/sdk";
           export default function TestApp() {
             const { state, updateState } = useApp();
             void updateState((draft) => void (draft.count = "one"));
@@ -147,7 +147,7 @@ describe("app compiler", () => {
   test("does not reuse a generated app state type across definitions", async () => {
     await compileAppDefinition(
       definition(`
-        import { useApp } from "@toy-box/sdk";
+        import { useApp } from "@agent-teams/sdk";
         export default function App() { return <main>{useApp().state.count}</main>; }
       `),
     );
@@ -164,7 +164,7 @@ describe("app compiler", () => {
         default: { title: "Ready" },
       },
       tsx: `
-        import { useApp } from "@toy-box/sdk";
+        import { useApp } from "@agent-teams/sdk";
         export default function App() { return <main>{useApp().state.title}</main>; }
       `,
     };
@@ -182,7 +182,7 @@ describe("app compiler", () => {
     await compileAppDefinition({
       id: "stateless-app",
       state: { schema: { type: "null" }, default: null },
-      tsx: `import { AppSharePicker, useApp } from "@toy-box/sdk";
+      tsx: `import { AppSharePicker, useApp } from "@agent-teams/sdk";
 export default function App() {
   const app = useApp();
   return <AppSharePicker mimeType="text/plain" content={app.state} />;
@@ -213,14 +213,14 @@ describe("artifact app compilation", () => {
     const second = await compileArtifactApp(sessionFile("session-b", "board.toy"), source);
 
     expect(first.scopeId).not.toBe(second.scopeId);
-    expect(first.bundle.css).toContain(`[data-toybox-app="${first.scopeId}"]`);
-    expect(second.bundle.css).toContain(`[data-toybox-app="${second.scopeId}"]`);
+    expect(first.bundle.css).toContain(`[data-agent-teams-app="${first.scopeId}"]`);
+    expect(second.bundle.css).toContain(`[data-agent-teams-app="${second.scopeId}"]`);
   });
 
   test("exposes portable actions and sharing without a saved instance", async () => {
     await compileArtifactApp(
       sessionFile("session-a", "actions.toy"),
-      `import { AppSharePicker, useAppActions } from "@toy-box/sdk";
+      `import { AppSharePicker, useAppActions } from "@agent-teams/sdk";
 export default function App() {
   const actions = useAppActions();
   return <>
@@ -235,7 +235,7 @@ export default function App() {
     await expect(
       compileArtifactApp(
         sessionFile("session-a", "saved-only.toy"),
-        `import { useApp } from "@toy-box/sdk";
+        `import { useApp } from "@agent-teams/sdk";
 export default function App() {
   return <main>{useApp().title}</main>;
 }`,

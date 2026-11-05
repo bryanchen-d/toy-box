@@ -1838,7 +1838,7 @@ describe("createSession", () => {
         },
         ...Array.from({ length: 100 }, (): SessionState["messages"][number] => ({
           role: "system",
-          content: { type: "channel_message", senderName: "Sender" },
+          content: { type: "team_message", senderName: "Sender" },
         })),
       ],
     });

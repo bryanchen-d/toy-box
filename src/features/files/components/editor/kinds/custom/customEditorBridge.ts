@@ -1,19 +1,19 @@
 // Bridge between the custom editor and a registered HTML viewer template. It hides
 // postMessage behind the template-facing API:
 //
-//   Toybox.onRender((content, { revision, editable, pendingWorkers }) => { ... })
-//   Toybox.emitChange(nextContent)   // persist an in-view edit back to the file
-//   Toybox.spawnWorker({ name?, prompt, metadata? }) // start a worker
+//   AgentTeams.onRender((content, { revision, editable, pendingWorkers }) => { ... })
+//   AgentTeams.emitChange(nextContent)   // persist an in-view edit back to the file
+//   AgentTeams.spawnWorker({ name?, prompt, metadata? }) // start a worker
 //
 // Here the file is data rendered by a separate document; in the HTML bridge the
 // file itself is the document.
 
 import type { Worker } from "@workers/model";
 
-export const CUSTOM_EDITOR_RENDER_MESSAGE_TYPE = "toybox-editor:render";
-export const CUSTOM_EDITOR_CHANGE_MESSAGE_TYPE = "toybox-editor:change";
-export const CUSTOM_EDITOR_WORKER_MESSAGE_TYPE = "toybox-editor:worker";
-export const CUSTOM_EDITOR_WORKER_RESULT_MESSAGE_TYPE = "toybox-editor:worker-result";
+export const CUSTOM_EDITOR_RENDER_MESSAGE_TYPE = "agent-teams-editor:render";
+export const CUSTOM_EDITOR_CHANGE_MESSAGE_TYPE = "agent-teams-editor:change";
+export const CUSTOM_EDITOR_WORKER_MESSAGE_TYPE = "agent-teams-editor:worker";
+export const CUSTOM_EDITOR_WORKER_RESULT_MESSAGE_TYPE = "agent-teams-editor:worker-result";
 
 export function createCustomEditorRenderMessage(
   content: string,
@@ -34,7 +34,7 @@ export function createCustomEditorRenderMessage(
   };
 }
 
-/** Inject the bridge as the first thing in the document so `window.Toybox` exists
+/** Inject the bridge as the first thing in the document so `window.AgentTeams` exists
  *  before the template's own script runs. Falls back progressively for partial docs. */
 export function injectCustomEditorBridge(html: string): string {
   const bridgeScript = createCustomEditorBridgeScript();
@@ -76,7 +76,7 @@ function createCustomEditorBridgeScript(): string {
     }
   }
 
-  window.Toybox = {
+  window.AgentTeams = {
     onRender(handler) {
       renderHandler = handler;
       runRender();
@@ -86,13 +86,13 @@ function createCustomEditorBridgeScript(): string {
     },
     spawnWorker(options) {
       if (!options || typeof options.prompt !== "string" || options.prompt.trim() === "") {
-        return Promise.reject(new TypeError("Toybox.spawnWorker requires a non-empty prompt."));
+        return Promise.reject(new TypeError("AgentTeams.spawnWorker requires a non-empty prompt."));
       }
       if (
         options.name !== undefined &&
         (typeof options.name !== "string" || options.name.trim() === "")
       ) {
-        return Promise.reject(new TypeError("Toybox.spawnWorker name must be a non-empty string."));
+        return Promise.reject(new TypeError("AgentTeams.spawnWorker name must be a non-empty string."));
       }
 
       const requestId = crypto.randomUUID();

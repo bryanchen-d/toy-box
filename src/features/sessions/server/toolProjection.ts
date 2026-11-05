@@ -1,4 +1,4 @@
-// Domain effects of Toy Box tools, shared by every provider and history replay.
+// Domain effects of Agent Teams tools, shared by every provider and history replay.
 import type { SessionEvent, ToolCall } from "@sessions/model";
 import type { Attachment } from "@/shared/attachments/model";
 import { isAbsolute } from "node:path";

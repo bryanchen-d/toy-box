@@ -83,7 +83,7 @@ beforeEach(() => {
   cancelWorkerMock.mockImplementation(async () => false);
 });
 
-const file = sessionFile("toy-box-parent", "report.csv");
+const file = sessionFile("agent-teams-parent", "report.csv");
 const input = {
   type: "file" as const,
   file,
@@ -204,7 +204,7 @@ describe("workers", () => {
     completions.push(completion.promise);
 
     const worker = await spawnSessionWorker({
-      parentSessionId: "toy-box-parent",
+      parentSessionId: "agent-teams-parent",
       name: "Reviewer",
       ephemeral: true,
       message: { content: "Review the change." },
@@ -217,7 +217,7 @@ describe("workers", () => {
         createdAt: expect.any(String),
         type: "session",
         sessionId: worker.sessionId,
-        parentSessionId: "toy-box-parent",
+        parentSessionId: "agent-teams-parent",
         name: "Reviewer",
         ephemeral: true,
       },
@@ -437,7 +437,7 @@ describe("workers", () => {
     await expect(
       cancelWorker({
         type: "file",
-        file: sessionFile("toy-box-parent", "other.csv"),
+        file: sessionFile("agent-teams-parent", "other.csv"),
         workerSessionId: worker.sessionId,
       }),
     ).resolves.toBe(false);

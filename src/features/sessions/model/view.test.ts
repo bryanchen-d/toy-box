@@ -75,7 +75,7 @@ describe("bounded session read projection", () => {
         },
         ...Array.from({ length: 60 }, (): Message => ({
           role: "system",
-          content: { type: "channel_message", senderName: "Sender" },
+          content: { type: "team_message", senderName: "Sender" },
         })),
       ],
       model: { provider: "test", name: "fake" },

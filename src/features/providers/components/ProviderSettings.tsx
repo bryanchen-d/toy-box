@@ -183,7 +183,7 @@ function ProviderUpdate({
     label = `${name} update failed`;
     icon = <X className="text-destructive" />;
   } else if (state?.data?.updated) {
-    label = `${name} updated. Restart Toy Box to use this version.`;
+    label = `${name} updated. Restart Agent Teams to use this version.`;
     icon = <Check className="text-emerald-500" />;
   } else if (state?.status === "success") {
     label = `${name} version unchanged`;

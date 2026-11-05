@@ -307,7 +307,7 @@ test("native tool results replay edits, a completed checklist, and an answered q
     .trim()
     .split("\n")
     .map((line) => native(JSON.parse(line)));
-  const project = createClaudeProjector("toy-box-test");
+  const project = createClaudeProjector("agent-teams-test");
   const state = messages.flatMap(project).reduce(applySessionEvent, createInitialSessionState());
   const calls = state.messages.flatMap((message) =>
     message.role === "assistant" ? (message.toolCalls ?? []) : [],

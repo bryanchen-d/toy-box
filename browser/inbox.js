@@ -17,13 +17,13 @@ export async function sendPageToInbox({ task, page, viewport }) {
       body,
     });
   } catch (cause) {
-    throw new Error(`Couldn’t reach Toy Box at ${endpoint}.`, { cause });
+    throw new Error(`Couldn’t reach Agent Teams at ${endpoint}.`, { cause });
   }
 
   if (response.ok) return;
 
   const result = await response.json().catch(() => null);
-  throw new Error(result?.error ?? `Toy Box returned ${response.status}.`);
+  throw new Error(result?.error ?? `Agent Teams returned ${response.status}.`);
 }
 
 export async function captureViewport(windowId) {

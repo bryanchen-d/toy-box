@@ -11,11 +11,11 @@ import {
 describe("HTML artifact documents", () => {
   test("creates an origin-qualified, directory-rooted base URI for relative embeds", () => {
     const baseUri = createFileBaseUri(
-      { kind: "session", sessionId: "toy-box-session", path: "plan.md" },
+      { kind: "session", sessionId: "agent-teams-session", path: "plan.md" },
       "http://localhost:3100",
     );
 
-    expect(baseUri).toBe("http://localhost:3100/api/serve/toy-box-session/");
+    expect(baseUri).toBe("http://localhost:3100/api/serve/agent-teams-session/");
     // Relative embeds land inside the artifact namespace (root-absolute paths would not).
     expect(new URL("chart.html", baseUri).href).toBe(`${baseUri}chart.html`);
     expect(new URL("nested/chart.html", baseUri).href).toBe(`${baseUri}nested/chart.html`);

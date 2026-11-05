@@ -88,6 +88,6 @@ function readThemeColor(variableName: `--${string}`): string {
   if (typeof document === "undefined") return `var(${variableName})`;
 
   const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-  if (!value) throw new Error(`Missing Toy Box theme color: ${variableName}`);
+  if (!value) throw new Error(`Missing Agent Teams theme color: ${variableName}`);
   return value;
 }

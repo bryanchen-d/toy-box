@@ -9,9 +9,9 @@ export { HTML_BASE_ATTRIBUTE, injectBaseHref } from "@/shared/embeddedHtml";
 // The serve route (`/api/serve`) returns the raw bytes these documents reference (sibling
 // scripts, images, nested docs); it knows nothing about how they render.
 
-export const HTML_BRIDGE_ATTRIBUTE = "data-toybox-html-bridge";
-export const HTML_CHANGE_MESSAGE_TYPE = "toybox-html:change";
-export const HTML_EDITABLE_MESSAGE_TYPE = "toybox-html:set-editable";
+export const HTML_BRIDGE_ATTRIBUTE = "data-agent-teams-html-bridge";
+export const HTML_CHANGE_MESSAGE_TYPE = "agent-teams-html:change";
+export const HTML_EDITABLE_MESSAGE_TYPE = "agent-teams-html:set-editable";
 
 /** Origin-qualified, directory-rooted base URI for a file's relative embeds, pointing at
  *  the serve route for the file's own directory. Trailing-slashed so `new URL(embed, base)`

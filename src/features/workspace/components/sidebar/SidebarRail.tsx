@@ -27,7 +27,7 @@ export function SidebarRail({
   className,
   onCreateSession,
   onCreateAutomation,
-  onCreateChannel,
+  onCreateTeam,
   onBrowseFiles,
   onBrowseScreens,
   onToggleHyper,
@@ -39,7 +39,7 @@ export function SidebarRail({
   className?: string;
   onCreateSession: (options?: SessionCreationOptions) => void;
   onCreateAutomation: () => void;
-  onCreateChannel: () => void;
+  onCreateTeam: () => void;
   onBrowseFiles: () => void;
   onBrowseScreens: () => void;
   onToggleHyper: () => void;
@@ -71,7 +71,7 @@ export function SidebarRail({
         variant="rail"
         onCreateSession={onCreateSession}
         onCreateAutomation={onCreateAutomation}
-        onCreateChannel={onCreateChannel}
+        onCreateTeam={onCreateTeam}
       />
 
       <div className="min-h-0 flex-1" />

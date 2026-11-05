@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       socketDevelopment(),
       {
-        name: "toy-box:dev-compression",
+        name: "agent-teams:dev-compression",
         apply: "serve",
         configureServer(server) {
           server.middlewares.use(
@@ -74,7 +74,7 @@ export default defineConfig(({ mode }) => {
             config.plugins = [
               config.plugins,
               {
-                name: "toy-box:compressed-public-assets",
+                name: "agent-teams:compressed-public-assets",
                 // Nitro copies and compresses assets before bundling its server.
                 // Prune here so its generated manifest only references retained files.
                 buildStart: () => removeUncompressedAssets(nitro.options.output.publicDir),

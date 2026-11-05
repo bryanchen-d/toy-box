@@ -1,4 +1,4 @@
-// Toy Box-owned skills embedded in the binary and materialized for providers.
+// Agent Teams-owned skills embedded in the binary and materialized for providers.
 
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -10,14 +10,14 @@ import { sharedMap } from "@/shared/server/processState";
 const installations = sharedMap<SerialTaskQueue>("bundled-skill-installations");
 
 const SKILL_PATH_MARKER = "/skills/";
-const DEFAULT_SKILLS_ROOT = join(homedir(), ".toy-box", "skills");
+const DEFAULT_SKILLS_ROOT = join(homedir(), ".agent-teams", "skills");
 const UNIVERSAL_SKILLS = [
-  "create-toy-box-app",
-  "create-toy-box-brief",
-  "execute-toy-box-brief",
+  "create-agent-teams-app",
+  "create-agent-teams-brief",
+  "execute-agent-teams-brief",
 ] as const;
 const ROLE_SKILLS: Partial<Record<SessionType, readonly string[]>> = {
-  hyper: ["create-toy-box-editor"],
+  hyper: ["create-agent-teams-editor"],
 };
 
 /** Replace every bundled skill directory from its embedded files at server startup. */

@@ -31,6 +31,7 @@ import {
   deriveReachablePaneIds,
   deriveVisibleWorkspacePanes,
   deriveWorkspaceRootPanes,
+  focusedTeamId,
   INBOX_PANE,
   MAX_WORKSPACE_PANES,
   type WorkspacePane,
@@ -44,6 +45,8 @@ import {
 import {
   readWorkspaceLayout,
   serializeWorkspaceLayout,
+  setSidebarPanelExpanded,
+  type SidebarPanel,
   type SidebarPanels,
 } from "@workspace/model/config/layoutPrefs";
 import { sessionMutations } from "@sessions/mutations";
@@ -54,11 +57,14 @@ import {
 import { selectTopLevelSessions, sessionQueries } from "@sessions/queries";
 import { providerQueries } from "@providers/queries";
 import { useHasModels } from "@providers/useModels";
-import { channelQueries } from "@channels/queries";
-import { parseChannelReferenceHash } from "@channels/model/references";
+import { teamQueries } from "@teams/queries";
+import { parseTeamReferenceHash } from "@teams/model/references";
 import { automationQueries } from "@automations/queries";
 import { inboxQueries } from "@inbox/queries";
 import { appQueries } from "@apps/queries";
+
+const APP_TITLE = import.meta.env.VITE_APP_TITLE;
+
 const Terminal = lazy(() =>
   import("@terminal/components/Terminal").then((m) => ({
     default: m.Terminal,
@@ -70,19 +76,17 @@ const searchSchema = z
     sessions: z.array(z.string()).optional(),
     files: z.array(workspaceFileSchema).optional(),
     apps: z.array(z.string()).optional(),
-    channels: z.array(z.string()).optional(),
+    teams: z.array(z.string()).optional(),
     screens: z.array(z.string()).optional(),
   })
-  .transform(({ sessions = [], files = [], apps = [], channels = [], screens = [] }) => {
-    const roots = deriveWorkspaceRootPanes(sessions, files, apps, channels, screens);
+  .transform(({ sessions = [], files = [], apps = [], teams = [], screens = [] }) => {
+    const roots = deriveWorkspaceRootPanes(sessions, files, apps, teams, screens);
     const normalizedSessions = roots.flatMap((pane) =>
       pane.kind === "session" ? [pane.sessionId] : [],
     );
     const normalizedFiles = roots.flatMap((pane) => (pane.kind === "editor" ? [pane.file] : []));
     const normalizedApps = roots.flatMap((pane) => (pane.kind === "app" ? [pane.appId] : []));
-    const normalizedChannels = roots.flatMap((pane) =>
-      pane.kind === "channel" ? [pane.channelId] : [],
-    );
+    const normalizedTeams = roots.flatMap((pane) => (pane.kind === "team" ? [pane.teamId] : []));
     const normalizedScreens = roots.flatMap((pane) =>
       pane.kind === "screen" ? [pane.screenId] : [],
     );
@@ -90,7 +94,7 @@ const searchSchema = z
       sessions: normalizedSessions.length > 0 ? normalizedSessions : undefined,
       files: normalizedFiles.length > 0 ? normalizedFiles : undefined,
       apps: normalizedApps.length > 0 ? normalizedApps : undefined,
-      channels: normalizedChannels.length > 0 ? normalizedChannels : undefined,
+      teams: normalizedTeams.length > 0 ? normalizedTeams : undefined,
       screens: normalizedScreens.length > 0 ? normalizedScreens : undefined,
     };
   });
@@ -102,7 +106,7 @@ export const Route = createFileRoute("/")({
   loader: async ({ context }) => {
     await Promise.all([
       context.queryClient.ensureQueryData(sessionQueries.state()),
-      context.queryClient.ensureQueryData(channelQueries.list()),
+      context.queryClient.ensureQueryData(teamQueries.list()),
       context.queryClient.ensureQueryData(automationQueries.list()),
       context.queryClient.ensureQueryData(inboxQueries.list()),
       context.queryClient.ensureQueryData(appQueries.list()),
@@ -149,12 +153,12 @@ function WorkspacePage() {
     select: (search) => search.apps ?? [],
     structuralSharing: true,
   });
-  const selectedChannelIds = Route.useSearch({
-    select: (search) => search.channels ?? [],
+  const selectedTeamIds = Route.useSearch({
+    select: (search) => search.teams ?? [],
     structuralSharing: true,
   });
-  const referencedChannelId = useRouterState({
-    select: ({ location }) => parseChannelReferenceHash(location.hash)?.channelId,
+  const referencedTeamId = useRouterState({
+    select: ({ location }) => parseTeamReferenceHash(location.hash)?.teamId,
   });
   const openFiles = Route.useSearch({
     select: (search) => search.files ?? [],
@@ -183,7 +187,7 @@ function WorkspacePage() {
               sessions: undefined,
               files: undefined,
               apps: undefined,
-              channels: undefined,
+              teams: undefined,
               screens: undefined,
             }
           : prev;
@@ -229,7 +233,7 @@ function WorkspacePage() {
     openWorkspaceFile(machineFile(path));
   }
 
-  function closeWorkspaceRoot(key: "apps" | "channels" | "screens", id: string) {
+  function closeWorkspaceRoot(key: "apps" | "teams" | "screens", id: string) {
     void updateWorkspaceRoot(key, (current) => current.filter((open) => open !== id), {
       replaceHistory: true,
     });
@@ -269,7 +273,7 @@ function WorkspacePage() {
     selectedSessionIds,
     openFiles,
     selectedAppIds,
-    selectedChannelIds,
+    selectedTeamIds,
     selectedScreenIds,
   );
   const rootPaneIds = new Set(rootPanes.map((pane) => pane.id));
@@ -282,8 +286,8 @@ function WorkspacePage() {
         return () => closeFile(pane.file);
       case "app":
         return () => closeWorkspaceRoot("apps", pane.appId);
-      case "channel":
-        return () => closeWorkspaceRoot("channels", pane.channelId);
+      case "team":
+        return () => closeWorkspaceRoot("teams", pane.teamId);
       case "screen":
         return () => closeWorkspaceRoot("screens", pane.screenId);
       case "inbox":
@@ -317,14 +321,14 @@ function WorkspacePage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(initialLayout.sidebarCollapsed);
   const [isTerminalOpen, setIsTerminalOpen] = useState(initialLayout.terminalOpen);
   const [sidebarPanels, setSidebarPanels] = useState<SidebarPanels>(initialLayout.panels);
-  const [isChannelOverviewPinned, setIsChannelOverviewPinned] = useState(
-    initialLayout.channelOverviewPinned,
+  const [isTeamOverviewPinned, setIsTeamOverviewPinned] = useState(
+    initialLayout.teamOverviewPinned,
   );
-  const [channelAsideSizes, setChannelAsideSizes] = useState(initialLayout.channelAsideSizes);
+  const [teamAsideSizes, setTeamAsideSizes] = useState(initialLayout.teamAsideSizes);
 
   const hasModels = useHasModels();
-  const { data: channelList } = useQuery(channelQueries.list());
-  const channels = channelList?.channels;
+  const { data: teamList } = useQuery(teamQueries.list());
+  const teams = teamList?.teams;
   const { data: automations } = useSuspenseQuery(automationQueries.list());
   const { data: appIds } = useSuspenseQuery({
     ...appQueries.list(),
@@ -366,7 +370,7 @@ function WorkspacePage() {
   }
 
   function handleWorkspaceRootOpen(
-    key: "apps" | "channels",
+    key: "apps" | "teams",
     id: string,
     selectedIds: string[],
     toggleInWorkspace = false,
@@ -388,8 +392,8 @@ function WorkspacePage() {
     handleWorkspaceRootOpen("apps", appId, selectedAppIds, toggleInWorkspace);
   }
 
-  function handleChannelOpen(channelId: string, toggleInWorkspace = false) {
-    handleWorkspaceRootOpen("channels", channelId, selectedChannelIds, toggleInWorkspace);
+  function handleTeamOpen(teamId: string, toggleInWorkspace = false) {
+    handleWorkspaceRootOpen("teams", teamId, selectedTeamIds, toggleInWorkspace);
   }
 
   // Create a draft session, optionally with an initial artifact or alongside the workspace.
@@ -450,24 +454,31 @@ function WorkspacePage() {
     });
   }, [appIds, navigate, selectedAppIds]);
 
-  // Channels are durable URL roots, parallel to sessions and apps.
+  // Teams are durable URL roots, parallel to sessions and apps.
   useEffect(() => {
-    if (!channels || selectedChannelIds.length === 0) return;
-    const availableChannelIds = new Set(channels.map((channel) => channel.id));
-    const validChannelIds = selectedChannelIds.filter(
-      (channelId) => channelId === referencedChannelId || availableChannelIds.has(channelId),
+    if (!teams || selectedTeamIds.length === 0) return;
+    const availableTeamIds = new Set(teams.map((team) => team.id));
+    const validTeamIds = selectedTeamIds.filter(
+      (teamId) => teamId === referencedTeamId || availableTeamIds.has(teamId),
     );
-    if (validChannelIds.length === selectedChannelIds.length) return;
+    if (validTeamIds.length === selectedTeamIds.length) return;
 
     void navigate({
       to: "/",
       search: (prev) => ({
         ...prev,
-        channels: validChannelIds.length > 0 ? validChannelIds : undefined,
+        teams: validTeamIds.length > 0 ? validTeamIds : undefined,
       }),
       replace: true,
     });
-  }, [channels, navigate, referencedChannelId, selectedChannelIds]);
+  }, [teams, navigate, referencedTeamId, selectedTeamIds]);
+
+  // The browser title names the Team in focus, so tabs and history stay recognizable.
+  const titledTeamId = focusedTeamId(openPanes, focusedPaneId);
+  const titledTeamName = teams?.find(({ id }) => id === titledTeamId)?.name;
+  useEffect(() => {
+    document.title = [titledTeamName, APP_TITLE].filter(Boolean).join(" · ");
+  }, [titledTeamName]);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SessionFilters>({
@@ -566,8 +577,8 @@ function WorkspacePage() {
     panels: sidebarPanels,
     hyperOpen: hyper.isOpen,
     hyperPosition: hyperSession?.position ?? initialLayout.hyperPosition,
-    channelOverviewPinned: isChannelOverviewPinned,
-    channelAsideSizes,
+    teamOverviewPinned: isTeamOverviewPinned,
+    teamAsideSizes,
   });
   useEffect(() => {
     document.cookie = layoutCookie;
@@ -631,7 +642,7 @@ function WorkspacePage() {
   const hasWorkspaceRoot =
     selectedSessionIds.length > 0 ||
     selectedAppIds.length > 0 ||
-    selectedChannelIds.length > 0 ||
+    selectedTeamIds.length > 0 ||
     selectedScreenIds.length > 0 ||
     openFiles.length > 0;
   const isInboxOpen = !hasWorkspaceRoot && (!isMobileLayout || isSidebarCollapsed);
@@ -666,13 +677,9 @@ function WorkspacePage() {
     </ClientOnly>
   );
 
-  function handlePanelExpanded(panel: keyof SidebarPanels, expanded: boolean) {
+  function handlePanelExpanded(panel: SidebarPanel, expanded: boolean) {
     setSidebarPanels((current) =>
-      isMobileLayout
-        ? expanded
-          ? { [panel]: true }
-          : {}
-        : { ...current, [panel]: expanded ? true : undefined },
+      setSidebarPanelExpanded(current, panel, expanded, isMobileLayout),
     );
   }
 
@@ -697,8 +704,8 @@ function WorkspacePage() {
     openAppIds: selectedAppIds,
     onAppOpen: handleAppOpen,
     onAppOpenInHyper: handleAppOpenInHyper,
-    openChannelIds: selectedChannelIds,
-    onChannelOpen: handleChannelOpen,
+    openTeamIds: selectedTeamIds,
+    onTeamOpen: handleTeamOpen,
     onToggleHyper: toggleHyper,
     isHyperOpen,
     onOpenInbox: handleOpenInbox,
@@ -765,11 +772,11 @@ function WorkspacePage() {
         onOpenFile={openFile}
         onRevealFile={revealFile}
         onOpenScreen={openScreen}
-        channelOverviewPinned={isChannelOverviewPinned}
-        onChannelOverviewPinnedChange={setIsChannelOverviewPinned}
-        channelAsideSizes={channelAsideSizes}
-        onChannelAsideSizeChange={(kind, size) =>
-          setChannelAsideSizes((sizes) => ({ ...sizes, [kind]: size }))
+        teamOverviewPinned={isTeamOverviewPinned}
+        onTeamOverviewPinnedChange={setIsTeamOverviewPinned}
+        teamAsideSizes={teamAsideSizes}
+        onTeamAsideSizeChange={(kind, size) =>
+          setTeamAsideSizes((sizes) => ({ ...sizes, [kind]: size }))
         }
       >
         <WorkspaceLayout

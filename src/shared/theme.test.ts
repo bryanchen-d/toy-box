@@ -13,18 +13,18 @@ import {
 test("reads only a valid browser-local theme cookie", () => {
   expect(readThemePreference()).toBe("system");
   expect(readThemePreference("unrelated=dark")).toBe("system");
-  expect(readThemePreference("toybox_theme=invalid")).toBe("system");
-  expect(readThemePreference("other=1; toybox_theme=dark; more=2")).toBe("dark");
-  expect(readThemePreference("toybox_theme=light")).toBe("light");
+  expect(readThemePreference("agent_teams_theme=invalid")).toBe("system");
+  expect(readThemePreference("other=1; agent_teams_theme=dark; more=2")).toBe("dark");
+  expect(readThemePreference("agent_teams_theme=light")).toBe("light");
   expect(isThemePreference(null)).toBe(false);
   expect(isThemePreference("system")).toBe(true);
 });
 
 test("persists explicit overrides and removes the cookie for System", () => {
   expect(serializeThemePreference("dark")).toBe(
-    "toybox_theme=dark; Path=/; Max-Age=31536000; SameSite=Lax",
+    "agent_teams_theme=dark; Path=/; Max-Age=31536000; SameSite=Lax",
   );
-  expect(serializeThemePreference("light")).toContain("toybox_theme=light;");
+  expect(serializeThemePreference("light")).toContain("agent_teams_theme=light;");
   expect(serializeThemePreference("system")).toContain("Max-Age=0;");
 });
 
@@ -81,7 +81,7 @@ test("publishes resolved CSS before notifying subscribers and releases shared li
     expect(getColorScheme()).toBe("light");
     expect(first).toHaveBeenCalledTimes(1);
 
-    cookie = "toybox_theme=light";
+    cookie = "agent_teams_theme=light";
     view.dispatchEvent(new Event("focus"));
     expect(dataset.theme).toBe("light");
     allowCookies = false;

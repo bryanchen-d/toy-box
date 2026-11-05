@@ -44,7 +44,7 @@ export function buildSessionSystemPrompt(
   }
 
   parts.push(
-    'Toy Box renders files ending in `.svg` as rich, directly editable drawing artifacts. When creating a whiteboard, drawing, or spatial diagram, write standard static SVG with an `xmlns`, a meaningful `viewBox`, and ordinary SVG elements such as `<g>`, `<path>`, `<rect>`, `<ellipse>`, `<line>`, `<text>`, and `<image>`. Gradients, filters, masks, patterns, markers, and transforms are supported. Give logical objects unique, descriptive IDs and wrap multi-part objects in `<g id="...">` so Toy Box can select, move, resize, and rotate them as one unit. Keep the file self-contained when practical. The editor supplies its own theme-derived background and dot grid, so do not add a background unless it is meaningful document content. Editable SVG artifacts must not contain doctypes, scripts, `<foreignObject>`, event-handler attributes, imported or executable CSS, or unsafe resource protocols.',
+    'Agent Teams renders files ending in `.svg` as rich, directly editable drawing artifacts. When creating a whiteboard, drawing, or spatial diagram, write standard static SVG with an `xmlns`, a meaningful `viewBox`, and ordinary SVG elements such as `<g>`, `<path>`, `<rect>`, `<ellipse>`, `<line>`, `<text>`, and `<image>`. Gradients, filters, masks, patterns, markers, and transforms are supported. Give logical objects unique, descriptive IDs and wrap multi-part objects in `<g id="...">` so Agent Teams can select, move, resize, and rotate them as one unit. Keep the file self-contained when practical. The editor supplies its own theme-derived background and dot grid, so do not add a background unless it is meaningful document content. Editable SVG artifacts must not contain doctypes, scripts, `<foreignObject>`, event-handler attributes, imported or executable CSS, or unsafe resource protocols.',
   );
 
   if (additionalInstructions) parts.push(additionalInstructions);
@@ -53,8 +53,8 @@ export function buildSessionSystemPrompt(
 }
 
 export const SESSION_HISTORY_DISCOVERY_INSTRUCTIONS =
-  "Use list_sessions and read_session to discover and read Toy Box sessions across providers. " +
-  `A user reference such as ${encodeReference({ kind: "session", target: "PUBLIC_ID", label: "Title" })} names a session by its URL-escaped public Toy Box ID. ` +
+  "Use list_sessions and read_session to discover and read Agent Teams sessions across providers. " +
+  `A user reference such as ${encodeReference({ kind: "session", target: "PUBLIC_ID", label: "Title" })} names a session by its URL-escaped public Agent Teams ID. ` +
   "When its context is needed, call read_session with that ID directly; do not list sessions or resolve the title, which is only a label. " +
   "If reading fails, report that instead of substituting another session. " +
   "A reference alone does not request messaging, resuming, or deleting the referenced session.";

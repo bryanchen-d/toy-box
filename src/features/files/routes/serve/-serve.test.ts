@@ -7,7 +7,7 @@ import { createFileServeUrl } from "@files/model/paths";
 import { createServeResponse } from "./$scope/$";
 
 test("serves image bytes through an encoded machine-file URL", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-serve-"));
   const path = join(directory, "image #1.png");
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const bytes = Buffer.from(
@@ -15,7 +15,7 @@ test("serves image bytes through an encoded machine-file URL", async () => {
     "base64",
   );
   await Bun.write(path, bytes);
-  const url = new URL(createFileServeUrl(machineFile(path)), "http://toy-box.test");
+  const url = new URL(createFileServeUrl(machineFile(path)), "http://agent-teams.test");
   const response = await createServeResponse(
     {
       scope: "machine",
@@ -30,10 +30,10 @@ test("serves image bytes through an encoded machine-file URL", async () => {
 });
 
 test("revalidates unchanged files and serves changed bytes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-serve-"));
   const path = join(directory, "image.svg");
   const params = { scope: "machine", _splat: path.replace(/^\/+/, "") };
-  const url = "http://toy-box.test/api/serve/machine/image.svg";
+  const url = "http://agent-teams.test/api/serve/machine/image.svg";
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
 
   await Bun.write(path, "first");
@@ -62,10 +62,10 @@ test("revalidates unchanged files and serves changed bytes", async () => {
 });
 
 test("serves lengths and byte ranges so browsers can stream and seek video", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-serve-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-serve-"));
   const path = join(directory, "flow.webm");
   const params = { scope: "machine", _splat: path.replace(/^\/+/, "") };
-  const url = "http://toy-box.test/api/serve/machine/flow.webm";
+  const url = "http://agent-teams.test/api/serve/machine/flow.webm";
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   await Bun.write(path, "0123456789");
   const request = (range: string) =>

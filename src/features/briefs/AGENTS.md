@@ -280,6 +280,6 @@ resume.
   option. Repair all references before the next document is observable.
 
 When this model changes, update the bundled authoring skill, schema reference,
-and worked example in `src/features/briefs/server/skills/create-toy-box-brief/`.
+and worked example in `src/features/briefs/server/skills/create-agent-teams-brief/`.
 When plan execution changes, update the separate
-`src/features/briefs/server/skills/execute-toy-box-brief/` skill as well.
+`src/features/briefs/server/skills/execute-agent-teams-brief/` skill as well.

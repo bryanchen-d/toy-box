@@ -44,7 +44,7 @@ export function InstallAppDialog({
           <DialogTitle>Install from Gist</DialogTitle>
           <DialogDescription>
             Enter a public GitHub Gist URL containing app.json and app.tsx. Apps run as trusted code
-            inside Toy Box, so only install Gists you trust.
+            inside Agent Teams, so only install Gists you trust.
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={handleSubmit}>

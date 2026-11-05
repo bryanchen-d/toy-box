@@ -58,8 +58,8 @@ export function reduceWorkspaceState(state: WorkspaceState, event: WorkspaceEven
       );
       return removeDraft(withoutWorkers, `session:${event.sessionId}`);
     }
-    case "channel.deleted":
-      return removeDraft(state, `channel:${event.channelId}`);
+    case "team.deleted":
+      return removeDraft(state, `team:${event.teamId}`);
     case "draft.changed":
       return sameSavedDraft(state.drafts[event.key], event.draft)
         ? state

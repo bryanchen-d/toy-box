@@ -20,10 +20,10 @@ describe("Session system messages", () => {
 
   test("rejects ordinary, malformed, and invalid display content", () => {
     expect(decodeSystemMessage("hello")).toBeUndefined();
-    expect(decodeSystemMessage("toybox-system:{bad}")).toBeUndefined();
+    expect(decodeSystemMessage("agent-teams-system:{bad}")).toBeUndefined();
     expect(
       decodeSystemMessage(
-        'toybox-system:{"type":"file_edited","file":{"kind":"session","sessionId":"s1","path":""}}',
+        'agent-teams-system:{"type":"file_edited","file":{"kind":"session","sessionId":"s1","path":""}}',
       ),
     ).toBeUndefined();
   });
@@ -37,12 +37,12 @@ describe("Session system messages", () => {
     expect(systemMessageCoalesceKey(fileEdited)).toBe("file_edited:session:s1:plan.md");
     expect(systemMessagePrompt(fileEdited)).toContain("Review its latest contents");
 
-    const channelMessage = {
-      type: "channel_message",
+    const teamMessage = {
+      type: "team_message",
       senderName: "Research Scout",
     } as const;
-    expect(systemMessageLabel(channelMessage)).toBe("Message from Research Scout");
-    expect(systemMessageCoalesceKey(channelMessage)).toBe("channel_message");
-    expect(systemMessagePrompt(channelMessage)).toContain("Call `read_channel`");
+    expect(systemMessageLabel(teamMessage)).toBe("Message from Research Scout");
+    expect(systemMessageCoalesceKey(teamMessage)).toBe("team_message");
+    expect(systemMessagePrompt(teamMessage)).toContain("Call `read_team`");
   });
 });

@@ -1,0 +1,118 @@
+import type { QueryClient } from "@tanstack/react-query";
+import type { TeamList } from "@teams/model";
+import { teamQueries, type TeamQueryData } from "@teams/queries";
+import type { WorkspaceEvent } from "@workspace/model/events";
+import { mergeTeamMessages } from "./model/reducer";
+
+/** Page backward through a target message, retrying only pages overtaken by the stream. */
+export async function loadTeamHistory(
+  queryClient: QueryClient,
+  teamId: string,
+  throughSequence?: number,
+): Promise<void> {
+  const key = teamQueries.detail(teamId).queryKey;
+  for (;;) {
+    const state = queryClient.getQueryData(key);
+    const before = state?.messages[0]?.sequence;
+    if (
+      before === undefined ||
+      before <= 1 ||
+      (throughSequence !== undefined && before <= throughSequence)
+    )
+      return;
+    const page = await queryClient.query(teamQueries.messagesBefore(teamId, before));
+    const current = queryClient.getQueryData(key);
+    if (!current) return;
+    // A page ahead of the stream is safe: replay will still reach its revision.
+    if (current.revision > page.revision) continue;
+    if (page.messages.length)
+      queryClient.setQueryData<TeamQueryData>(key, {
+        ...current,
+        messages: mergeTeamMessages(current.messages, page.messages),
+      });
+    if (
+      !page.messages.length ||
+      throughSequence === undefined ||
+      page.messages[0]!.sequence <= throughSequence
+    )
+      return;
+  }
+}
+
+/** A detail stream leaves its terminal value in place; Workspace also retires its query. */
+export function removeTeamFromList(queryClient: QueryClient, teamId: string): void {
+  queryClient.removeQueries({ queryKey: teamQueries.usage(teamId).queryKey, exact: true });
+  queryClient.setQueryData<TeamList>(teamQueries.listKey(), (list) =>
+    list
+      ? {
+          teams: list.teams.filter(({ id }) => id !== teamId),
+          members: list.members.filter((member) => member.teamId !== teamId),
+        }
+      : list,
+  );
+  replaceOverlappingListRead(queryClient);
+}
+
+export function applyTeamListEvent(queryClient: QueryClient, event: WorkspaceEvent): void {
+  switch (event.type) {
+    case "team.upserted":
+      queryClient.setQueryData<TeamList>(teamQueries.listKey(), (list) => {
+        if (!list) return list;
+        const next = list.teams.filter(({ id }) => id !== event.team.id);
+        next.push(event.team);
+        return {
+          ...list,
+          teams: next.sort(
+            (left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),
+          ),
+        };
+      });
+      break;
+    case "team.deleted":
+      queryClient.removeQueries({
+        queryKey: teamQueries.detail(event.teamId).queryKey,
+        exact: true,
+      });
+      removeTeamFromList(queryClient, event.teamId);
+      return;
+    case "team.member.upserted":
+      queryClient.setQueryData<TeamList>(
+        teamQueries.listKey(),
+        (list) =>
+          list && {
+            ...list,
+            members: list.members.some(({ id }) => id === event.member.id)
+              ? list.members.map((member) =>
+                  member.id === event.member.id ? event.member : member,
+                )
+              : [event.member, ...list.members],
+          },
+      );
+      break;
+    case "team.member.deleted":
+      queryClient.setQueryData<TeamList>(
+        teamQueries.listKey(),
+        (list) =>
+          list && {
+            ...list,
+            members: list.members.filter(({ id }) => id !== event.agentId),
+          },
+      );
+      break;
+    default:
+      return;
+  }
+  replaceOverlappingListRead(queryClient);
+}
+
+/** Read after the commit when an older catalog response could overwrite the event. */
+function replaceOverlappingListRead(queryClient: QueryClient): void {
+  if (queryClient.getQueryState(teamQueries.listKey())?.fetchStatus === "fetching") {
+    void queryClient.refetchQueries({ queryKey: teamQueries.listKey(), exact: true });
+  }
+}
+
+export function invalidateTeamListQuery(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: teamQueries.listKey(), exact: true });
+}

@@ -66,10 +66,10 @@ describe("current-chat message search", () => {
     expect(
       searchSessionMessages(
         [
-          { role: "system", content: { type: "channel_message", senderName: "Needle" } },
+          { role: "system", content: { type: "team_message", senderName: "Needle" } },
           {
             role: "system",
-            content: { type: "channel_routine", title: "Routine", prompt: "needle" },
+            content: { type: "team_routine", title: "Routine", prompt: "needle" },
           },
           {
             role: "assistant",

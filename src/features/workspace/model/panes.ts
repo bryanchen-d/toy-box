@@ -25,7 +25,7 @@ type InboxWorkspacePane = typeof INBOX_PANE;
 export type WorkspacePane =
   | InboxWorkspacePane
   | AppWorkspacePane
-  | ChannelWorkspacePane
+  | TeamWorkspacePane
   | ScreenWorkspacePane
   | {
       kind: "session";
@@ -55,10 +55,10 @@ export type AppWorkspacePane = {
   appId: string;
 };
 
-export type ChannelWorkspacePane = {
-  kind: "channel";
+export type TeamWorkspacePane = {
+  kind: "team";
   id: string;
-  channelId: string;
+  teamId: string;
 };
 
 export type ScreenWorkspacePane = {
@@ -92,11 +92,11 @@ export function createAppPane(appId: string): AppWorkspacePane {
   };
 }
 
-export function createChannelPane(channelId: string): ChannelWorkspacePane {
+export function createTeamPane(teamId: string): TeamWorkspacePane {
   return {
-    kind: "channel",
-    id: `channel:${channelId}`,
-    channelId,
+    kind: "team",
+    id: `team:${teamId}`,
+    teamId,
   };
 }
 
@@ -155,6 +155,19 @@ export function isEditorPane(pane: WorkspacePane): pane is EditorWorkspacePane {
   return pane.kind === "editor";
 }
 
+/**
+ * The Team in focus: the focused pane's Team, or, when no pane holds focus,
+ * the first Team showing. Focus on any other pane means no Team is in focus.
+ */
+export function focusedTeamId(
+  panes: readonly WorkspacePane[],
+  focusedPaneId: string | null,
+): string | undefined {
+  const focused = focusedPaneId === null ? undefined : panes.find(({ id }) => id === focusedPaneId);
+  if (focused) return focused.kind === "team" ? focused.teamId : undefined;
+  return panes.find((pane): pane is TeamWorkspacePane => pane.kind === "team")?.teamId;
+}
+
 /** The session a pane belongs to — a session pane is its own source; canvas and
  *  editor panes carry the id of the session that produced them, while Inbox
  *  has no source session. */
@@ -162,7 +175,7 @@ export function paneSourceSessionId(pane: WorkspacePane): string | undefined {
   switch (pane.kind) {
     case "inbox":
     case "app":
-    case "channel":
+    case "team":
       return undefined;
     case "session":
       return pane.sessionId;
@@ -179,14 +192,14 @@ export function deriveWorkspaceRootPanes(
   selectedSessionIds: string[],
   openFiles: readonly WorkspaceFile[] = [],
   openAppIds: readonly string[] = [],
-  openChannelIds: readonly string[] = [],
+  openTeamIds: readonly string[] = [],
   openScreenIds: readonly string[] = [],
 ): WorkspacePane[] {
   // Selected work surfaces remain primary; files only augment them.
   const candidates: WorkspacePane[] = [
     ...selectedSessionIds.map((sessionId) => createSessionPane(sessionId, false)),
     ...openAppIds.map(createAppPane),
-    ...openChannelIds.map(createChannelPane),
+    ...openTeamIds.map(createTeamPane),
     ...openScreenIds.map((screenId) => createScreenPane(screenId)),
     ...openFiles.map((file) => createEditorPane(file)),
   ];

@@ -12,7 +12,7 @@ This provider owns no database, sidecar files, or durable metadata.
 | `history.ts`     | Native transcript reads: history and the session directory       |
 | `messages.ts`    | Native text, images, shared system messages, and slash prompts   |
 | `models.ts`      | Native model identities and catalog options                      |
-| `tools.ts`       | In-process MCP host for supplied Toy Box tools                   |
+| `tools.ts`       | In-process MCP host for supplied Agent Teams tools               |
 | `fileChanges.ts` | Native edit hunks into the shared diff format                    |
 
 ## Queries
@@ -33,7 +33,7 @@ native replay carries its clientId.
 Model and reasoning effort change together through the session-scoped `applyFlagSettings` API.
 Native messages omit effort, so live model changes carry the last one applied.
 
-Native permissions follow Toy Box's trusted-owner policy. Connections pin
+Native permissions follow Agent Teams' trusted-owner policy. Connections pin
 `permissionMode: "default"` so `canUseTool` applies it; otherwise the owner's native default or
 auto mode would. `AskUserQuestion` goes to the shared question UI when the session's role allows
 it; each native question is its own tool call and is answered individually.
@@ -60,7 +60,7 @@ repository's shared `.agents/skills` that Copilot and Codex read natively. `relo
 supplies slash completion.
 
 Creation names use the SDK's `title` option; later names use `renameSession()`. The SDK's
-`customTitle` includes generated native titles too, so automatic Toy Box renames preserve
+`customTitle` includes generated native titles too, so automatic Agent Teams renames preserve
 any existing native title.
 
 ## Projection
@@ -80,7 +80,7 @@ whether it is watched or reopened.
 - **Models.** Native messages restate their model; `model_changed` projects only when the main
   thread's or a subagent's model or effort changes, and on each turn's `init`.
 - **Tool calls.** A call starts with its `tool_use` and completes with its `tool_result`. Native
-  names map to Toy Box's canonical tools, and ToolSearch and omitted Toy Box tools stay hidden.
+  names map to Agent Teams' canonical tools, and ToolSearch and omitted Agent Teams tools stay hidden.
   Questions, checklists, and background agents retain only the native correlation they require.
   Live background agent cards stay running from native `task_started` through
   `task_notification`, including failed or stopped outcomes; history retains the native launch

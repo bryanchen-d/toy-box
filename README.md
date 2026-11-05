@@ -1,8 +1,8 @@
-# 🧸 Toy Box
+# 🧸 Agent Teams
 
-Toy Box is a self-hosted agent server for running agentic tasks from anywhere. It includes an easy-to-use web app for starting, observing, and controlling sessions from both your desktop and phone while keeping all connected clients synchronized.
+Agent Teams is a self-hosted agent server for running agentic tasks from anywhere. It includes an easy-to-use web app for starting, observing, and controlling sessions from both your desktop and phone while keeping all connected clients synchronized.
 
-Beyond simple session management, Toy Box provides several helpful workflows that make everyday tasks simpler: group agent channels, scheduled automations, editable artifacts, child session orchestration, generative apps, and an [inbox for asynchronous tasks](#inbox-webhook).
+Beyond simple session management, Agent Teams provides several helpful workflows that make everyday tasks simpler: group agent teams, scheduled automations, editable artifacts, child session orchestration, generative apps, and an [inbox for asynchronous tasks](#inbox-webhook).
 
 <img width="1000" src="https://i.ibb.co/rKzGz0xg/image.png" />
 
@@ -13,11 +13,11 @@ Beyond simple session management, Toy Box provides several helpful workflows tha
 - **Rich composer:** Choose the model and reasoning effort, attach images, invoke skills, dictate by voice, and start sessions in a working directory or isolated Git worktree.
 - **Multi-pane workspace:** Open up to four sessions, local files, artifacts, apps, terminals, or agent-provided canvases together, with live previews and an adaptive mobile layout.
 - **Multi-agent orchestration:** Delegate parallel work to child sessions and use the floating Hyper workspace for a dedicated orchestration thread.
-- **Agent channels:** Create channel-specific teammates with distinct roles, then collaborate through messages, reactions, statuses, screenshots, and shared artifacts. Open **Team members → View all** in the overview for a table of agent states, current and pending tasks, blockers, and model settings, with an edit button for each agent. Hover previews identify the live model and reasoning effort alongside activity such as Thinking or Reasoning. Open a channel canvas beside chat for agent-built interactive dashboards, task boards, and decision queues.
-- **Collaborative artifacts:** Browse and edit Markdown, HTML, JSON, and SVG alongside the agent, or use structured briefs to review and launch consequential work. Pin artifacts from the full list in a session or channel to keep them ahead of new arrivals. Multiple pins keep their order across reloads and clients; channel sorting affects only unpinned artifacts, and archiving clears a pin.
-- **Toy Box apps:** Build session-scoped `.toy` React artifacts or install reusable, stateful apps from trusted GitHub Gists. Apps can compose sessions, files, panes, workers, and shared content.
+- **Agent teams:** Create team-specific teammates with distinct roles, then collaborate through messages, reactions, statuses, screenshots, and shared artifacts. Open **Team members → View all** in the overview for a table of agent states, current and pending tasks, blockers, and model settings, with an edit button for each agent. Hover previews identify the live model and reasoning effort alongside activity such as Thinking or Reasoning. Open a team canvas beside chat for agent-built interactive dashboards, task boards, and decision queues.
+- **Collaborative artifacts:** Browse and edit Markdown, HTML, JSON, and SVG alongside the agent, or use structured briefs to review and launch consequential work. Pin artifacts from the full list in a session or team to keep them ahead of new arrivals. Multiple pins keep their order across reloads and clients; team sorting affects only unpinned artifacts, and archiving clears a pin.
+- **Agent Teams apps:** Build session-scoped `.toy` React artifacts or install reusable, stateful apps from trusted GitHub Gists. Apps can compose sessions, files, panes, workers, and shared content.
 - **Scheduled automations:** Configure recurring prompts that automate routine work and produce reviewable artifacts such as reports, analyses, and news digests.
-- **Inbox and webhook:** Dispatch asynchronous tasks from Toy Box, webpages, mobile voice capture, or any HTTP client, then review concise results and editable artifacts in one place.
+- **Inbox and webhook:** Dispatch asynchronous tasks from Agent Teams, webpages, mobile voice capture, or any HTTP client, then review concise results and editable artifacts in one place.
 
 ## Getting Started
 
@@ -27,11 +27,11 @@ Beyond simple session management, Toy Box provides several helpful workflows tha
 - [Codex CLI](https://developers.openai.com/codex/cli/)
 - [Claude Code](https://code.claude.com/docs/en/setup) **2.1.278+** (`claude update` to upgrade)
 
-1. Install Toy Box: `npm install -g @lostintangent/toy-box`
-1. Start the agent server: `toy-box`
+1. Install Agent Teams: `npm install -g @lostintangent/agent-teams`
+1. Start the agent server: `agent-teams`
 1. Open `http://localhost:3000` in your browser
 
-Restart Toy Box and reload the page after installing, removing, or updating a provider to refresh the model catalog.
+Restart Agent Teams and reload the page after installing, removing, or updating a provider to refresh the model catalog.
 
 ### Appearance
 
@@ -44,31 +44,31 @@ bubbles. Editors, syntax highlighting, whiteboards, and terminals follow the sel
 
 ## Access From Anywhere
 
-In order to access Toy Box from your phone (or other machines), simply configure [Tailscale](https://tailscale.com/) on the desired devices, enable MagicDNS and HTTPS for your tailnet, start Toy Box (`toy-box`), then run:
+In order to access Agent Teams from your phone (or other machines), simply configure [Tailscale](https://tailscale.com/) on the desired devices, enable MagicDNS and HTTPS for your tailnet, start Agent Teams (`agent-teams`), then run:
 
 ```sh
 tailscale serve --bg http://127.0.0.1:3000
 ```
 
-Open the provided `https://<machine>.<tailnet>.ts.net/` URL from any device on the same tailnet as the Toy Box server.
+Open the provided `https://<machine>.<tailnet>.ts.net/` URL from any device on the same tailnet as the Agent Teams server.
 
-Alternatively, use [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/create-local-tunnel/) with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) for browser access without installing Tailscale on your devices. Run `cloudflared` on the Toy Box machine and map an HTTPS hostname on your domain to `http://127.0.0.1:3000`. Before publishing the route, protect the hostname with Access, allowing only your chosen email addresses to sign in with GitHub or an email one-time PIN. Use a named tunnel; temporary Quick Tunnels do not support Toy Box's SSE streams.
+Alternatively, use [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/create-local-tunnel/) with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) for browser access without installing Tailscale on your devices. Run `cloudflared` on the Agent Teams machine and map an HTTPS hostname on your domain to `http://127.0.0.1:3000`. Before publishing the route, protect the hostname with Access, allowing only your chosen email addresses to sign in with GitHub or an email one-time PIN. Use a named tunnel; temporary Quick Tunnels do not support Agent Teams' SSE streams.
 
-After opening your HTTPS URL in a mobile browser, you can add Toy Box to your home screen:
+After opening your HTTPS URL in a mobile browser, you can add Agent Teams to your home screen:
 
 | Mobile platform     | Install Step(s)                                |
 | ------------------- | ---------------------------------------------- |
 | iOS (iPhone / iPad) | Use Safari's Share → Add to Home Screen        |
 | Android             | Use Chrome's Install app or Add to Home screen |
 
-> ⚠️ Toy Box has no app-level authentication. Keep it behind Tailscale Serve and tailnet access controls or Cloudflare Access; do not expose it through an unprotected public tunnel.
+> ⚠️ Agent Teams has no app-level authentication. Keep it behind Tailscale Serve and tailnet access controls or Cloudflare Access; do not expose it through an unprotected public tunnel.
 
 ## Inbox Webhook
 
-With that protected HTTPS URL in place, Toy Box's inbox can accept external tasks by means of simply sending a `POST` to the following URL: `https://<toy-box-host>/api/inbox`. For automated webhook calls through Cloudflare Access, configure [service-token headers and a Service Auth policy](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/).
+With that protected HTTPS URL in place, Agent Teams' inbox can accept external tasks by means of simply sending a `POST` to the following URL: `https://<agent-teams-host>/api/inbox`. For automated webhook calls through Cloudflare Access, configure [service-token headers and a Service Auth policy](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/).
 
 ```sh
-curl -X POST "https://<toy-box-host>/api/inbox" \
+curl -X POST "https://<agent-teams-host>/api/inbox" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"Summarize the latest changes and send the result to my Inbox."}'
 ```
@@ -82,8 +82,8 @@ The webhook supports both JSON and multipart form data:
 
 The same endpoint works with several ready-made integrations:
 
-- **Browser extension:** Follow [`browser/README.md`](browser/README.md), then set its server URL to the Toy Box base URL without `/api/inbox`. It can include the current page, selected text, and a viewport screenshot, with toolbar, shortcut, and context-menu actions.
-- **Pebble Index 01:** In CoreApp, open **Index Settings → Webhook**, use the full Inbox URL, and choose **Transcription only**. Toy Box accepts CoreApp's `transcription` field directly.
+- **Browser extension:** Follow [`browser/README.md`](browser/README.md), then set its server URL to the Agent Teams base URL without `/api/inbox`. It can include the current page, selected text, and a viewport screenshot, with toolbar, shortcut, and context-menu actions.
+- **Pebble Index 01:** In CoreApp, open **Index Settings → Webhook**, use the full Inbox URL, and choose **Transcription only**. Agent Teams accepts CoreApp's `transcription` field directly.
 - **QuickCast Hook:** Install it from the [App Store](https://apps.apple.com/us/app/quickcast-hook/id6756369952), then create a `POST` multipart webhook using the full Inbox URL. Enable on-device transcription, name its field `transcription`, and use `attachments` as the file field when sending audio or images.
 
 ## Developing

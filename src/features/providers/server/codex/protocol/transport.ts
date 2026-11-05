@@ -193,7 +193,7 @@ async function openCodexClient(): Promise<CodexTransport> {
   });
   try {
     await transport.request("initialize", {
-      clientInfo: { name: "toy_box", title: "Toy Box", version: "1.0.0" },
+      clientInfo: { name: "agent_teams", title: "Agent Teams", version: "1.0.0" },
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
     transport.notify("initialized");

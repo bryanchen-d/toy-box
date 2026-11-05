@@ -347,7 +347,7 @@ function WorkspaceGridCell({
         className={cn(
           CARD_CLASS,
           "size-full relative group",
-          showWindowControls && "[--toybox-pane-actions-inset:5rem]",
+          showWindowControls && "[--agent-teams-pane-actions-inset:5rem]",
         )}
       >
         {pane.kind === "session" && pane.isLinkedOnly && (

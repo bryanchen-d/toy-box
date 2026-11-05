@@ -24,7 +24,7 @@ the workspace consumes the same provider-owned catalog and configuration.
   its own row. The plan's name sits beside the version; one Usage toggle reveals every limit.
   `server/cli.ts` owns installation checks through `Bun.which(providerId)` and the shared `--version`
   and `update` commands. Updates compare versions before and after; unchanged does not prove an installation
-  is current (some installers require manual updates). Restart Toy Box to use updated runtimes.
+  is current (some installers require manual updates). Restart Agent Teams to use updated runtimes.
 - `server/provider.ts` defines `SessionProvider`, `SessionConnection`, and the configuration
   supplied by Sessions. Connections expose the provider reference used by `Session.provider`;
   history and resume receive the relevant identity fields from the same `Session` type.
@@ -55,7 +55,7 @@ completion, and broadcasts. It supplies providers with prepared skill directorie
 image inputs, and question policy on creation and resume. Providers must not reach
 into the Sessions registry, runtime, persistence, or resource layout.
 
-Channel-owned Worker sessions receive composed Agent identity instructions and Channel tools like
+Team-owned Worker sessions receive composed Agent identity instructions and Team tools like
 any other Session configuration. Providers receive no Agent-specific protocol or metadata.
 Sessions tool declarations can mark a tool `alwaysAvailable` to include its schema without
 discovery. Copilot maps this to `defer: "never"` on create and resume, Codex to
@@ -99,9 +99,9 @@ check the list whenever a provider is upgraded:
   without saving them and has no output path (seen through CLI 1.0.100-1). A post-tool hook saves
   them and reports the path so agents can attach them. Remove when Copilot writes them to disk
   itself.
-- Copilot channel protocol (`../channels/server/tools.ts`): deferred external tools can become
+- Copilot team protocol (`../teams/server/tools.ts`): deferred external tools can become
   unavailable on later turns after compaction (reproduced with CLI 1.0.102 and 1.0.104).
-  The four essential channel tools opt out through `alwaysAvailable`. Reconsider deferral only
+  The four essential team tools opt out through `alwaysAvailable`. Reconsider deferral only
   once discovery works reliably after compaction, on later turns, and after resume.
 - Copilot usage receipts (`server/copilot/usage.ts`): CLI 1.0.105 emits durable
   `session.usage_record` events that SDK 1.0.24 does not yet declare. The adapter extends

@@ -1,4 +1,4 @@
-const CLIENT_ID_STORAGE_KEY = "toybox_client_id";
+const CLIENT_ID_STORAGE_KEY = "agent_teams_client_id";
 let inMemoryClientId: string | null = null;
 
 function createClientId() {

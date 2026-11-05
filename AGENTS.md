@@ -1,10 +1,10 @@
-Toy Box is a full stack binary built on the Bun runtime. It uses installed Codex, GitHub Copilot, and Claude Code CLIs through a shared Providers feature; TanStack Start and Nitro for the SSR web server, server functions, and HTTP/SSE/WebSocket routes; React, TanStack Router and Query, and Jotai for the client; and Tailwind CSS with shadcn/ui for presentation.
+Agent Teams is a full stack binary built on the Bun runtime. It uses installed Codex, GitHub Copilot, and Claude Code CLIs through a shared Providers feature; TanStack Start and Nitro for the SSR web server, server functions, and HTTP/SSE/WebSocket routes; React, TanStack Router and Query, and Jotai for the client; and Tailwind CSS with shadcn/ui for presentation.
 
 ## Architecture
 
-Toy Box's central unit of work is a session that runs on the server and outlives any browser connection. A client can create one with its first prompt, attach to work already running, reconnect from a cursor, or reopen an idle session from history. Multiple clients can observe and control the same session; disconnecting ends only that client's observation.
+Agent Teams' central unit of work is a session that runs on the server and outlives any browser connection. A client can create one with its first prompt, attach to work already running, reconnect from a cursor, or reopen an idle session from history. Multiple clients can observe and control the same session; disconnecting ends only that client's observation.
 
-A public session ID ties together provider history, at most one live runtime, Toy Box metadata and owned resources, and shared client status. Sessions reserves that ID with a row in its `sessions` table and creates its artifact directory without starting a provider. The canonical `Session` combines that record with provider catalog metadata and a nested `SessionContext`. No provider means it is a draft; the first message adds its provider to the same row. An optional native ID overrides its public ID only when necessary. An artifact-first session treats its file as both the preferred pane and the initial conversational subject supplied to the agent. Imported native sessions use provider-prefixed IDs without requiring a local record.
+A public session ID ties together provider history, at most one live runtime, Agent Teams metadata and owned resources, and shared client status. Sessions reserves that ID with a row in its `sessions` table and creates its artifact directory without starting a provider. The canonical `Session` combines that record with provider catalog metadata and a nested `SessionContext`. No provider means it is a draft; the first message adds its provider to the same row. An optional native ID overrides its public ID only when necessary. An artifact-first session treats its file as both the preferred pane and the initial conversational subject supplied to the agent. Imported native sessions use provider-prefixed IDs without requiring a local record.
 
 Native provider activity is translated into canonical `SessionEvent`s. One pure reducer builds the same session state for the live server runtime, persisted-history replay, and browser clients, so a transcript agrees whether it is watched live, reconnected, or opened after completion. Active sessions take their truth from the in-memory runtime; idle sessions are reconstructed from durable provider history, with snapshots serving only as a cache.
 
@@ -31,7 +31,7 @@ flowchart LR
     API --> Terminal[Terminal PTY runtime]
 ```
 
-Toy Box currently assumes one trusted, coordinating server process for one owner; it does not provide an authentication boundary or horizontal coordination. Provider history, SQLite metadata, worktrees, and artifact files survive restarts; active execution, replay buffers, workspace coordination, Hyper membership, and terminal PTYs do not.
+Agent Teams currently assumes one trusted, coordinating server process for one owner; it does not provide an authentication boundary or horizontal coordination. Provider history, SQLite metadata, worktrees, and artifact files survive restarts; active execution, replay buffers, workspace coordination, Hyper membership, and terminal PTYs do not.
 
 ### Subsystem guides
 
@@ -39,7 +39,7 @@ Each guide explains one capability end to end, including adjacent callers and co
 
 - [`src/features/sessions/AGENTS.md`](src/features/sessions/AGENTS.md): the foundational session model, runtime, registry, SDK projection, browser lifecycle, and presentation
 - [`src/features/providers/AGENTS.md`](src/features/providers/AGENTS.md): the native provider contract, catalogs, Copilot, Codex, and Claude implementations, and history projection
-- [`src/features/channels/AGENTS.md`](src/features/channels/AGENTS.md): durable shared message buses, membership cursors, delivery policy, artifacts, and channel presentation
+- [`src/features/teams/AGENTS.md`](src/features/teams/AGENTS.md): durable shared message buses, membership cursors, delivery policy, artifacts, and team presentation
 - [`src/features/workspace/AGENTS.md`](src/features/workspace/AGENTS.md): TanStack application composition, aggregate workspace state, synchronization, pane identity, and layout
 - [`src/features/automations/AGENTS.md`](src/features/automations/AGENTS.md): dependable recurring work by scheduling ordinary managed sessions
 - [`src/features/inbox/AGENTS.md`](src/features/inbox/AGENTS.md): durable background results presented through ordinary managed sessions

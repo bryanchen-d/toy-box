@@ -1,8 +1,8 @@
 # Sessions
 
-Sessions are Toy Box's foundational unit of conversation and agent work. This feature owns the
+Sessions are Agent Teams' foundational unit of conversation and agent work. This feature owns the
 isomorphic session contract, browser access and streaming lifecycle, validated RPC ingress, and
-the UI that presents and controls a session. Automations, Inbox, Workers, Hyper, Channels,
+the UI that presents and controls a session. Automations, Inbox, Workers, Hyper, Teams,
 and apps compose sessions rather than introducing another transcript or execution model.
 
 ## Domain model
@@ -24,14 +24,14 @@ and apps compose sessions rather than introducing another transcript or executio
 - `questions.ts` owns derived queries over pending and blocking transcript questions.
 - `fileDiffs.ts` parses edit and patch tool-call results for transcript presentation and
   identifying artifact-only tools that stay hidden. Its `DiffStats` value comes from
-  `shared/diffStats.ts`, also used by Channel task outcomes.
+  `shared/diffStats.ts`, also used by Team task outcomes.
 - [Providers' model](../providers/model/index.ts) supplies the validated model, reasoning-effort,
   and context-tier configuration used by session state and message ingress.
 - `reducer.ts` is the one pure transition function shared by live server execution, persisted
   history replay, and browser streaming. Its status records provider activity; the workspace
   projects the user-facing waiting state from pending blocking questions.
 - `SessionState.preview` is the optional current runnable result: a URL or
-  Screen ID, using `shared/preview.ts` like Channels. Successful
+  Screen ID, using `shared/preview.ts` like Teams. Successful
   `set_session_preview` results project to `preview_changed`.
   Replacing or clearing the reference never stops the underlying application.
   Screens owns host-addressed capture/control state independently of sessions;
@@ -154,10 +154,10 @@ of UTF-8 JSON. One oversized event may stand alone, with no accumulation behind 
 Expired replay (tracked by actual discarded IDs, not per-session adjacency) rejects for
 snapshot recovery; overflowing observers release their backlog without closing healthy observers.
 
-Ordinary Sessions remain unbranded coordinators. Their Channel tools can create Channels with an
-intrinsic lead, create channel-specific members, discover available model configurations, read
-Channel context and rosters, post user-attributed messages, share artifacts, and wait for lead or
-member work. Collaboration identity and `@mention` delivery belong to Channels.
+Ordinary Sessions remain unbranded coordinators. Their Team tools can create Teams with an
+intrinsic lead, create team-specific members, discover available model configurations, read
+Team context and rosters, post user-attributed messages, share artifacts, and wait for lead or
+member work. Collaboration identity and `@mention` delivery belong to Teams.
 
 `useSessions.ts` owns the catalog and optimistic creation, including reuse of an untouched
 draft session. Unsent composer text is a Workspace saved draft keyed `session:<id>`. First submission in
@@ -202,7 +202,7 @@ mutation observers and browser-local interaction state. Reusable managed-session
 Inbox may consume the composer or location controls directly.
 
 The composer stacks what a session produced (pinned artifacts in pin order, then unpinned artifacts newest first, plus todo progress and changed
-files) and what is waiting (queued messages) above the message being written. Sessions and Channels
+files) and what is waiting (queued messages) above the message being written. Sessions and Teams
 share Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx).
 Its full artifact list offers Pin/Unpin even when every artifact fits inline. Session pins are
 durable user preferences read through `sessionQueries.artifactPins`; they do not enter provider
@@ -222,7 +222,7 @@ beside their name; session choices show the title and relative update time, with
 subtitles.
 Empty session, file, and skill results share italic no-match text.
 
-Sessions and Channels share one composer shell in `shared/composers/`. A `ComposerDraft`, from
+Sessions and Teams share one composer shell in `shared/composers/`. A `ComposerDraft`, from
 `useComposerDraft`, is the message being written: host-owned text plus images, sent together to
 its `onSend`, or another destination the host picks, and then cleared. Hosts edit it only
 through its verbs: `setValue` replaces the text, `append` puts messages back after the text and
@@ -246,7 +246,7 @@ tooltips; `ComposerSendButton` is the one bound to the draft.
 The shell's input is `shared/composers/input/ComposerInput`: a native editable surface
 whose references render as atomic pills while its public value remains a string. Typing,
 reference insertion, paste, and cut use native undo. Voice writes, queue restoration, and
-Channel reply/mention actions replace or append through the draft's verbs;
+Team reply/mention actions replace or append through the draft's verbs;
 these replacements start a new editing history, as does clearing the draft on submission.
 Composition publishes typed text but defers an incoming replacement until composition ends;
 the pending replacement takes precedence over provisional input. Plain-text paste and
@@ -267,14 +267,14 @@ toolbar typing feedback remain separate presentation controls.
 foundational to messages as well as the composer: the input builds its pills from that split,
 given a host's `ComposerReferences` presentation, and queue summaries render and label from it.
 Kinds are URI-scheme identifiers defined by hosts, not a shared catalog. An unlabeled reference
-decodes with its target as its label. Sessions recognizes `session`, `file`, and Channels-owned
-`channel` references, encoded as `[Title](session:PUBLIC_ID)`, `[Name](file:PATH)`, and
-`[Team](channel:CHANNEL_ID)`. Channel URIs can also address `/team`, `/agents/AGENT_ID`, and
+decodes with its target as its label. Sessions recognizes `session`, `file`, and Teams-owned
+`team` references, encoded as `[Title](session:PUBLIC_ID)`, `[Name](file:PATH)`, and
+`[Team](team:TEAM_ID)`. Team URIs can also address `/members`, `/agents/AGENT_ID`, and
 `/messages/SEQUENCE`; they open their target in the workspace instead of becoming noninteractive
-pills in sent messages. Bare channel URIs are recognized in sent user and assistant prose too,
-but never inside code. Agents resolve them through the read-only `inspect_channel` tool.
+pills in sent messages. Bare team URIs are recognized in sent user and assistant prose too,
+but never inside code. Agents resolve them through the read-only `inspect_team` tool.
 Completion triggers are not part of the encoding. Other kinds remain ordinary text or Markdown
-in Sessions; Channels' `@handle` mentions retain their own addressing semantics.
+in Sessions; Teams' `@handle` mentions retain their own addressing semantics.
 The composer does not parse Markdown.
 The target escapes only what a Markdown link destination cannot carry (`%`, whitespace,
 parentheses, and backslash), so agents read ordinary paths and IDs; earlier fully encoded
@@ -366,7 +366,7 @@ does not own session data or streaming behavior.
 
 ## Server kernel
 
-`server/` is Toy Box's foundational session implementation:
+`server/` is Agent Teams' foundational session implementation:
 
 - [`runtime/`](server/runtime/AGENTS.md) is the public server capability for creation, recreation, delivery,
   streaming, snapshots, completion, queue control, abort, idle conversation rewind, and deletion.
@@ -392,7 +392,7 @@ does not own session data or streaming behavior.
 
 Automations and Workers build on `@sessions/server/runtime`; Inbox builds on Workers. They add scheduling, ownership,
 admission, and retention policy without importing provider details, snapshot storage, or the registry
-implementation. Channel leads and members are durable Channel-owned Workers whose configuration
+implementation. Team leads and members are durable Team-owned Workers whose configuration
 carries their local identity and collaboration tools. Shared workspace projection and process
 infrastructure remain outside the feature because they compose multiple domains rather than define
 Session execution.
@@ -409,7 +409,7 @@ Session execution.
   owns the connected stream lifecycle.
 - Managed features may govern a session's lifecycle, but they do not redefine session execution,
   transcript state, native event projection, registry, or UI primitives.
-- The application rebuilds private Channel agent configuration, including its working directory,
+- The application rebuilds private Team agent configuration, including its working directory,
   for comparison between executions. Single-flight runtime acquisition replaces the idle provider
   connection only when that effective configuration changed; active delivery keeps its existing
   session. Callers do not coordinate configuration refresh. This preserves durable history,

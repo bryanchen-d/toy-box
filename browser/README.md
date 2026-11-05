@@ -1,8 +1,8 @@
-# Toy Box browser extension
+# Agent Teams browser extension
 
-This unpacked Manifest V3 extension sends the current page, its visible viewport, an optional text selection, and your prompt to a configurable Toy Box Inbox endpoint.
+This unpacked Manifest V3 extension sends the current page, its visible viewport, an optional text selection, and your prompt to a configurable Agent Teams Inbox endpoint.
 
-The extension defaults to `http://localhost:3100` for `bun dev`; installed Toy Box uses `http://localhost:3000`. Open **Server settings** from the popup—or the extension's options page—to use another HTTP or HTTPS server, such as its Tailscale URL. Enter only the server base URL; the extension always appends `/api/inbox`. The setting is local to the current browser profile.
+The extension defaults to `http://localhost:3100` for `bun dev`; installed Agent Teams uses `http://localhost:3000`. Open **Server settings** from the popup—or the extension's options page—to use another HTTP or HTTPS server, such as its Tailscale URL. Enter only the server base URL; the extension always appends `/api/inbox`. The setting is local to the current browser profile.
 
 ## Compatibility
 
@@ -16,11 +16,11 @@ The default localhost host permission is installed with the extension. A custom 
 
 ## Install in a Chromium browser
 
-1. Start Toy Box with `toy-box <path>` or `bun dev`.
+1. Start Agent Teams with `agent-teams <path>` or `bun dev`.
 2. Open the browser's extension manager, such as `chrome://extensions`, `arc://extensions`, or `edge://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked** and select this `browser` folder.
-5. Optionally pin **Toy Box** to the toolbar.
+5. Optionally pin **Agent Teams** to the toolbar.
 
 For temporary Firefox testing, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `manifest.json` from this folder.
 
@@ -30,6 +30,6 @@ Select text on any page if it is relevant, open the extension, enter a task, and
 
 Open the same prompt with **Command+Shift+Y** on macOS or **Ctrl+Shift+Y** elsewhere. Chromium browsers reserve Command/Ctrl+Shift+T for reopening closed tabs. Shortcuts can be changed from the browser's extension shortcut settings.
 
-The page context menu contains **Send to Toy Box**, with actions for a custom prompt, summarizing the page, or researching how the page applies to recent local projects. The latter two submit directly to the Inbox and briefly show success or failure on the extension badge.
+The page context menu contains **Send to Agent Teams**, with actions for a custom prompt, summarizing the page, or researching how the page applies to recent local projects. The latter two submit directly to the Inbox and briefly show success or failure on the extension badge.
 
 The extension uses browser-native Manifest V3 APIs and has no build step. The toolbar popup is colocated in `popup/`; `settings.js` owns server resolution; and `inbox.js` owns the shared prompt, screenshot, and Inbox request contract used by both the popup and context-menu quick actions.

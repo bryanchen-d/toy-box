@@ -9,7 +9,7 @@ export const HTML_SANDBOX_PERMISSIONS = [
 ].join(" ");
 
 export const HTML_SANDBOX_CONTENT_SECURITY_POLICY = `sandbox ${HTML_SANDBOX_PERMISSIONS}`;
-export const HTML_BASE_ATTRIBUTE = "data-toybox-file-base";
+export const HTML_BASE_ATTRIBUTE = "data-agent-teams-file-base";
 
 /** Make relative resources in a srcdoc document resolve from its owning file directory. */
 export function injectBaseHref(html: string, baseUri: string): string {

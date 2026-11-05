@@ -1,13 +1,13 @@
-# Toy Box Browser Extension
+# Agent Teams Browser Extension
 
-The browser extension lets users dispatch asynchronous tasks to Toy Box's Inbox from any webpage. Every task includes the page URL and the user's instructions, and can optionally include selected text and a screenshot of the visible viewport. This is useful for handing off work such as researching a topic, summarizing content, investigating a claim, or relating a page to local projects while the user keeps browsing and reviews the result later in the Inbox.
+The browser extension lets users dispatch asynchronous tasks to Agent Teams' Inbox from any webpage. Every task includes the page URL and the user's instructions, and can optionally include selected text and a screenshot of the visible viewport. This is useful for handing off work such as researching a topic, summarizing content, investigating a claim, or relating a page to local projects while the user keeps browsing and reviews the result later in the Inbox.
 
 A user can compose a custom task from the toolbar or keyboard shortcut, or invoke a context-menu quick action. Every path submits one background task to `/api/inbox`; the extension does not observe or control the session after submission.
 
 ## Runtime boundaries
 
 - `inbox.js` owns the shared submission contract: visible-viewport capture, prompt construction, screenshot attachment encoding, and the Inbox HTTP request. Both interactive and one-click flows converge here.
-- `settings.js` owns the machine-local Toy Box server URL, normalization, Inbox endpoint construction, and optional host-permission lifecycle. `options/` is the only UI that mutates this setting.
+- `settings.js` owns the machine-local Agent Teams server URL, normalization, Inbox endpoint construction, and optional host-permission lifecycle. `options/` is the only UI that mutates this setting.
 - `ui.js` owns the two small DOM and error-display primitives shared by the popup and options page. Keep their distinct state and rendering logic with the page that owns it.
 - `background.js` owns background execution: context-menu installation, direct quick actions, and transient badge feedback. Chromium runs it as a disposable service worker; Firefox and Safari can run the same module as a background script. Durable behavior must not depend on module globals or timers in either environment.
 - `popup/` owns the toolbar and custom-prompt experience. It reads the active tab, acquires optional selection and screenshot context, renders the submission state, and closes after a successful send.
@@ -19,11 +19,11 @@ The extension intentionally uses browser-native HTML, CSS, JavaScript modules, a
 
 Use the native `browser.*` namespace without a polyfill. Chrome and Chromium expose it from version 148; the manifest enforces that minimum for Chromium browsers. Firefox and Safari expose it natively. This extension has no DevTools page, which is the Chrome exception that would disable the namespace.
 
-The Manifest V3 background declaration intentionally includes both `service_worker` and `scripts`. Chromium 148+ ignores `scripts` and runs the service worker; Firefox 142+ and Safari can use the background-script fallback. Keep `background.js` valid in both contexts. The Gecko manifest block declares the active URL and optional page capture as `browsingActivity` and `websiteContent`; keep those declarations aligned with the data that submissions transmit to the user's Toy Box server.
+The Manifest V3 background declaration intentionally includes both `service_worker` and `scripts`. Chromium 148+ ignores `scripts` and runs the service worker; Firefox 142+ and Safari can use the background-script fallback. Keep `background.js` valid in both contexts. The Gecko manifest block declares the active URL and optional page capture as `browsingActivity` and `websiteContent`; keep those declarations aligned with the data that submissions transmit to the user's Agent Teams server.
 
 ## Submission flow
 
-Every submission requires instructions and the active-page URL. Page title, selected text, and a visible-viewport JPEG are optional context. `inbox.js` turns those values into one prompt and sends the screenshot as Toy Box's base64 attachment representation. It asks `settings.js` for the complete Inbox endpoint immediately before dispatch; callers never assemble the endpoint themselves.
+Every submission requires instructions and the active-page URL. Page title, selected text, and a visible-viewport JPEG are optional context. `inbox.js` turns those values into one prompt and sends the screenshot as Agent Teams' base64 attachment representation. It asks `settings.js` for the complete Inbox endpoint immediately before dispatch; callers never assemble the endpoint themselves.
 
 The toolbar, keyboard shortcut, and custom context-menu action open the popup. Quick actions submit immediately from the background runtime and report pending, success, or failure through the action badge.
 

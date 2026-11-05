@@ -30,7 +30,7 @@ test("native inputs retain payloads and client identity through interleaved echo
     content: "same prompt",
     immediate: true,
   });
-  const content = { type: "channel_message" as const, senderName: "Ada" };
+  const content = { type: "team_message" as const, senderName: "Ada" };
   await connection.send({ role: "system", clientId: "system", content, immediate: true });
   expect(send).toHaveBeenLastCalledWith({
     prompt: systemMessagePrompt(content),

@@ -123,7 +123,7 @@ describe("app workspace projection", () => {
       worktrees: {
         "session-worker": {
           path: "/tmp/worktree",
-          branch: "toy-box/session-worker",
+          branch: "agent-teams/session-worker",
           baseBranch: "main",
         },
       },
@@ -192,7 +192,7 @@ describe("app workspace projection", () => {
               context: { directory: "/tmp/worktree" },
               worktree: {
                 path: "/tmp/worktree",
-                branch: "toy-box/session-worker",
+                branch: "agent-teams/session-worker",
                 baseBranch: "main",
               },
               children: [

@@ -122,14 +122,14 @@ export function CollapseToggle({
 type SidebarCreationActions = {
   onCreateSession: (options?: SessionCreationOptions) => void;
   onCreateAutomation: () => void;
-  onCreateChannel: () => void;
+  onCreateTeam: () => void;
 };
 type SidebarCreationVariant = "header" | "rail";
 
 function SidebarCreationMenu({
   onCreateSession,
   onCreateAutomation,
-  onCreateChannel,
+  onCreateTeam,
   disabled = false,
   variant,
 }: SidebarCreationActions & {
@@ -183,9 +183,9 @@ function SidebarCreationMenu({
           <Clock3 />
           Create automation
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCreateChannel}>
+        <DropdownMenuItem onClick={onCreateTeam}>
           <Hash />
-          Create channel
+          Create team
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

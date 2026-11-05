@@ -4,11 +4,7 @@
 
 import { appLifecycleTools, artifactAppTools, createAppStateTools } from "@apps/server/tools";
 import { AUTOMATION_SESSION_INSTRUCTIONS, automationTools } from "@automations/server/tools";
-import {
-  CHANNEL_REFERENCE_INSTRUCTIONS,
-  channelTools,
-  createChannelMembersTool,
-} from "@channels/server/tools";
+import { TEAM_REFERENCE_INSTRUCTIONS, teamTools, createTeamMembersTool } from "@teams/server/tools";
 import { editorTools, fileTools } from "@files/server/tools";
 import { INBOX_SESSION_INSTRUCTIONS, inboxTools } from "@inbox/server/tools";
 import { listModels } from "@providers/server";
@@ -42,8 +38,8 @@ type SessionTypePolicy = {
   title?: true;
   layout?: true;
   files?: true;
-  channels?: true;
-  staffChannels?: true;
+  teams?: true;
+  staffTeams?: true;
   settings?: true;
   editor?: true;
   inbox?: true;
@@ -57,8 +53,8 @@ const sessionTypePolicies: Record<SessionType, SessionTypePolicy> = {
     title: true,
     layout: true,
     files: true,
-    channels: true,
-    staffChannels: true,
+    teams: true,
+    staffTeams: true,
   },
   hyper: {
     screens: true,
@@ -66,14 +62,14 @@ const sessionTypePolicies: Record<SessionType, SessionTypePolicy> = {
     hyperLifecycle: true,
     layout: true,
     files: true,
-    channels: true,
-    staffChannels: true,
+    teams: true,
+    staffTeams: true,
     settings: true,
     editor: true,
   },
   automation: {
     instructions: [AUTOMATION_SESSION_INSTRUCTIONS, SESSION_HISTORY_DISCOVERY_INSTRUCTIONS],
-    channels: true,
+    teams: true,
     settings: true,
   },
   worker: {
@@ -83,8 +79,8 @@ const sessionTypePolicies: Record<SessionType, SessionTypePolicy> = {
 
 const inboxPolicy: SessionTypePolicy = {
   instructions: [INBOX_SESSION_INSTRUCTIONS, SESSION_HISTORY_DISCOVERY_INSTRUCTIONS],
-  channels: true,
-  staffChannels: true,
+  teams: true,
+  staffTeams: true,
   inbox: true,
 };
 
@@ -93,9 +89,9 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
   const worker = sessionType === "worker" ? await getPersistedWorker(sessionId) : undefined;
   if (sessionType === "worker") {
     if (!worker) throw new Error("Worker sessions require persisted ownership.");
-    if (worker.type === "channel") {
-      const { getChannelAgentConfiguration } = await import("@channels/server/agent");
-      const configuration = await getChannelAgentConfiguration(worker);
+    if (worker.type === "team") {
+      const { getTeamAgentConfiguration } = await import("@teams/server/agent");
+      const configuration = await getTeamAgentConfiguration(worker);
       const model = configuration.model ?? (await getWorkspaceDefaultModel(sessionId));
       return {
         ...configuration,
@@ -117,7 +113,7 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
     tools: getSessionTools(policy, { appId }),
     additionalInstructions: [
       ...policy.instructions,
-      ...(policy.channels ? [CHANNEL_REFERENCE_INSTRUCTIONS] : []),
+      ...(policy.teams ? [TEAM_REFERENCE_INSTRUCTIONS] : []),
     ].join("\n\n"),
   };
 }
@@ -140,8 +136,8 @@ function getSessionTools(
     ...appLifecycleTools,
     ...coordinationTools,
     ...automationTools,
-    ...(policy.channels ? channelTools : []),
-    ...(policy.staffChannels ? [createChannelMembersTool] : []),
+    ...(policy.teams ? teamTools : []),
+    ...(policy.staffTeams ? [createTeamMembersTool] : []),
     ...createAppStateTools(appId),
     ...(policy.settings ? settingsTools : []),
     ...(policy.editor ? editorTools : []),

@@ -30,7 +30,7 @@
       "@inbox/*": ["./src/features/inbox/*"],
       "@briefs/*": ["./src/features/briefs/*"],
       "@sessions/*": ["./src/features/sessions/*"],
-      "@channels/*": ["./src/features/channels/*"],
+      "@teams/*": ["./src/features/teams/*"],
       "@screens/*": ["./src/features/screens/*"],
       "@terminal/*": ["./src/features/terminal/*"],
       "@whiteboard/*": ["./src/features/whiteboard/*"],

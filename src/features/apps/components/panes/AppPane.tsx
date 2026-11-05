@@ -39,7 +39,7 @@ export function AppPane({ pane, variant }: { pane: AppWorkspacePane; variant: Pa
     return (
       <PaneMessage
         title="App not found"
-        detail="This saved app may have been deleted in another Toy Box window."
+        detail="This saved app may have been deleted in another Agent Teams window."
       />
     );
   }

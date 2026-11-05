@@ -92,7 +92,7 @@ export function AppHost({
   );
 
   return (
-    <div data-toybox-app={scopeId} className="h-full min-h-0">
+    <div data-agent-teams-app={scopeId} className="h-full min-h-0">
       {css && <style>{css}</style>}
       <AppHostProvider workspace={workspaceStore} actions={actions} savedApp={savedApp}>
         <AppComponent />

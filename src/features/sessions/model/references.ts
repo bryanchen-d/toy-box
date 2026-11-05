@@ -1,9 +1,9 @@
 import { getPathBasename } from "@files/model/paths";
 import type { Reference } from "@/shared/references";
 import type { Session } from "./index";
-import { parseChannelUri } from "@channels/model/references";
+import { parseTeamUri } from "@teams/model/references";
 
-const kinds = ["session", "file", "channel"] as const;
+const kinds = ["session", "file", "team"] as const;
 
 /** The references a session prompt carries. Labels are display snapshots, never lookup keys. */
 export type PromptReference = Reference & { kind: (typeof kinds)[number] };
@@ -21,6 +21,6 @@ export function fileReference(path: string): PromptReference {
 export function isPromptReference(reference: Reference): reference is PromptReference {
   return (
     (kinds as readonly string[]).includes(reference.kind) &&
-    (reference.kind !== "channel" || parseChannelUri(`channel:${reference.target}`) !== undefined)
+    (reference.kind !== "team" || parseTeamUri(`team:${reference.target}`) !== undefined)
   );
 }

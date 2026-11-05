@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Toy Box",
-  "description": "Send the current page, visible viewport, and an optional text selection to Toy Box.",
+  "name": "Agent Teams",
+  "description": "Send the current page, visible viewport, and an optional text selection to Agent Teams.",
   "version": "0.4.0",
   "minimum_chrome_version": "148",
   "permissions": ["activeTab", "contextMenus", "scripting", "storage"],
@@ -9,7 +9,7 @@
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "browser_specific_settings": {
     "gecko": {
-      "id": "toy-box@lostintangent",
+      "id": "agent-teams@lostintangent",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
         "required": ["browsingActivity", "websiteContent"]
@@ -22,7 +22,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Send to Toy Box",
+    "default_title": "Send to Agent Teams",
     "default_popup": "popup/index.html"
   },
   "options_ui": {

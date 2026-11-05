@@ -17,14 +17,14 @@ import { AppDatabase } from "./database";
 import { appDefinitionRegistry } from "./definitions";
 
 const listAppDefinitionsTool = defineTool("list_app_definitions", {
-  description: "Lists installed Toy Box app definitions, including state schemas and defaults.",
+  description: "Lists installed Agent Teams app definitions, including state schemas and defaults.",
   parameters: z.object({}).strict(),
   handler: async () => JSON.stringify(await appDefinitionRegistry.list()),
 });
 
 const listAppsTool = defineTool("list_apps", {
   description:
-    "Lists saved Toy Box app instances without their state. Call get_app to inspect an instance before updating it.",
+    "Lists saved Agent Teams app instances without their state. Call get_app to inspect an instance before updating it.",
   parameters: z.object({}).strict(),
   handler: async () => {
     const database = await getStateDatabase({ createIfMissing: false });
@@ -54,7 +54,7 @@ const getAppTool = defineTool("get_app", {
 
 const registerAppTool = defineTool("register_app", {
   description:
-    "Validates the manifest state contract, typechecks and compiles TSX, then activates ~/.toy-box/apps/<id>/.",
+    "Validates the manifest state contract, typechecks and compiles TSX, then activates ~/.agent-teams/apps/<id>/.",
   parameters: appDefinitionInputSchema,
   handler: async (input) => {
     try {
@@ -102,7 +102,7 @@ const validateArtifactAppTool = defineTool("validate_artifact_app", {
 
 const createAppTool = defineTool("create_app", {
   description:
-    "Creates a saved instance of an installed Toy Box app definition and returns its direct preview URL.",
+    "Creates a saved instance of an installed Agent Teams app definition and returns its direct preview URL.",
   parameters: createAppInputSchema,
   handler: async (input) => {
     const apps = await import("@apps/server");

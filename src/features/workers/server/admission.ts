@@ -209,7 +209,7 @@ export function buildWorkerPrompt(
       },
 ): string {
   if (owner.type === "app") {
-    return `You are a background worker owned by the Toy Box app "${owner.app.title}".
+    return `You are a background worker owned by the Agent Teams app "${owner.app.title}".
 
 The app instance ID is "${owner.app.id}". The get_app and update_app tools are scoped to this owning app, so do not pass an app ID to either one.
 

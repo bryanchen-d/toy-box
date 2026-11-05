@@ -3,7 +3,7 @@ import type { Message } from "../../model";
 import { computeSessionDiffs, createSessionDiffsProjector } from "../../model/editDiffs";
 import * as fileDiffs from "../../model/fileDiffs";
 
-const cwd = "/Users/lostintangent/Desktop/toy-box";
+const cwd = "/Users/lostintangent/Desktop/agent-teams";
 
 describe("computeSessionDiffs", () => {
   test("server projection reuses immutable tools while returned summaries stay independent", () => {
@@ -46,7 +46,7 @@ describe("computeSessionDiffs", () => {
             id: "failed-edit",
             name: "edit",
             arguments: {
-              path: "/Users/lostintangent/Desktop/toy-box/docs/failed.md",
+              path: "/Users/lostintangent/Desktop/agent-teams/docs/failed.md",
               old_str: "before",
               new_str: "after",
             },
@@ -59,16 +59,16 @@ describe("computeSessionDiffs", () => {
             id: "edit-1",
             name: "edit",
             arguments: {
-              path: "/Users/lostintangent/Desktop/toy-box/docs/edit.md",
+              path: "/Users/lostintangent/Desktop/agent-teams/docs/edit.md",
               old_str: "one\ntwo",
               new_str: "one\nthree\nfour",
             },
             result: {
               content: "ok",
               success: true,
-              details: `diff --git a/Users/lostintangent/Desktop/toy-box/docs/edit.md b/Users/lostintangent/Desktop/toy-box/docs/edit.md
---- a/Users/lostintangent/Desktop/toy-box/docs/edit.md
-+++ b/Users/lostintangent/Desktop/toy-box/docs/edit.md
+              details: `diff --git a/Users/lostintangent/Desktop/agent-teams/docs/edit.md b/Users/lostintangent/Desktop/agent-teams/docs/edit.md
+--- a/Users/lostintangent/Desktop/agent-teams/docs/edit.md
++++ b/Users/lostintangent/Desktop/agent-teams/docs/edit.md
 @@ -1,2 +1,3 @@
  one
 -two
@@ -81,20 +81,20 @@ describe("computeSessionDiffs", () => {
             name: "patch",
             arguments: {
               patch: `*** Begin Patch
-*** Delete File: /Users/lostintangent/Desktop/toy-box/docs/old.md
+*** Delete File: /Users/lostintangent/Desktop/agent-teams/docs/old.md
 *** End Patch`,
             },
             result: {
               content: "Deleted 1 file(s), added 1 file(s)",
               success: true,
-              details: `diff --git a/Users/lostintangent/Desktop/toy-box/docs/old.md b/Users/lostintangent/Desktop/toy-box/docs/old.md
---- a/Users/lostintangent/Desktop/toy-box/docs/old.md
+              details: `diff --git a/Users/lostintangent/Desktop/agent-teams/docs/old.md b/Users/lostintangent/Desktop/agent-teams/docs/old.md
+--- a/Users/lostintangent/Desktop/agent-teams/docs/old.md
 +++ /dev/null
 @@ -1 +0,0 @@
 -old
-diff --git a/Users/lostintangent/Desktop/toy-box/docs/new.md b/Users/lostintangent/Desktop/toy-box/docs/new.md
+diff --git a/Users/lostintangent/Desktop/agent-teams/docs/new.md b/Users/lostintangent/Desktop/agent-teams/docs/new.md
 --- /dev/null
-+++ b/Users/lostintangent/Desktop/toy-box/docs/new.md
++++ b/Users/lostintangent/Desktop/agent-teams/docs/new.md
 @@ -0,0 +1,2 @@
 +new
 +file`,
@@ -115,17 +115,17 @@ diff --git a/Users/lostintangent/Desktop/toy-box/docs/new.md b/Users/lostintange
     );
     expect(diffs.byFile).toEqual([
       {
-        path: "/Users/lostintangent/Desktop/toy-box/docs/edit.md",
+        path: "/Users/lostintangent/Desktop/agent-teams/docs/edit.md",
         displayPath: "docs/edit.md",
         diff: { added: 2, removed: 1 },
       },
       {
-        path: "/Users/lostintangent/Desktop/toy-box/docs/old.md",
+        path: "/Users/lostintangent/Desktop/agent-teams/docs/old.md",
         displayPath: "docs/old.md",
         diff: { added: 0, removed: 1 },
       },
       {
-        path: "/Users/lostintangent/Desktop/toy-box/docs/new.md",
+        path: "/Users/lostintangent/Desktop/agent-teams/docs/new.md",
         displayPath: "docs/new.md",
         diff: { added: 2, removed: 0 },
       },

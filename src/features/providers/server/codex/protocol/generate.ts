@@ -39,7 +39,7 @@ const events = [
   "ServerRequestResolvedNotification",
   "ThreadNameUpdatedNotification",
 ];
-const directory = await mkdtemp(join(tmpdir(), "toybox-codex-protocol-"));
+const directory = await mkdtemp(join(tmpdir(), "agent-teams-codex-protocol-"));
 try {
   const process = Bun.spawn(
     ["codex", "app-server", "generate-ts", "--experimental", "--out", directory],

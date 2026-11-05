@@ -10,7 +10,7 @@ import {
 } from "./customEditorBridge";
 import type { Worker } from "@workers/model";
 
-/** Relays file content and edits between Toy Box and a registered viewer template. */
+/** Relays file content and edits between Agent Teams and a registered viewer template. */
 export function CustomEditor({
   title,
   mode,

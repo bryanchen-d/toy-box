@@ -1,0 +1,105 @@
+import { useEffect, useState } from "react";
+import { useHydrated } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { loadTeamHistory } from "./queryCache";
+import { teamMutations } from "./mutations";
+import { teamQueries, type TeamQueryData } from "./queries";
+import { usePageVisibility } from "@/shared/hooks/usePageVisibility";
+import { generateUUID } from "@/shared/utils";
+import { teamUnreadAfter, type Team, type PostTeamMessageInput } from "./model";
+
+/**
+ * One visit's unread position. A visit that joins an active observer reads its cache at once;
+ * otherwise it awaits the connection's next arrival. Either way, arrivals during the visit never
+ * move it, and leaving ends it.
+ */
+export type TeamVisit =
+  | { status: "away" }
+  | { status: "arriving"; afterArrival?: number }
+  | { status: "reading"; unreadAfter: number | null };
+
+export function nextTeamVisit(
+  visit: TeamVisit,
+  {
+    reading,
+    joined,
+    arrival,
+  }: {
+    reading: boolean;
+    /** The cached Team, when another observer already holds the connection open. */
+    joined?: Team;
+    arrival?: TeamQueryData["arrival"];
+  },
+): TeamVisit {
+  if (!reading) return visit.status === "away" ? visit : { status: "away" };
+  if (visit.status === "away") {
+    return joined
+      ? { status: "reading", unreadAfter: teamUnreadAfter(joined) }
+      : { status: "arriving", afterArrival: arrival?.id };
+  }
+  if (visit.status === "arriving" && arrival && arrival.id !== visit.afterArrival) {
+    return { status: "reading", unreadAfter: arrival.unreadAfter };
+  }
+  return visit;
+}
+
+/** Shared team observation; passive observers leave unread state untouched. */
+export function useTeam(
+  teamId: string,
+  { visible = true, mode = "active" }: { visible?: boolean; mode?: "active" | "passive" } = {},
+) {
+  const queryClient = useQueryClient();
+  const hydrated = useHydrated();
+  const pageIsVisible = usePageVisibility();
+  const isVisible = visible && pageIsVisible;
+  const options = teamQueries.detail(teamId);
+  const [visit, setVisit] = useState<TeamVisit>({ status: "away" });
+  const { data: state } = useQuery({
+    ...options,
+    enabled: hydrated && isVisible,
+    subscribed: hydrated && isVisible,
+    throwOnError: true,
+  });
+  const observed = queryClient.getQueryCache().find({ queryKey: options.queryKey })?.isActive();
+  const nextVisit = nextTeamVisit(visit, {
+    reading: isVisible && mode === "active",
+    joined: observed ? state?.team : undefined,
+    arrival: state?.arrival,
+  });
+  if (nextVisit !== visit) setVisit(nextVisit);
+
+  const { mutate: markRead } = useMutation(teamMutations.markRead());
+  const { mutateAsync: post, error: postError } = useMutation(teamMutations.post());
+  const latestSequence = state?.team.latestSequence;
+  const seenThrough = state?.team.seenThrough;
+  // Reading acknowledges only after the visit has captured where unread messages begin.
+  const isReading = visit.status === "reading";
+  useEffect(() => {
+    if (
+      !isReading ||
+      latestSequence === undefined ||
+      seenThrough === undefined ||
+      seenThrough >= latestSequence
+    )
+      return;
+    markRead({ teamId, sequence: latestSequence });
+  }, [teamId, isReading, latestSequence, markRead, seenThrough]);
+
+  const loadPrevious = (throughSequence?: number) =>
+    loadTeamHistory(queryClient, teamId, throughSequence).catch((error: unknown) =>
+      console.error("Failed to load previous Team messages:", error),
+    );
+
+  const postMessage = (
+    message: Pick<PostTeamMessageInput, "content" | "attachments" | "threadSequence">,
+  ) => {
+    const delivery = post({ ...message, teamId, id: generateUUID() });
+    void delivery.catch((error: unknown) => console.error("Unable to post Team message:", error));
+    return delivery;
+  };
+
+  if (state === null) throw new Error("This team has been deleted.");
+  /** Where unread messages began on arrival; null means read, undefined awaits arrival. */
+  const unreadAfter = visit.status === "reading" ? visit.unreadAfter : undefined;
+  return { state, unreadAfter, loadPrevious, postMessage, postError };
+}

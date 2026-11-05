@@ -9,7 +9,7 @@ const absolutePath = z.string().trim().min(1).refine(isAbsolute, "Provide an abs
 
 const openFile = defineTool("open_file", {
   description:
-    "Opens an existing file on disk as a live pane in Toy Box so the user can view and edit it. " +
+    "Opens an existing file on disk as a live pane in Agent Teams so the user can view and edit it. " +
     "Use it for files outside your session artifacts folder, which already appear automatically. " +
     "Give an absolute path.",
   parameters: z.object({
@@ -31,7 +31,7 @@ export const fileTools = [openFile, closeFile];
 
 const registerEditorKindTool = defineTool("register_editor", {
   description:
-    "Registers or replaces a custom editor for the supplied file extensions. Follow the loaded `create-toy-box-editor` skill for its HTML bridge contract.",
+    "Registers or replaces a custom editor for the supplied file extensions. Follow the loaded `create-agent-teams-editor` skill for its HTML bridge contract.",
   parameters: customEditorKindSchema,
   handler: async (input) => {
     const extensions = normalizeExtensions(input.extensions);

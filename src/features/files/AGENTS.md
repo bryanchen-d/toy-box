@@ -4,13 +4,13 @@ Files are browsable workspace resources that become live, editable surfaces. Age
 
 ## Domain model
 
-An editor addresses one `WorkspaceFile`, whose `kind` is either `session` (an _artifact_: a path beneath a session's own artifacts directory) or `machine` (an absolute path on the host that the agent opened via `open_file`). The file on disk is the source of truth; Toy Box does not copy its content into pane or shared workspace state.
+An editor addresses one `WorkspaceFile`, whose `kind` is either `session` (an _artifact_: a path beneath a session's own artifacts directory) or `machine` (an absolute path on the host that the agent opened via `open_file`). The file on disk is the source of truth; Agent Teams does not copy its content into pane or shared workspace state.
 
 - Session files (artifacts) resolve beneath that session's durable artifacts directory. An Inbox entry and its managed session share one ID, so its artifact resolves as that session's file.
 - Machine files resolve to their own absolute path.
 
 Clients never encode physical storage. Read, write, watch, serve, and worker operations all carry the same `WorkspaceFile` address, and one server resolver (`resolveWorkspaceFile`) selects the absolute path.
-When an Agent shares an absolute path with a Channel, Files performs the inverse classification once
+When an Agent shares an absolute path with a Team, Files performs the inverse classification once
 so a path beneath Session storage remains a Session file rather than becoming a machine file.
 Shared tool projection derives that same identity from successful `open_file` / `close_file`
 calls' recorded path arguments; their results only acknowledge success.
@@ -75,7 +75,7 @@ without sending `file_edited` system messages. Documint exposes the anonymous As
 comment or reply spawns a Worker. The renderer authors the complete
 Documint response prompt. The responder changes the body, replies in the persisted thread, or does both
 according to the comment; the file stays the public source of truth. Custom editors continue to use the Worker capability through
-`Toybox.spawnWorker({ name?, prompt, metadata? })` and receive pending workers in the idempotent
+`AgentTeams.spawnWorker({ name?, prompt, metadata? })` and receive pending workers in the idempotent
 `onRender` context.
 
 The pane, rather than an individual renderer, owns worker inspection and cancellation. While associations are pending, it declares a worker count through `PaneStatus`; the session overlay declares its trigger into that same host-owned slot, while save and editor-mode controls use `PaneActions`. The desktop grid presents status as lower-right overlay controls, while pagers place it in their header. `WorkspacePaneView` scopes both slots around the leaf pane and overlay, so neither receives or positions DOM targets. The compact worker menu lists friendly names and status icons. A running worker can open the existing passive `SessionPreview`; starting entries remain visible before their SDK sessions exist. Each entry can cancel starting or running work through the pane-owned file address. This keeps session IDs, preview placement, cancellation, and read semantics out of custom iframe APIs.
@@ -97,7 +97,7 @@ File-kind adapters live in their own kind directories. `.svg` delegates to the
 Whiteboard feature, `.brief` delegates to the Briefs feature, and `.toy`
 delegates to the Apps feature that owns its compiler and runtime.
 
-Custom editor definitions live under `~/.toy-box/editors/` and hydrate through shared workspace state. Registration publishes the new definition so connected clients can resolve the renderer immediately. The viewer receives file content, its external revision, and pending workers through the Toy Box bridge, can spawn workers, and can emit replacement content only when the kind is editable. Own edits do not advance the external revision, allowing the viewer to retain its editing buffer while context-only renders update worker presence or editability.
+Custom editor definitions live under `~/.agent-teams/editors/` and hydrate through shared workspace state. Registration publishes the new definition so connected clients can resolve the renderer immediately. The viewer receives file content, its external revision, and pending workers through the Agent Teams bridge, can spawn workers, and can emit replacement content only when the kind is editable. Own edits do not advance the external revision, allowing the viewer to retain its editing buffer while context-only renders update worker presence or editability.
 
 ## Workspace integration
 

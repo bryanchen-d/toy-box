@@ -58,7 +58,7 @@ const noManualMemoization = {
 };
 
 export default {
-  meta: { name: "toy-box-react" },
+  meta: { name: "agent-teams-react" },
   rules: {
     "no-manual-memoization": noManualMemoization,
   },

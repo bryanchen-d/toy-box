@@ -66,7 +66,7 @@ describe("transcript rows", () => {
   test("preserves structured system messages", () => {
     const message: Message = {
       role: "system",
-      content: { type: "channel_message", senderName: "Sender" },
+      content: { type: "team_message", senderName: "Sender" },
     };
     expect(rowsFor([message])[0]).toEqual({
       key: "message-0",

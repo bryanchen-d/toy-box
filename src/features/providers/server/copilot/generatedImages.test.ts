@@ -28,7 +28,7 @@ function completion(toolName: string) {
 }
 
 test("generated images are saved under the session and reported to the model", async () => {
-  home = await mkdtemp(join(tmpdir(), "toy-box-generated-images-"));
+  home = await mkdtemp(join(tmpdir(), "agent-teams-generated-images-"));
   const name = new Bun.CryptoHasher("sha256").update("png bytes").digest("hex");
   const path = join(home, ".copilot", "generated_images", "session", `${name}.png`);
 
@@ -39,7 +39,7 @@ test("generated images are saved under the session and reported to the model", a
 });
 
 test("images from other tools are not saved", async () => {
-  home = await mkdtemp(join(tmpdir(), "toy-box-generated-images-"));
+  home = await mkdtemp(join(tmpdir(), "agent-teams-generated-images-"));
 
   expect(await saveGeneratedImages(completion("view"), { sessionId: "session" }, home)).toBe(
     undefined,

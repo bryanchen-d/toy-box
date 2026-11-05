@@ -4,7 +4,7 @@ The terminal runtime lets a shell survive refreshes and short disconnects withou
 
 `model/protocol.ts` defines the validated client control plane shared by both sides. `client/` owns the browser WebSocket, xterm instance, buffering, and resize lifetime; `server/` owns the PTY, replay policy, and WebSocket handler; and `components/` mounts that capability into React. Workspace owns only whether the terminal is visible and where its shell is placed. Nitro's route adapter, shutdown hook, and the Vite development proxy remain in their application composition roots.
 
-The xterm-backed component and client runtime stay behind dynamic imports so opening Toy Box does not load the terminal bundle until the terminal is used.
+The xterm-backed component and client runtime stay behind dynamic imports so opening Agent Teams does not load the terminal bundle until the terminal is used.
 
 ## Protocol
 

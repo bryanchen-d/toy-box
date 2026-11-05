@@ -170,7 +170,7 @@ async function helperExecutable(): Promise<string> {
   const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
   const executable = join(
     homedir(),
-    ".toy-box",
+    ".agent-teams",
     "native",
     "screen",
     `${SCREEN_HELPER_EXECUTABLE}-${hash}`,

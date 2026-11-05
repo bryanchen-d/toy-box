@@ -8,7 +8,7 @@ export function createClaudeTools(
   sessionId: string,
   definitions: Tool<any>[],
 ): McpSdkServerConfigWithInstance {
-  const instance = new McpServer({ name: "toy_box", version: "1" });
+  const instance = new McpServer({ name: "agent_teams", version: "1" });
   for (const definition of definitions)
     instance.registerTool(
       definition.name,
@@ -35,5 +35,5 @@ export function createClaudeTools(
         };
       },
     );
-  return { type: "sdk", name: "toy_box", instance };
+  return { type: "sdk", name: "agent_teams", instance };
 }

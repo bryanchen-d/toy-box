@@ -21,7 +21,7 @@ import {
   type ModelInfo,
 } from "../model";
 
-const INHERIT_MODEL_VALUE = "__toy_box_inherit_model__";
+const INHERIT_MODEL_VALUE = "__agent_teams_inherit_model__";
 
 const TOKEN_WINDOW_FORMATTER = new Intl.NumberFormat("en-US", {
   notation: "compact",

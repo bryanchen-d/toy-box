@@ -1,6 +1,6 @@
 # Automations
 
-Automations let users turn a prompt into dependable recurring work that runs without an open browser and remains observable as an ordinary Toy Box session. This subsystem owns durable definitions and scheduling, while deliberately reusing the session runtime so manual and scheduled runs behave like ordinary session work.
+Automations let users turn a prompt into dependable recurring work that runs without an open browser and remains observable as an ordinary Agent Teams session. This subsystem owns durable definitions and scheduling, while deliberately reusing the session runtime so manual and scheduled runs behave like ordinary session work.
 
 ## Domain model
 
@@ -14,7 +14,7 @@ Creation and update validate the cron expression and calculate the next occurren
 
 A 30-second interval starts with the Nitro server and claims due work. Each startup owns its timer and returns cleanup that clears it when that server lifetime ends. `claimDue` runs inside an immediate SQLite transaction: it selects due definitions and advances each claimed `nextRunAt` before dispatch. Advancing while the claim is held prevents another tick from selecting the same occurrence, so a tick that starts while an earlier one is still dispatching finds nothing left to claim. Each committed claim is published before dispatch so clients receive its new schedule even if execution cannot start.
 
-Missed intervals collapse into one current run instead of producing a catch-up storm. Malformed definitions cannot prevent valid work from being claimed. Cron validation and next-occurrence math live in `src/shared/cron.ts`, which Channel routines share. This feature owns only its dialog's schedule-editing model.
+Missed intervals collapse into one current run instead of producing a catch-up storm. Malformed definitions cannot prevent valid work from being claimed. Cron validation and next-occurrence math live in `src/shared/cron.ts`, which Team routines share. This feature owns only its dialog's schedule-editing model.
 
 Manual requests and claimed schedules both call `runAutomation`. Whether a run was requested by a user or claimed by the scheduler does not change its execution semantics.
 

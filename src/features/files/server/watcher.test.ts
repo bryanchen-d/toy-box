@@ -7,7 +7,7 @@ import type { FileWatchEvent } from "../model";
 import { FileWatcher } from "./watcher";
 
 async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-file-watcher-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-file-watcher-"));
   const root = join(directory, "sessions");
   const watcher = new FileWatcher(root);
   onTestFinished(async () => {

@@ -39,7 +39,7 @@ describe("SVG selection clipboard", () => {
       pasteSvgSelectionClipboard(
         document,
         JSON.stringify({
-          type: "toy-box-svg-elements",
+          type: "agent-teams-svg-elements",
           elements: ['<script xmlns="http://www.w3.org/2000/svg" />'],
         }),
       ),

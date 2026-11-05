@@ -72,7 +72,7 @@ describe("getOrCreateClientId", () => {
       const secondId = getOrCreateClientId();
 
       expect(secondId).toBe(firstId);
-      expect(storage.getItem("toybox_client_id")).toBe(firstId);
+      expect(storage.getItem("agent_teams_client_id")).toBe(firstId);
     });
   });
 

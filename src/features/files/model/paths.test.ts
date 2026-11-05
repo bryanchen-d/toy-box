@@ -31,10 +31,10 @@ describe("artifact route paths", () => {
     expect(
       createFileWatchUrl({
         kind: "session",
-        sessionId: "toy box/session",
+        sessionId: "agent teams/session",
         path: String.raw`nested\file name#.md`,
       }),
-    ).toBe("/api/watch/toy%20box%2Fsession/nested/file%20name%23.md");
+    ).toBe("/api/watch/agent%20teams%2Fsession/nested/file%20name%23.md");
   });
 
   test("routes machine files under the machine scope", () => {

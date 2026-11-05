@@ -1,12 +1,12 @@
 {
-  "name": "@lostintangent/toy-box",
+  "name": "@lostintangent/agent-teams",
   "version": "0.3.1",
   "description": "Your personal coding agent server",
   "bin": {
-    "toy-box": "toy-box"
+    "agent-teams": "agent-teams"
   },
   "files": [
-    "toy-box"
+    "agent-teams"
   ],
   "os": [
     "darwin"

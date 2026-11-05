@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import exampleBrief from "@briefs/server/skills/create-toy-box-brief/references/example.brief?raw";
+import exampleBrief from "@briefs/server/skills/create-agent-teams-brief/references/example.brief?raw";
 import { parseBrief, serializeBrief, type BriefDocument, type OptionRelationship } from "./schema";
 import { findBriefEntity } from "./query/entities";
 import { resolveBriefTabs } from "./query/structure";

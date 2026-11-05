@@ -22,6 +22,6 @@ export function AppHostProvider({
 
 export function useAppHost(): AppHost {
   const host = useContext(AppHostContext);
-  if (!host) throw new Error("Toy Box app hooks must run inside an app surface.");
+  if (!host) throw new Error("Agent Teams app hooks must run inside an app surface.");
   return host;
 }

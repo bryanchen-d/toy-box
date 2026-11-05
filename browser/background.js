@@ -1,7 +1,7 @@
 import { captureViewport, sendPageToInbox } from "./inbox.js";
 
 const MENU = {
-  root: "send-to-toy-box",
+  root: "send-to-agent-teams",
   custom: "send-custom-prompt",
   separator: "quick-actions-separator",
 };
@@ -27,7 +27,7 @@ const badgeClearTimers = new Map();
 
 browser.runtime.onInstalled.addListener(() => {
   void installContextMenus().catch((error) => {
-    console.error("Failed to install the Toy Box context menus:", error);
+    console.error("Failed to install the Agent Teams context menus:", error);
   });
 });
 
@@ -38,7 +38,7 @@ browser.contextMenus.onClicked.addListener((info, tab) => {
     if (typeof tab?.windowId !== "number") return;
 
     void browser.action.openPopup({ windowId: tab.windowId }).catch((error) => {
-      console.error("Failed to open the Toy Box popup:", error);
+      console.error("Failed to open the Agent Teams popup:", error);
     });
     return;
   }
@@ -54,7 +54,7 @@ async function installContextMenus() {
 
   browser.contextMenus.create({
     id: MENU.root,
-    title: "Send to Toy Box",
+    title: "Send to Agent Teams",
     contexts: ["all"],
   });
 
@@ -94,7 +94,7 @@ async function runQuickAction(task, info, tab) {
     await sendPageToInbox({ task, page, viewport });
     await showBadge(tab.id, "✓", "#15803d");
   } catch (error) {
-    console.error("Failed to send the Toy Box quick action:", error);
+    console.error("Failed to send the Agent Teams quick action:", error);
     await showBadge(tab.id, "!", "#b91c1c");
   }
 

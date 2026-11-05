@@ -7,7 +7,7 @@ import type { ScreenFrame } from "../model";
 
 const output = process.argv[2] ?? "test-results/screen-browser.json";
 const session = `screen-bench-${process.pid}`;
-const title = `Toy Box Screen Benchmark ${process.pid}`;
+const title = `Agent Teams Screen Benchmark ${process.pid}`;
 const motionByteBudget = 1_280_000;
 const timers = new Set<ReturnType<typeof setTimeout>>();
 const errors: string[] = [];

@@ -15,7 +15,7 @@ async function isDirectory(path: string): Promise<boolean> {
 
 const main = defineCommand({
   meta: {
-    name: "Toy Box",
+    name: "Agent Teams",
     version,
     description: "Self-hosted agent server for Codex and GitHub Copilot",
   },

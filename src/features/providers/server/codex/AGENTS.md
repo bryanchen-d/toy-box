@@ -3,7 +3,7 @@
 `provider.ts` implements the [provider contract](../provider.ts) through the installed
 `codex app-server` process and the owner's existing CLI authentication. The published
 TypeScript exec SDK lacks the management and bidirectional request surface needed
-here. No additional OpenAI npm SDK or Toy Box login is required.
+here. No additional OpenAI npm SDK or Agent Teams login is required.
 
 ## Ownership
 
@@ -16,7 +16,7 @@ here. No additional OpenAI npm SDK or Toy Box login is required.
   steering, interruption, question batches, tool invocation, and ordered delivery.
   Browser subscriptions never own this connection or stop its execution.
 - `provider.ts` registers the supplied tools once as native functions in the
-  `toy_box` namespace, deferred unless marked `alwaysAvailable`. Codex retains their definitions on resume; the connection
+  `agent_teams` namespace, deferred unless marked `alwaysAvailable`. Codex retains their definitions on resume; the connection
   handles `item/tool/call` over the same stdio transport. One turn-owned abort
   controller cancels its handlers when interrupted, completed, or disconnected.
 - `projector.ts` exposes one native event-to-SessionEvents function for live notifications
@@ -44,7 +44,7 @@ They flow through shared SessionEvents live but are absent when rebuilding from
 native history. Underlying tool calls remain in Codex's model context; plan-mode
 prose is a separate durable item. History keeps at most 64 KiB of each command's output
 (its beginning and end), so reopened sessions show that excerpt of larger live results.
-The provider owns no Toy Box database tables.
+The provider owns no Agent Teams database tables.
 
 Codex allocates its own thread IDs. Sessions durably binds these to public IDs reserved
 before creation. Always use `Thread.id`; `sessionId` can describe a shared fork family.
@@ -58,7 +58,7 @@ Answers are collected into one native response. Resolving, interrupting, or disc
 cancels remaining questions. Unknown native requests receive an explicit RPC error.
 Asynchronous questions are ordinary agent messages, rendered as their text and answered
 by the next message. Unattended sessions disable both question tools.
-Toy Box's trusted-owner policy supplies native approval/sandbox configuration; a new
+Agent Teams' trusted-owner policy supplies native approval/sandbox configuration; a new
 approval flow belongs in the Sessions contract before exposing additional policies.
 
 Every thread opts into V2 subagents, which emit the activity records agent cards follow,

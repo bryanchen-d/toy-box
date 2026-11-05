@@ -75,33 +75,33 @@ describe("saved drafts", () => {
     const initial = createEmptyWorkspaceState();
     const drafted = reduceWorkspaceState(initial, {
       type: "draft.changed",
-      key: "channel:c1",
+      key: "team:c1",
       draft,
     });
-    expect(drafted.drafts).toEqual({ "channel:c1": draft });
+    expect(drafted.drafts).toEqual({ "team:c1": draft });
     expect(
       reduceWorkspaceState(drafted, {
         type: "draft.changed",
-        key: "channel:c1",
+        key: "team:c1",
         draft: { ...draft },
       }),
     ).toBe(drafted);
     const edited = { ...draft, text: "hello again", updatedAt: 4 };
     expect(
-      reduceWorkspaceState(drafted, { type: "draft.changed", key: "channel:c1", draft: edited })
+      reduceWorkspaceState(drafted, { type: "draft.changed", key: "team:c1", draft: edited })
         .drafts,
-    ).toEqual({ "channel:c1": edited });
+    ).toEqual({ "team:c1": edited });
   });
 
-  test("deleting a session or channel drops only its own draft", () => {
+  test("deleting a session or team drops only its own draft", () => {
     const state = {
       ...createEmptyWorkspaceState(),
-      drafts: { [`session:${sessionId}`]: draft, "channel:c1": draft, inbox: draft },
+      drafts: { [`session:${sessionId}`]: draft, "team:c1": draft, inbox: draft },
     };
     const withoutSession = reduceWorkspaceState(state, { type: "session.deleted", sessionId });
-    expect(withoutSession.drafts).toEqual({ "channel:c1": draft, inbox: draft });
+    expect(withoutSession.drafts).toEqual({ "team:c1": draft, inbox: draft });
     expect(
-      reduceWorkspaceState(withoutSession, { type: "channel.deleted", channelId: "c1" }).drafts,
+      reduceWorkspaceState(withoutSession, { type: "team.deleted", teamId: "c1" }).drafts,
     ).toEqual({ inbox: draft });
   });
 

@@ -5,13 +5,13 @@ import { transcriptLinkComponents, transcriptRehypePlugins } from "./TranscriptF
 import { ToolCallMessage } from "./tools/ToolCallMessage";
 import { defaultRemarkPlugins } from "streamdown";
 import {
-  channelReferenceComponents,
-  channelReferenceTags,
-  remarkChannelReferences,
-} from "@channels/components/ChannelReferences";
+  teamReferenceComponents,
+  teamReferenceTags,
+  remarkTeamReferences,
+} from "@teams/components/TeamReferences";
 
-const referencePlugins = [...Object.values(defaultRemarkPlugins), remarkChannelReferences];
-const linkComponents = { ...transcriptLinkComponents, ...channelReferenceComponents };
+const referencePlugins = [...Object.values(defaultRemarkPlugins), remarkTeamReferences];
+const linkComponents = { ...transcriptLinkComponents, ...teamReferenceComponents };
 
 // ============================================================================
 // Assistant Message Component
@@ -46,7 +46,7 @@ export function AssistantMessage({
               plugins={codePlugins}
               components={linkComponents}
               remarkPlugins={referencePlugins}
-              allowedTags={channelReferenceTags}
+              allowedTags={teamReferenceTags}
               rehypePlugins={transcriptRehypePlugins}
               className="text-sm"
             >

@@ -1,6 +1,6 @@
-/** Browser implementation of the authored `@toy-box/sdk` module. */
+/** Browser implementation of the authored `@agent-teams/sdk` module. */
 export { generateUUID as createId } from "@/shared/utils";
-export { channelTasksDiff } from "@channels/model";
+export { teamTasksDiff } from "@teams/model";
 export * from "./components";
 export * from "./hooks";
 export * from "./share";

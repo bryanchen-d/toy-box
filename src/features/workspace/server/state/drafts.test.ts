@@ -5,7 +5,7 @@ import { deleteSavedDraft, getSavedDrafts, saveDraft } from "./drafts";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function draftKey(): DraftKey {
-  const key: DraftKey = `channel:${crypto.randomUUID()}`;
+  const key: DraftKey = `team:${crypto.randomUUID()}`;
   onTestFinished(() => deleteSavedDraft(key));
   return key;
 }

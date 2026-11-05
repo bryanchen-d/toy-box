@@ -23,7 +23,7 @@ export const codexProvider: SessionProvider = {
     const rpc = await startCodexClient();
     const auth = await rpc.request("account/read", {});
     if (auth.requiresOpenaiAuth && !auth.account)
-      throw new Error("Run `codex login` to sign in to Codex, then refresh Toy Box.");
+      throw new Error("Run `codex login` to sign in to Codex, then refresh Agent Teams.");
     const models: Model[] = [];
     let cursor: string | null = null;
     do {
@@ -105,8 +105,8 @@ export const codexProvider: SessionProvider = {
       dynamicTools: [
         {
           type: "namespace",
-          name: "toy_box",
-          description: "Toy Box sessions, apps, files, and workspace tools.",
+          name: "agent_teams",
+          description: "Agent Teams sessions, apps, files, and workspace tools.",
           tools: configuration.tools.map((tool) => ({
             type: "function",
             name: tool.name,
@@ -233,7 +233,7 @@ function nativeConfiguration(
     sandbox: "danger-full-access",
     developerInstructions: [
       configuration.instructions,
-      "Toy Box tools are provided in the toy_box namespace. Discover its tools when they are not already in your tool context. A successful terminal tool completes your turn; do not take further actions after it.",
+      "Agent Teams tools are provided in the agent_teams namespace. Discover its tools when they are not already in your tool context. A successful terminal tool completes your turn; do not take further actions after it.",
       ...bundled.map(
         (skill) =>
           `Skill ${skill.name}: ${skill.description}. Read ${skill.path} when this skill applies.`,

@@ -60,8 +60,8 @@ export async function compileArtifactApp(file: SessionFile, source: string) {
 }
 
 async function bundleAppCode(source: { id: string; tsx: string }): Promise<string> {
-  const entrypoint = "/toybox-app.tsx";
-  const runtimeNamespace = "toybox-app-runtime";
+  const entrypoint = "/agent-teams-app.tsx";
+  const runtimeNamespace = "agent-teams-app-runtime";
   const buildConfig = {
     entrypoints: [entrypoint],
     files: { [entrypoint]: source.tsx },
@@ -76,7 +76,7 @@ async function bundleAppCode(source: { id: string; tsx: string }): Promise<strin
     },
     plugins: [
       {
-        name: "toybox-app-runtime",
+        name: "agent-teams-app-runtime",
         setup(build) {
           build.onResolve({ filter: /.*/ }, ({ path, kind }) => {
             if (kind === "entry-point-build") return { path, namespace: "file" };

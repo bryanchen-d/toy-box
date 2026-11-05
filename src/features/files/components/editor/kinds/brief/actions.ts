@@ -22,10 +22,10 @@ export function briefWorkerRequest(request: BriefAction): WorkerRequest {
 
 function briefWorkerPrompt(request: BriefAction): string {
   if (request.action === "execute-plan") {
-    return "Use the registered `execute-toy-box-brief` skill to execute or resume this brief's plan.";
+    return "Use the registered `execute-agent-teams-brief` skill to execute or resume this brief's plan.";
   }
   if (request.action === "review-outcome") {
-    return "Use the registered `execute-toy-box-brief` skill's post-execution workflow to review this completed brief's outcome.";
+    return "Use the registered `execute-agent-teams-brief` skill's post-execution workflow to review this completed brief's outcome.";
   }
   const targetInstruction =
     request.action === "regenerate-section"
@@ -34,5 +34,5 @@ function briefWorkerPrompt(request: BriefAction): string {
         ? ` for question "${request.questionId}"`
         : ` for record "${request.recordId}"`;
 
-  return `Use the registered \`create-toy-box-brief\` skill's \`${request.action}\` editor-action workflow${targetInstruction}.`;
+  return `Use the registered \`create-agent-teams-brief\` skill's \`${request.action}\` editor-action workflow${targetInstruction}.`;
 }

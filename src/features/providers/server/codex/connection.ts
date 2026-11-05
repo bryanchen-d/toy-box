@@ -226,7 +226,7 @@ export class CodexConnection implements SessionConnection {
       return false;
     if (request.method === "item/tool/call") {
       const params = request.params as DynamicToolCallParams;
-      if (params.namespace !== "toy_box") return false;
+      if (params.namespace !== "agent_teams") return false;
       void this.#callTool(request.id, params).catch((error) => this.#fail(error));
       return true;
     }

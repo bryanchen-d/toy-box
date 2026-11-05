@@ -19,7 +19,7 @@
     "react/rule-suppression": "error",
     "react/syntax": "error",
     "react/todo": "error",
-    "toy-box-react/no-manual-memoization": "error",
+    "agent-teams-react/no-manual-memoization": "error",
     "@tanstack/query/exhaustive-deps": "error",
     "@tanstack/query/no-rest-destructuring": "warn",
     "@tanstack/query/stable-query-client": "error",

@@ -80,9 +80,9 @@ export async function deleteOwnedSessions(sessionId: string): Promise<void> {
 export async function detachManagedSession(sessionId: string): Promise<void> {
   const { getPersistedWorker, unregisterWorkerSession } = await import("@workers/server/database");
   const worker = await getPersistedWorker(sessionId);
-  if (worker?.type === "channel") {
-    const { detachChannelAgentSession } = await import("@channels/server");
-    await detachChannelAgentSession(sessionId);
+  if (worker?.type === "team") {
+    const { detachTeamAgentSession } = await import("@teams/server");
+    await detachTeamAgentSession(sessionId);
   } else if (worker && (await unregisterWorkerSession(sessionId))) {
     if (worker.type === "inbox") {
       broadcast({ type: "inbox.entry.deleted", entryId: sessionId });

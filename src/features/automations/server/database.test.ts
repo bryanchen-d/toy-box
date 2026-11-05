@@ -17,7 +17,7 @@ const options = {
 describe("automation persistence and scheduling", () => {
   test("saved edits and their schedule survive reopening the database", async () => {
     mockTime("2026-02-14T10:00:00.000Z");
-    const directory = await mkdtemp(join(tmpdir(), "toy-box-automations-"));
+    const directory = await mkdtemp(join(tmpdir(), "agent-teams-automations-"));
     onTestFinished(() => rm(directory, { recursive: true, force: true }));
     const path = join(directory, "automations.sqlite");
     const first = await openTestDatabase(path);

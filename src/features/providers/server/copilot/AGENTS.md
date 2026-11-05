@@ -14,7 +14,7 @@ boundaries; they can arrive between another message's streamed text and completi
 Subagent reasoning streams beneath its agent call and resets at each child turn; the reply's
 durable `reasoningText` replaces that ephemeral preview, so history converges with live state.
 `attachments.ts`, `modelConfiguration.ts`, and `models.ts`
-keep native data shapes outside the Sessions model. Shared Toy Box tool effects live
+keep native data shapes outside the Sessions model. Shared Agent Teams tool effects live
 in Sessions' `toolProjection.ts`; Copilot-specific completion rules stay here.
 System messages use Sessions' shared display codec in the native `displayPrompt` field and send
 with native `system` provenance. The projector decodes those messages before dropping other
@@ -37,7 +37,7 @@ seeds the live Session stream at creation and resume; persisted `session.start` 
 events project those selections into historical replay.
 Explicit/automatic names and conversation-only rewind use native SDK RPCs.
 Skills include native discovery and the role-scoped bundled directories supplied by
-Sessions. Native permissions follow Toy Box's existing trusted-owner policy.
+Sessions. Native permissions follow Agent Teams' existing trusted-owner policy.
 `computerUse.ts` respects the user's `enabledMcpServers` computer-use opt-in.
 Headless SDK servers load no built-in plugins, so create and resume register
 the matching CLI version's cached computer-use binary as a stdio MCP server.

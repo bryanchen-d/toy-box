@@ -25,7 +25,7 @@ test("instructions identify session resources and preserve the initial subject a
 
 test("session references direct the agent to the supplied public ID", () => {
   expect(SESSION_HISTORY_DISCOVERY_INSTRUCTIONS).toContain("[Title](session:PUBLIC_ID)");
-  expect(SESSION_HISTORY_DISCOVERY_INSTRUCTIONS).toContain("URL-escaped public Toy Box ID");
+  expect(SESSION_HISTORY_DISCOVERY_INSTRUCTIONS).toContain("URL-escaped public Agent Teams ID");
   expect(SESSION_HISTORY_DISCOVERY_INSTRUCTIONS).toContain(
     "call read_session with that ID directly",
   );

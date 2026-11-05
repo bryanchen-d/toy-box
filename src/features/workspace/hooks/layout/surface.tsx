@@ -39,12 +39,12 @@ const { StoreProvider, useStoreContext: useWorkspaceSurface } = createStoreConte
     /** Brings a file's pane forward, opening the file when it isn't showing. */
     revealFile?: (file: WorkspaceFile) => void;
     revealScreen: (screenId: string) => boolean;
-    /** Whether Channel overviews stay pinned open, where the surface remembers it. */
-    channelOverviewPinned?: boolean;
-    setChannelOverviewPinned?: (pinned: boolean) => void;
-    /** Each Channel aside kind's resized share of a wide pane, where the surface remembers it. */
-    channelAsideSizes?: Readonly<Record<string, number>>;
-    setChannelAsideSize?: (kind: string, size: number) => void;
+    /** Whether Team overviews stay pinned open, where the surface remembers it. */
+    teamOverviewPinned?: boolean;
+    setTeamOverviewPinned?: (pinned: boolean) => void;
+    /** Each Team aside kind's resized share of a wide pane, where the surface remembers it. */
+    teamAsideSizes?: Readonly<Record<string, number>>;
+    setTeamAsideSize?: (kind: string, size: number) => void;
   }
 >();
 export { useWorkspaceSurface };
@@ -65,10 +65,10 @@ export function WorkspaceSurfaceProvider({
   onOpenFile,
   onRevealFile,
   onOpenScreen,
-  channelOverviewPinned,
-  onChannelOverviewPinnedChange,
-  channelAsideSizes,
-  onChannelAsideSizeChange,
+  teamOverviewPinned,
+  onTeamOverviewPinnedChange,
+  teamAsideSizes,
+  onTeamAsideSizeChange,
   children,
 }: {
   surface: WorkspaceSurface;
@@ -77,10 +77,10 @@ export function WorkspaceSurfaceProvider({
   onOpenFile?: (path: string) => void;
   onRevealFile?: (file: WorkspaceFile) => void;
   onOpenScreen?: (screenId: string) => Promise<void>;
-  channelOverviewPinned?: boolean;
-  onChannelOverviewPinnedChange?: (pinned: boolean) => void;
-  channelAsideSizes?: Readonly<Record<string, number>>;
-  onChannelAsideSizeChange?: (kind: string, size: number) => void;
+  teamOverviewPinned?: boolean;
+  onTeamOverviewPinnedChange?: (pinned: boolean) => void;
+  teamAsideSizes?: Readonly<Record<string, number>>;
+  onTeamAsideSizeChange?: (kind: string, size: number) => void;
   children: ReactNode;
 }) {
   const workspaceSurface = workspaceSurfaces[surface];
@@ -161,10 +161,10 @@ export function WorkspaceSurfaceProvider({
         openFile: onOpenFile,
         revealFile: onRevealFile,
         revealScreen,
-        channelOverviewPinned,
-        setChannelOverviewPinned: onChannelOverviewPinnedChange,
-        channelAsideSizes,
-        setChannelAsideSize: onChannelAsideSizeChange,
+        teamOverviewPinned,
+        setTeamOverviewPinned: onTeamOverviewPinnedChange,
+        teamAsideSizes,
+        setTeamAsideSize: onTeamAsideSizeChange,
       }}
     >
       {children}

@@ -13,7 +13,7 @@ import {
 
 describe("artifact paths", () => {
   test("owned artifacts and attachments share one deletion lifecycle", async () => {
-    const id = `toy-box-test-${crypto.randomUUID()}`;
+    const id = `agent-teams-test-${crypto.randomUUID()}`;
     const directory = sessionArtifactDirectory(id)!;
     const attachments = resolve(directory, "../attachments/input.txt");
     onTestFinished(() => rm(resolve(directory, ".."), { recursive: true, force: true }));
@@ -30,18 +30,18 @@ describe("artifact paths", () => {
   });
   describe("session artifacts", () => {
     test("resolves artifact-relative paths inside the session artifacts folder", () => {
-      expect(resolveSessionArtifactPath("toy-box-session", "report.md")).toBe(
-        resolve(homedir(), ".toy-box/sessions/toy-box-session/artifacts/report.md"),
+      expect(resolveSessionArtifactPath("agent-teams-session", "report.md")).toBe(
+        resolve(homedir(), ".agent-teams/sessions/agent-teams-session/artifacts/report.md"),
       );
     });
 
     test("rejects paths outside the session artifacts folder", () => {
-      expect(resolveSessionArtifactPath("toy-box-session", "../workspace.yaml")).toBe(null);
-      expect(resolveSessionArtifactPath("toy-box-session", "/etc/passwd")).toBe(null);
+      expect(resolveSessionArtifactPath("agent-teams-session", "../workspace.yaml")).toBe(null);
+      expect(resolveSessionArtifactPath("agent-teams-session", "/etc/passwd")).toBe(null);
       expect(
         resolveSessionArtifactPath(
-          "toy-box-session",
-          "~/.toy-box/sessions/other-session/artifacts/report.md",
+          "agent-teams-session",
+          "~/.agent-teams/sessions/other-session/artifacts/report.md",
         ),
       ).toBe(null);
     });
@@ -49,14 +49,14 @@ describe("artifact paths", () => {
     test("rejects explicit filesystem-shaped artifact paths", () => {
       expect(
         resolveSessionArtifactPath(
-          "toy-box-session",
-          "~/.toy-box/sessions/toy-box-session/artifacts/report.md",
+          "agent-teams-session",
+          "~/.agent-teams/sessions/agent-teams-session/artifacts/report.md",
         ),
       ).toBe(null);
       expect(
         resolveSessionArtifactPath(
-          "toy-box-session",
-          ".toy-box/sessions/toy-box-session/artifacts/report.md",
+          "agent-teams-session",
+          ".agent-teams/sessions/agent-teams-session/artifacts/report.md",
         ),
       ).toBe(null);
     });
@@ -70,8 +70,8 @@ describe("artifact paths", () => {
     test("projects explicit SDK paths inside the same session artifacts folder", () => {
       expect(
         projectSessionArtifactPath(
-          "toy-box-session",
-          resolve(homedir(), ".toy-box/sessions/toy-box-session/artifacts/report.md"),
+          "agent-teams-session",
+          resolve(homedir(), ".agent-teams/sessions/agent-teams-session/artifacts/report.md"),
         ),
       ).toBe("report.md");
     });
@@ -79,21 +79,21 @@ describe("artifact paths", () => {
     test("rejects root session-state files and other sessions", () => {
       expect(
         projectSessionArtifactPath(
-          "toy-box-session",
-          resolve(homedir(), ".toy-box/sessions/toy-box-session/report.md"),
+          "agent-teams-session",
+          resolve(homedir(), ".agent-teams/sessions/agent-teams-session/report.md"),
         ),
       ).toBeUndefined();
       expect(
         projectSessionArtifactPath(
-          "toy-box-session",
-          resolve(homedir(), ".toy-box/sessions/other-session/artifacts/report.md"),
+          "agent-teams-session",
+          resolve(homedir(), ".agent-teams/sessions/other-session/artifacts/report.md"),
         ),
       ).toBeUndefined();
     });
 
     test("rejects non-explicit working-directory relative paths", () => {
-      expect(projectSessionArtifactPath("toy-box-session", "files/report.md")).toBeUndefined();
-      expect(projectSessionArtifactPath("toy-box-session", "/tmp/report.md")).toBeUndefined();
+      expect(projectSessionArtifactPath("agent-teams-session", "files/report.md")).toBeUndefined();
+      expect(projectSessionArtifactPath("agent-teams-session", "/tmp/report.md")).toBeUndefined();
     });
   });
 
@@ -101,11 +101,14 @@ describe("artifact paths", () => {
     test("classifies absolute Session artifacts without losing their owner", () => {
       expect(
         workspaceFileFromAbsolutePath(
-          resolve(homedir(), ".toy-box/sessions/toy-box-session/artifacts/nested/report.md"),
+          resolve(
+            homedir(),
+            ".agent-teams/sessions/agent-teams-session/artifacts/nested/report.md",
+          ),
         ),
       ).toEqual({
         kind: "session",
-        sessionId: "toy-box-session",
+        sessionId: "agent-teams-session",
         path: "nested/report.md",
       });
       expect(workspaceFileFromAbsolutePath("/repo/src/foo.ts")).toEqual({
@@ -116,8 +119,12 @@ describe("artifact paths", () => {
 
     test("resolves a session file under its session artifacts folder", () => {
       expect(
-        resolveWorkspaceFile({ kind: "session", sessionId: "toy-box-session", path: "report.md" }),
-      ).toBe(resolve(homedir(), ".toy-box/sessions/toy-box-session/artifacts/report.md"));
+        resolveWorkspaceFile({
+          kind: "session",
+          sessionId: "agent-teams-session",
+          path: "report.md",
+        }),
+      ).toBe(resolve(homedir(), ".agent-teams/sessions/agent-teams-session/artifacts/report.md"));
     });
 
     test("resolves a machine file to its own absolute path and rejects relative paths", () => {

@@ -241,7 +241,7 @@ function AppListItem({
       {dialog === "delete" && (
         <DestructiveConfirmationDialog
           title={`Delete ${app.title}?`}
-          description="This removes the saved app and its state. Sessions it created remain in Toy Box."
+          description="This removes the saved app and its state. Sessions it created remain in Agent Teams."
           mutation={appMutations.delete(app.id)}
           onOpenChange={(open) => {
             if (!open) setDialog(null);

@@ -285,7 +285,7 @@ function itemTool(
     case "dynamicToolCall":
       return {
         name:
-          item.namespace && item.namespace !== "toy_box"
+          item.namespace && item.namespace !== "agent_teams"
             ? `${item.namespace}/${item.tool}`
             : item.tool,
         arguments: recordArguments(item.arguments),

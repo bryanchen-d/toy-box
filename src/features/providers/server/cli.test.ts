@@ -7,7 +7,7 @@ import { readVersion, updateProvider } from "./cli";
 let directory: string;
 
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), "toy box provider cli-"));
+  directory = await mkdtemp(join(tmpdir(), "agent teams provider cli-"));
 });
 
 afterEach(() => rm(directory, { recursive: true, force: true }));

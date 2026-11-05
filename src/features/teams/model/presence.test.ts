@@ -1,0 +1,34 @@
+import { describe, expect, test } from "bun:test";
+import { teamAgentPresence } from "./presence";
+
+const working = { status: { state: "working", text: "Re-running perf gates" } } as const;
+const waiting = {
+  status: { state: "waiting", text: "Your feedback on HTTPS", wakeAt: "2026-10-03T22:00:00.000Z" },
+} as const;
+
+describe("team agent presence", () => {
+  test("a running agent is working, with the status it set", () => {
+    expect(teamAgentPresence(working, true)).toEqual({
+      state: "working",
+      text: "Re-running perf gates",
+    });
+    expect(teamAgentPresence({}, true)).toEqual({ state: "working" });
+  });
+
+  test("an idle agent can still be waiting", () => {
+    expect(teamAgentPresence(waiting, false)).toEqual({
+      state: "waiting",
+      text: "Your feedback on HTTPS",
+      wakeAt: "2026-10-03T22:00:00.000Z",
+    });
+  });
+
+  test("a working status without a running session is idle", () => {
+    expect(teamAgentPresence(working, false)).toEqual({ state: "idle" });
+    expect(teamAgentPresence({}, false)).toEqual({ state: "idle" });
+  });
+
+  test("running takes precedence over a waiting status", () => {
+    expect(teamAgentPresence(waiting, true)).toEqual({ state: "working" });
+  });
+});

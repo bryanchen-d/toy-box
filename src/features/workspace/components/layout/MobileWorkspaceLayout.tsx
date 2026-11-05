@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { TerminalShell } from "@terminal/components/TerminalShell";
 import { Sidebar, type SidebarProps } from "@workspace/components/sidebar/Sidebar";
+import { compactSidebarPanels } from "@workspace/model/config/layoutPrefs";
 import {
   WorkspacePager,
   type WorkspacePagerProps,
@@ -29,13 +30,7 @@ export function MobileWorkspaceLayout({
   workspace,
   terminal,
 }: MobileWorkspaceLayoutProps) {
-  const sidebarPanels: SidebarProps["panels"] = sidebar.panels.channels
-    ? { channels: true }
-    : sidebar.panels.apps
-      ? { apps: true }
-      : sidebar.panels.automations
-        ? { automations: true }
-        : {};
+  const sidebarPanels = compactSidebarPanels(sidebar.panels);
 
   return (
     <div className="relative h-full overflow-clip md:hidden">

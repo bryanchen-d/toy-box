@@ -50,7 +50,7 @@ export function ScreenPane({
       {error && (
         <p
           role="alert"
-          className="shrink-0 border-b border-destructive/30 px-3 py-2 text-xs text-destructive md:pr-[calc(var(--toybox-pane-actions-inset,0px)+5rem)]"
+          className="shrink-0 border-b border-destructive/30 px-3 py-2 text-xs text-destructive md:pr-[calc(var(--agent-teams-pane-actions-inset,0px)+5rem)]"
         >
           {error}
         </p>

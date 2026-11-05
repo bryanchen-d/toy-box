@@ -1,0 +1,394 @@
+import { useRef, useState } from "react";
+import { CatchBoundary, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { teamQueries } from "@teams/queries";
+import { parseTeamReferenceHash } from "@teams/model/references";
+import { AlertCircle, PanelsTopLeft } from "lucide-react";
+import { teamAgentIdentity, teamLead, type TeamConversationMessage } from "@teams/model";
+import { useTeam } from "@teams/useTeam";
+import type { WorkspaceFile } from "@files/model";
+import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
+import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
+import { useEditSavedDraft } from "@workspace/hooks/useSavedDraft";
+import { TEAM_ASIDE_MAX_SIZE, TEAM_ASIDE_MIN_SIZE } from "@workspace/model/config/layoutPrefs";
+import { createEditorPaneId } from "@workspace/model/panes";
+import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
+import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
+import {
+  PANE_OVERLAY_BUTTON_CLASS,
+  PANE_OVERLAY_ICON_CLASS,
+} from "@workspace/components/panes/shell/paneControls";
+import { Button } from "@/shared/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/shared/ui/resizable";
+import { cn } from "@/shared/utils";
+import { TeamCanvas } from "./TeamCanvas";
+import { TeamArtifacts } from "./TeamArtifacts";
+import { TeamMembers } from "./TeamMembers";
+import {
+  addressedDraft,
+  TeamComposer,
+  teamDraftKey,
+  type TeamComposerHandle,
+} from "./TeamComposer";
+import { TeamPaneProvider } from "./TeamPaneContext";
+import { TeamThread } from "./TeamThread";
+import { TeamMessageSearch } from "./TeamMessageSearch";
+import { TeamOverview } from "./overview/TeamOverview";
+import { TeamTranscript, type TeamTranscriptHandle } from "./transcript/TeamTranscript";
+import type { TranscriptView } from "./transcript/transcriptRows";
+import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
+
+/** What this view shows beside the chat, or in its place when the pane is narrow. */
+type TeamAside =
+  | { type: "canvas" }
+  | { type: "thread"; sequence: number; selectedSequence?: number }
+  | { type: "artifacts" }
+  | { type: "members"; selectedAgentId?: string };
+
+/** Each aside kind's share of a wide pane until the user resizes it. */
+const ASIDE_SIZES: Record<TeamAside["type"], number> = {
+  canvas: 50,
+  thread: 35,
+  artifacts: 35,
+  members: 65,
+};
+
+export function TeamPane({
+  teamId,
+  isVisible,
+  variant,
+}: {
+  teamId: string;
+  isVisible: boolean;
+  variant: PaneVariant;
+}) {
+  return (
+    <CatchBoundary getResetKey={() => teamId} errorComponent={TeamPaneError}>
+      <TeamContent key={teamId} teamId={teamId} isVisible={isVisible} variant={variant} />
+    </CatchBoundary>
+  );
+}
+
+function TeamContent({
+  teamId,
+  isVisible,
+  variant,
+}: {
+  teamId: string;
+  isVisible: boolean;
+  variant: PaneVariant;
+}) {
+  const { state, unreadAfter, loadPrevious, postMessage, postError } = useTeam(teamId, {
+    visible: isVisible,
+  });
+  const transcriptRef = useRef<TeamTranscriptHandle>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<TeamComposerHandle>(null);
+  const threadComposerRef = useRef<TeamComposerHandle>(null);
+  const editSavedDraft = useEditSavedDraft();
+  const { revealFile, focusedPaneAtom, teamAsideSizes, setTeamAsideSize } = useWorkspaceSurface();
+  const [view, setView] = useState<TranscriptView>("all");
+  const [aside, setAside] = useState<TeamAside | null>(null);
+  const location = useRouterState({ select: ({ location }) => location });
+  const hash = location.hash;
+  const target = parseTeamReferenceHash(hash);
+  const reference = target?.teamId === teamId ? target : undefined;
+  const selectedSequence = reference?.type === "message" ? reference.sequence : undefined;
+  const referenceThread = useQuery({
+    ...teamQueries.threadSequence(teamId, selectedSequence ?? 0),
+    enabled: isVisible && selectedSequence !== undefined,
+  });
+  const [openedLocation, setOpenedLocation] = useState<typeof location>();
+  if (
+    state &&
+    reference &&
+    location !== openedLocation &&
+    (reference.type !== "message" || referenceThread.data !== undefined)
+  ) {
+    setOpenedLocation(location);
+    if (reference.type === "members" || reference.type === "agent")
+      setAside({
+        type: "members",
+        selectedAgentId: reference.type === "agent" ? reference.agentId : undefined,
+      });
+    else if (reference.type === "message")
+      setAside({
+        type: "thread",
+        sequence: referenceThread.data!,
+        selectedSequence: reference.sequence,
+      });
+    else setAside(null);
+  }
+  const canvas = state?.artifacts.find(({ id }) => id === state.team.canvasArtifactId);
+  const showingCanvas = aside?.type === "canvas" && !!canvas;
+  const thread = aside?.type === "thread" && state ? aside.sequence : undefined;
+  const showingArtifacts = aside?.type === "artifacts" && !!state;
+  const showingMembers = aside?.type === "members" && !!state;
+  const asideKind =
+    showingCanvas || thread !== undefined || showingArtifacts || showingMembers
+      ? aside?.type
+      : undefined;
+  const asideSize = asideKind && (teamAsideSizes?.[asideKind] ?? ASIDE_SIZES[asideKind]);
+  // A drag commits only the size it ends at, so following the pointer stays within the panels.
+  const resizeRef = useRef<{ size?: number; dragging: boolean }>({ dragging: false });
+  const canvasLabel = showingCanvas ? "Close team canvas" : "Open team canvas";
+  // The lead is intrinsic, so the composer can address it before the first snapshot arrives.
+  const lead = state?.lead ?? teamLead(teamId);
+  const members = state?.members ?? [];
+  const agents = [lead, ...members];
+  const toggleCanvas = () => setAside(showingCanvas ? null : { type: "canvas" });
+
+  function openThread(sequence: number) {
+    if (thread === sequence) threadComposerRef.current?.focus();
+    else setAside({ type: "thread", sequence });
+  }
+
+  function openArtifact(file: WorkspaceFile) {
+    if (revealFile) revealFile(file);
+    else focusedPaneAtom.set(createEditorPaneId(file));
+  }
+
+  function rememberAsideSize(size: number | undefined) {
+    if (!asideKind || size === undefined) return;
+    const rounded = Math.round(size * 10) / 10;
+    if (rounded !== asideSize) setTeamAsideSize?.(asideKind, rounded);
+  }
+
+  /** Opens the message's thread with the draft addressed to its agent, as a reply wakes them. */
+  function replyInThread(message: TeamConversationMessage) {
+    const sequence = message.threadSequence ?? message.sequence;
+    const author =
+      message.sender.type === "agent"
+        ? teamAgentIdentity(agents, message.sender.agentId)
+        : undefined;
+    const addressee = author && !author.deleted ? author : undefined;
+    if (thread === sequence) {
+      if (addressee) threadComposerRef.current?.reply(addressee);
+      else threadComposerRef.current?.focus();
+      return;
+    }
+    if (addressee) {
+      editSavedDraft(teamDraftKey(teamId, sequence), (text) => addressedDraft(text, addressee));
+    }
+    setAside({ type: "thread", sequence });
+  }
+
+  return (
+    <TeamPaneProvider
+      value={{
+        teamId,
+        selectedMessageSequence: aside?.type === "thread" ? aside.selectedSequence : undefined,
+        lead,
+        members,
+        agents,
+        agent: (id) => teamAgentIdentity(agents, id),
+        presence: state?.presence ?? {},
+        openThread,
+        replyInThread,
+        isSending: (id) => state?.optimisticMessageIds?.includes(id) ?? false,
+        mention: () => composerRef.current?.mention(),
+        openArtifact,
+        openArtifacts: () => setAside({ type: "artifacts" }),
+        openMembers: () => setAside({ type: "members" }),
+      }}
+    >
+      {canvas && (
+        <PaneActions>
+          {variant === "normal" ? (
+            <button
+              type="button"
+              aria-label={canvasLabel}
+              title={canvasLabel}
+              aria-pressed={showingCanvas}
+              className={PANE_OVERLAY_BUTTON_CLASS}
+              onClick={toggleCanvas}
+            >
+              <PanelsTopLeft className={PANE_OVERLAY_ICON_CLASS} />
+            </button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={canvasLabel}
+              title={canvasLabel}
+              aria-pressed={showingCanvas}
+              onClick={toggleCanvas}
+            >
+              <PanelsTopLeft />
+            </Button>
+          )}
+        </PaneActions>
+      )}
+      <div className="@container/team h-full min-h-0">
+        {referenceThread.error && selectedSequence !== undefined && (
+          <p role="alert" className="p-3 text-sm text-destructive">
+            Message unavailable: {referenceThread.error.message}
+          </p>
+        )}
+        {!target && /^team(?::|%3a)/i.test(hash) && (
+          <p role="alert" className="p-3 text-sm text-destructive">
+            Invalid team reference.
+          </p>
+        )}
+        {/* A narrow pane shows the aside in place of chat, so only a wide one divides them. */}
+        <ResizablePanelGroup direction="horizontal" className="bg-background">
+          <ResizablePanel
+            id="chat"
+            order={1}
+            defaultSize={100 - (asideSize ?? 0)}
+            minSize={100 - TEAM_ASIDE_MAX_SIZE}
+            className={cn(asideKind && "hidden @3xl/team:block")}
+          >
+            <div
+              ref={chatRef}
+              tabIndex={-1}
+              className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto] outline-none"
+            >
+              {state && (
+                <TeamOverview
+                  team={state.team}
+                  artifacts={state.artifacts}
+                  routines={state.routines}
+                  variant={variant}
+                  allowPin={!asideKind}
+                  actions={
+                    <TranscriptViewMenu view={view} onViewChange={setView} variant={variant} />
+                  }
+                />
+              )}
+              <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
+                {state && (
+                  <TeamMessageSearch
+                    teamId={teamId}
+                    isVisible={isVisible}
+                    hotkeyTarget={chatRef}
+                    onSelect={(match) =>
+                      setAside({
+                        type: "thread",
+                        sequence: match.threadSequence,
+                        selectedSequence: match.sequence,
+                      })
+                    }
+                  />
+                )}
+                <div className="min-h-0 flex-1">
+                  {state ? (
+                    <TeamTranscript
+                      // Each view lands afresh, since its rows and their keys differ.
+                      key={view}
+                      messages={state.messages}
+                      view={view}
+                      unreadAfter={unreadAfter}
+                      handleRef={transcriptRef}
+                      requestSequence={state.team.requestSequence}
+                      onLoadPrevious={loadPrevious}
+                    />
+                  ) : (
+                    <TranscriptSkeleton />
+                  )}
+                </div>
+              </div>
+              <div className="col-start-1 row-start-2 shrink-0 border-t bg-background px-4 pt-4 md:pb-4">
+                {postError && (
+                  <p role="alert" className="mb-2 text-sm text-destructive">
+                    Unable to send message: {postError.message}
+                  </p>
+                )}
+                <TeamComposer
+                  teamId={teamId}
+                  state={state}
+                  handleRef={composerRef}
+                  onSubmit={(message) => {
+                    transcriptRef.current?.followNextPost();
+                    return postMessage(message);
+                  }}
+                  onShowRequest={() => {
+                    // A question asked in a thread is answered there.
+                    const requestThread = state?.request?.threadSequence;
+                    if (requestThread === undefined) transcriptRef.current?.showRequest();
+                    else openThread(requestThread);
+                  }}
+                />
+              </div>
+            </div>
+          </ResizablePanel>
+          {asideKind && (
+            <>
+              <ResizableHandle
+                aria-label="Resize team aside"
+                className="hidden @3xl/team:flex"
+                onDragging={(dragging) => {
+                  resizeRef.current.dragging = dragging;
+                  if (!dragging) rememberAsideSize(resizeRef.current.size);
+                }}
+              />
+              {/* Each kind is its own panel, so switching kinds restores that kind's size. */}
+              <ResizablePanel
+                id={asideKind}
+                order={2}
+                defaultSize={asideSize}
+                minSize={TEAM_ASIDE_MIN_SIZE}
+                maxSize={TEAM_ASIDE_MAX_SIZE}
+                onResize={(size) => {
+                  resizeRef.current.size = size;
+                  if (!resizeRef.current.dragging) rememberAsideSize(size);
+                }}
+              >
+                {showingCanvas && (
+                  <TeamCanvas
+                    key={canvas.id}
+                    teamId={teamId}
+                    artifact={canvas}
+                    onClose={() => setAside(null)}
+                  />
+                )}
+                {thread !== undefined && state && (
+                  <TeamThread
+                    key={`${thread}:${aside?.type === "thread" ? (aside.selectedSequence ?? "") : ""}`}
+                    teamId={teamId}
+                    sequence={thread}
+                    selectedSequence={aside?.type === "thread" ? aside.selectedSequence : undefined}
+                    isVisible={isVisible}
+                    state={state}
+                    composerRef={threadComposerRef}
+                    onLoadThrough={loadPrevious}
+                    onReply={(message) => postMessage({ ...message, threadSequence: thread })}
+                    onClose={() => setAside(null)}
+                  />
+                )}
+                {showingArtifacts && (
+                  <TeamArtifacts
+                    teamId={teamId}
+                    artifacts={state.artifacts}
+                    onClose={() => setAside(null)}
+                  />
+                )}
+                {showingMembers && (
+                  <TeamMembers
+                    team={state.team}
+                    isVisible={isVisible}
+                    selectedAgentId={aside?.type === "members" ? aside.selectedAgentId : undefined}
+                    onClose={() => setAside(null)}
+                  />
+                )}
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      </div>
+    </TeamPaneProvider>
+  );
+}
+
+function TeamPaneError({ error }: { error: unknown }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+      <AlertCircle className="size-6 text-destructive" />
+      <p className="font-medium">Team unavailable</p>
+      <p className="text-sm text-muted-foreground">
+        {error instanceof Error ? error.message : "It may have been deleted."}
+      </p>
+    </div>
+  );
+}

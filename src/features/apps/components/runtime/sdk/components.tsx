@@ -42,7 +42,7 @@ export function AppHeader({ className, ...props }: ComponentProps<"header">) {
     <header
       data-slot="app-header"
       className={cn(
-        "flex shrink-0 items-center gap-3 border-b bg-background/95 py-3 pl-4 pr-[calc(1rem+var(--toybox-pane-actions-inset,0px))] backdrop-blur @md:pl-6 @md:pr-[calc(1.5rem+var(--toybox-pane-actions-inset,0px))]",
+        "flex shrink-0 items-center gap-3 border-b bg-background/95 py-3 pl-4 pr-[calc(1rem+var(--agent-teams-pane-actions-inset,0px))] backdrop-blur @md:pl-6 @md:pr-[calc(1.5rem+var(--agent-teams-pane-actions-inset,0px))]",
         className,
       )}
       {...props}

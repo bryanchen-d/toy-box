@@ -14,8 +14,8 @@ afterEach(() => {
 
 describe("browser server settings", () => {
   test("normalizes a server URL and removes only trailing slashes", () => {
-    expect(parseServerSetting(" HTTPS://Example.COM/toy-box/// ").serverUrl).toBe(
-      "https://example.com/toy-box",
+    expect(parseServerSetting(" HTTPS://Example.COM/agent-teams/// ").serverUrl).toBe(
+      "https://example.com/agent-teams",
     );
   });
 
@@ -23,35 +23,35 @@ describe("browser server settings", () => {
     expect(parseServerSetting(DEFAULT_SERVER_URL).inboxEndpoint).toBe(
       "http://localhost:3100/api/inbox",
     );
-    expect(parseServerSetting("https://example.com/toy-box/").inboxEndpoint).toBe(
-      "https://example.com/toy-box/api/inbox",
+    expect(parseServerSetting("https://example.com/agent-teams/").inboxEndpoint).toBe(
+      "https://example.com/agent-teams/api/inbox",
     );
   });
 
   test("derives a cross-browser host permission without a port or server path", () => {
-    expect(parseServerSetting("http://localhost:4100/toy-box").hostPermission).toBe(
+    expect(parseServerSetting("http://localhost:4100/agent-teams").hostPermission).toBe(
       "http://localhost/*",
     );
-    expect(parseServerSetting("https://example.com:8443/toy-box").hostPermission).toBe(
+    expect(parseServerSetting("https://example.com:8443/agent-teams").hostPermission).toBe(
       "https://example.com/*",
     );
   });
 
   test("resolves the complete endpoint from the local browser setting", async () => {
-    installBrowser({ storedServerUrl: "https://example.com/toy-box/" });
+    installBrowser({ storedServerUrl: "https://example.com/agent-teams/" });
 
-    await expect(getInboxEndpoint()).resolves.toBe("https://example.com/toy-box/api/inbox");
+    await expect(getInboxEndpoint()).resolves.toBe("https://example.com/agent-teams/api/inbox");
   });
 
   test("requests the host and stores the normalized server", async () => {
     const calls = installBrowser();
 
-    await expect(saveServerSetting("https://example.com/toy-box/")).resolves.toMatchObject({
-      serverUrl: "https://example.com/toy-box",
-      inboxEndpoint: "https://example.com/toy-box/api/inbox",
+    await expect(saveServerSetting("https://example.com/agent-teams/")).resolves.toMatchObject({
+      serverUrl: "https://example.com/agent-teams",
+      inboxEndpoint: "https://example.com/agent-teams/api/inbox",
     });
     expect(calls.requested).toEqual({ origins: ["https://example.com/*"] });
-    expect(calls.stored).toEqual({ serverUrl: "https://example.com/toy-box" });
+    expect(calls.stored).toEqual({ serverUrl: "https://example.com/agent-teams" });
   });
 
   test("releases the previous optional host after changing servers", async () => {
@@ -76,7 +76,7 @@ describe("browser server settings", () => {
     );
     expect(() => parseServerSetting("http://user:secret@localhost:3100")).toThrow("credentials");
     expect(() => parseServerSetting("http://localhost:3100?profile=work")).toThrow("query string");
-    expect(() => parseServerSetting("file:///tmp/toy-box")).toThrow("HTTP or HTTPS");
+    expect(() => parseServerSetting("file:///tmp/agent-teams")).toThrow("HTTP or HTTPS");
     expect(() => parseServerSetting("localhost:3100")).toThrow("HTTP or HTTPS");
   });
 });

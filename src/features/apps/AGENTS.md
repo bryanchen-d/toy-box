@@ -8,7 +8,7 @@ Apps are trusted React surfaces with two ownership models:
 - An installed app is a durable, reopenable workspace surface backed by three
   feature-owned values. An `AppDefinition` is installed code, metadata, and a
   state contract with its default. Every definition is an ordinary
-  `~/.toy-box/apps/<id>/app.json` and `app.tsx` pair.
+  `~/.agent-teams/apps/<id>/app.json` and `app.tsx` pair.
 - An `AppInstance` is one saved use of a definition. SQLite owns its ID, title,
   icon color, small JSON state, optimistic revision, and timestamps.
 - An `AppShare` is immutable, MIME-typed JSON content an app surface has offered
@@ -25,9 +25,9 @@ The feature is organized by responsibility:
   compiled-bundle reads, cache transitions, and saved-app operations. The catalog is
   one snapshot of definitions, saved instances, and pending shares, preloaded during SSR.
 - `components/` owns the Apps sidebar and workspace pane. Its private `host/`
-  modules adapt Toy Box capabilities to a mounted app; `runtime/` implements the
+  modules adapt Agent Teams capabilities to a mounted app; `runtime/` implements the
   authored SDK in the browser.
-- `sdk.ts` is the complete public authoring contract for `@toy-box/sdk`, while
+- `sdk.ts` is the complete public authoring contract for `@agent-teams/sdk`, while
   `runtime.ts` defines the versioned compiler-to-host module bridge.
 - `server/functions.ts` is the validated RPC ingress. `server/index.ts` owns
   artifact bundle access and installed lifecycle orchestration over the definition registry,
@@ -101,7 +101,7 @@ Every app source exports one React TSX component. Artifact validation, installed
 registration, and the first installed bundle load after a restart use the same
 typecheck-and-compile pipeline. `server/compiler/typecheck.ts` checks the authored
 file against only the declared runtime dependencies. It owns the TypeScript
-program and a source-local virtual `@toy-box/sdk` module. Installed manifests
+program and a source-local virtual `@agent-teams/sdk` module. Installed manifests
 drive the inferred `useApp()` state type; artifacts expose only portable SDK
 capabilities.
 
@@ -119,11 +119,11 @@ stages it as a Bun executable asset for standalone compilation.
 App typechecking inherits the project's TypeScript options with browser-only globals
 and requests diagnostics only for the app source and its component-export check.
 
-Static Tailwind classes use the shared Toy Box theme; custom CSS may live in a scoped
+Static Tailwind classes use the shared Agent Teams theme; custom CSS may live in a scoped
 `<style>` element. Authored code may import `react`, `motion/react-m`, `zod`,
-`@toy-box/sdk`, and the curated `lucide-react` exports. The host wraps every app in
+`@agent-teams/sdk`, and the curated `lucide-react` exports. The host wraps every app in
 LazyMotion with `domMax` features and user reduced-motion preferences. Apps are trusted
-code running in Toy Box's page, not a security sandbox. Motion's lowercase
+code running in Agent Teams' page, not a security sandbox. Motion's lowercase
 element exports are bound to capitalized module-scope component names before JSX so
 React Compiler preserves their component identity. The import allowlist makes the
 contract narrow and portable.
@@ -138,15 +138,15 @@ The SDK exposes:
   failure.
 - `useWorkspace(selector)`, which projects ordinary sessions and child-session
   trees, saved apps, models, published panes, and workers owned by the app.
-- `useChannels()`, the same catalog hook used by the Channels sidebar. It composes
-  the channel list and workspace activity caches into channel, agent identity/running,
+- `useTeams()`, the same catalog hook used by the Teams sidebar. It composes
+  the team list and workspace activity caches into team, agent identity/running,
   and unread/reply status entries without opening detail streams or marking read.
-- `useChannel(channelId, options?)`, a direct export of the channel pane hook.
+- `useTeam(teamId, options?)`, a direct export of the team pane hook.
   It shares the detail cache, stream, paging, and post mutation. Observation is active
-  by default; `mode: "passive"` leaves unread state untouched. Key the observer by channel ID when switching.
+  by default; `mode: "passive"` leaves unread state untouched. Key the observer by team ID when switching.
   `postMessage` returns a promise for the persisted user message and exposes
   failures through rejection and `postError`; it does not await the team's work.
-- `channelTasksDiff`, a direct export from Channels, for displaying derived diff totals without
+- `teamTasksDiff`, a direct export from Teams, for displaying derived diff totals without
   duplicating domain logic. Artifacts carry the `id` that tasks reference as `artifactId`.
 - `useFile`, which reuses the live file lifecycle from editor panes, including
   queued saves, external updates, modes, and file-owned workers.
@@ -164,8 +164,8 @@ editor pane identity. The SDK's `useApp()` adds saved-only share and worker acti
 flushing state before starting a worker. Artifact apps have no saved state store.
 Creating and opening a session refreshes the session catalog before publishing
 its pane, so retention observes the newly created session.
-Channels can also mount that same artifact renderer beside chat, supplying a
-channel-specific publisher identity while retaining the source file's ownership.
+Teams can also mount that same artifact renderer beside chat, supplying a
+team-specific publisher identity while retaining the source file's ownership.
 Its `runtime/` modules contain only what compiled author code can consume. The
 app-state store is intentionally imperative because it owns a debounced
 optimistic write, serialized conflict replay, and rollback lifecycle. Ordinary

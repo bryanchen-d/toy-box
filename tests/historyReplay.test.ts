@@ -165,12 +165,12 @@ describe("history replay", () => {
         data: {
           toolCallId: "tool-create-session",
           success: true,
-          result: { content: JSON.stringify({ sessionId: "toy-box-created-2", opened: true }) },
+          result: { content: JSON.stringify({ sessionId: "agent-teams-created-2", opened: true }) },
         },
       },
     ] as SdkSessionEvent[]);
 
-    expect(state.linkedSessionIds).toEqual(["toy-box-created-2"]);
+    expect(state.linkedSessionIds).toEqual(["agent-teams-created-2"]);
     expect(assistantToolCalls(state)).toEqual([]);
   });
 

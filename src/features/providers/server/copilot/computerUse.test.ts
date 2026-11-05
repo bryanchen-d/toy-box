@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { computerUseServers } from "./computerUse";
 
 test("computer use is opt-in and uses the running CLI's version, not the npm loader's version", async () => {
-  const home = await mkdtemp(join(tmpdir(), "toy-box-computer-"));
+  const home = await mkdtemp(join(tmpdir(), "agent-teams-computer-"));
   const getStatus = mock(async () => ({ version: "1.0.96-2", protocolVersion: 2 }));
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   const settings = join(home, ".copilot/settings.json");

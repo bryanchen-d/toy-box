@@ -17,11 +17,13 @@ import {
   type SessionCreationOptions,
 } from "./SidebarActions";
 import { SessionList } from "@sessions/components/sidebar/SessionList";
+import { SessionFilterInput } from "@sessions/components/sidebar/SessionFilterInput";
+import { SidebarSection } from "@/shared/sidebar/SidebarSection";
 import { FileBrowserDialog } from "@files/components/browser/FileBrowserDialog";
 import { ScreenBrowserDialog } from "@screens/client/ScreenBrowserDialog";
-import { ChannelsPanel } from "@channels/components/sidebar/ChannelsPanel";
-import { ChannelDialog } from "@channels/components/ChannelDialog";
-import type { SidebarPanels } from "@workspace/model/config/layoutPrefs";
+import { TeamsPanel } from "@teams/components/sidebar/TeamsPanel";
+import { TeamDialog } from "@teams/components/TeamDialog";
+import type { SidebarPanel, SidebarPanels } from "@workspace/model/config/layoutPrefs";
 
 /**
  * Crossfade one of the sidebar's two layouts. Whichever layout is leaving clears
@@ -49,14 +51,14 @@ export type SidebarProps = {
   emptyMessage?: string;
 
   panels: SidebarPanels;
-  onPanelExpanded: (panel: keyof SidebarPanels, expanded: boolean) => void;
+  onPanelExpanded: (panel: SidebarPanel, expanded: boolean) => void;
 
   onCreateSession: (options?: SessionCreationOptions) => void;
   openAppIds: string[];
   onAppOpen: (appId: string, toggleInWorkspace: boolean) => void;
   onAppOpenInHyper: (appId: string) => void;
-  openChannelIds: string[];
-  onChannelOpen: (channelId: string, toggleInWorkspace: boolean) => void;
+  openTeamIds: string[];
+  onTeamOpen: (teamId: string, toggleInWorkspace: boolean) => void;
   onToggleHyper: () => void;
   isHyperOpen: boolean;
   onOpenInbox: () => void;
@@ -107,8 +109,8 @@ export function Sidebar({
   openAppIds,
   onAppOpen,
   onAppOpenInHyper,
-  openChannelIds,
-  onChannelOpen,
+  openTeamIds,
+  onTeamOpen,
   onToggleHyper,
   isHyperOpen,
   onOpenInbox,
@@ -126,12 +128,12 @@ export function Sidebar({
   const [browsing, setBrowsing] = useState<{ directory?: string }>();
   const [browsingScreens, setBrowsingScreens] = useState(false);
   const [createAutomationOpen, setCreateAutomationOpen] = useState(false);
-  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
 
   const creationActions = {
     onCreateSession,
     onCreateAutomation: () => setCreateAutomationOpen(true),
-    onCreateChannel: () => setCreateChannelOpen(true),
+    onCreateTeam: () => setCreateTeamOpen(true),
   };
 
   // Only a collapsible sidebar pins the collapse toggle and settings actions
@@ -170,37 +172,47 @@ export function Sidebar({
       >
         <SidebarHeader
           leadingSlot={collapsible ? <ActionSpacer /> : undefined}
-          filter={filter}
-          onFilterChange={onFilterChange}
-          sessionCount={sessions.length}
+          onOpenInbox={onOpenInbox}
+          isInboxOpen={isInboxOpen}
           {...creationActions}
         />
 
         <div className="min-h-0 min-w-0 flex flex-col bg-panel">
-          <SessionList
-            className="px-3 py-2"
-            sessions={sessions}
-            isLoading={isSessionsLoading}
-            onSessionSelect={onSessionSelect}
-            onSessionRename={onSessionRename}
-            onSessionDelete={onSessionDelete}
+          <TeamsPanel
+            isExpanded={panels.teams}
+            onExpandedChange={(expanded) => onPanelExpanded("teams", expanded)}
+            openTeamIds={openTeamIds}
+            onTeamOpen={onTeamOpen}
             onBrowseDirectory={(directory) => setBrowsing({ directory })}
-            openSessionIds={openSessionIds}
-            worktreeSessionIds={worktreeSessionIds}
-            emptyMessage={emptyMessage}
+            onCreate={() => setCreateTeamOpen(true)}
           />
 
-          <ChannelsPanel
-            isExpanded={panels.channels ?? false}
-            onExpandedChange={(expanded) => onPanelExpanded("channels", expanded)}
-            openChannelIds={openChannelIds}
-            onChannelOpen={onChannelOpen}
-            onBrowseDirectory={(directory) => setBrowsing({ directory })}
-            onCreate={() => setCreateChannelOpen(true)}
-          />
+          <SidebarSection
+            title="Sessions"
+            count={sessions.length}
+            isExpanded={panels.sessions}
+            onExpandedChange={(expanded) => onPanelExpanded("sessions", expanded)}
+            fill
+          >
+            <div className="px-3 pt-2">
+              <SessionFilterInput filter={filter} onFilterChange={onFilterChange} />
+            </div>
+            <SessionList
+              className="px-3 py-2"
+              sessions={sessions}
+              isLoading={isSessionsLoading}
+              onSessionSelect={onSessionSelect}
+              onSessionRename={onSessionRename}
+              onSessionDelete={onSessionDelete}
+              onBrowseDirectory={(directory) => setBrowsing({ directory })}
+              openSessionIds={openSessionIds}
+              worktreeSessionIds={worktreeSessionIds}
+              emptyMessage={emptyMessage}
+            />
+          </SidebarSection>
 
           <AppsPanel
-            isExpanded={panels.apps ?? false}
+            isExpanded={panels.apps}
             onExpandedChange={(expanded) => onPanelExpanded("apps", expanded)}
             openAppIds={openAppIds}
             onAppOpen={onAppOpen}
@@ -208,7 +220,7 @@ export function Sidebar({
           />
 
           <AutomationPanel
-            isExpanded={panels.automations ?? false}
+            isExpanded={panels.automations}
             onExpandedChange={(expanded) => onPanelExpanded("automations", expanded)}
             openSessionIds={openSessionIds}
             onSessionOpen={(sessionId) => onSessionSelect(sessionId, false)}
@@ -228,8 +240,6 @@ export function Sidebar({
           onBrowseScreens={() => setBrowsingScreens(true)}
           onToggleHyper={onToggleHyper}
           isHyperOpen={isHyperOpen}
-          onOpenInbox={onOpenInbox}
-          isInboxOpen={isInboxOpen}
           onToggleTerminal={onToggleTerminal}
           isTerminalOpen={isTerminalOpen}
         />
@@ -280,10 +290,10 @@ export function Sidebar({
 
       {createAutomationOpen && <AutomationDialog onOpenChange={setCreateAutomationOpen} />}
 
-      {createChannelOpen && (
-        <ChannelDialog
-          onOpenChange={setCreateChannelOpen}
-          onCreated={(channelId) => onChannelOpen(channelId, false)}
+      {createTeamOpen && (
+        <TeamDialog
+          onOpenChange={setCreateTeamOpen}
+          onCreated={(teamId) => onTeamOpen(teamId, false)}
         />
       )}
     </>

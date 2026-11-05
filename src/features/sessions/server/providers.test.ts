@@ -35,7 +35,7 @@ test.each(sessionProviders.map((provider) => provider.id))(
   async (providerId) => {
     await setup();
     const provider = getSessionProvider(providerId);
-    const sessionId = `toy-box-test-${crypto.randomUUID()}`;
+    const sessionId = `agent-teams-test-${crypto.randomUUID()}`;
     onTestFinished(() => deleteSessionFiles(sessionId));
     const session = { id: sessionId, provider: { id: providerId, sessionId: "native" } };
     const connection = { provider: session.provider } as SessionConnection;
@@ -55,7 +55,7 @@ test.each(sessionProviders.map((provider) => provider.id))(
     expect(configuration.allowUserQuestions).toBe(true);
     expect(configuration.instructions).toContain("Follow the host's instructions.");
     expect(
-      configuration.skillDirectories.some((path) => path.endsWith("create-toy-box-editor")),
+      configuration.skillDirectories.some((path) => path.endsWith("create-agent-teams-editor")),
     ).toBe(true);
     await listSkills("/tmp", "hyper", providerId);
     expect(skills).toHaveBeenCalledWith("/tmp", configuration.skillDirectories);
@@ -63,9 +63,9 @@ test.each(sessionProviders.map((provider) => provider.id))(
     await resumeSession(sessionId, { sessionType: "worker", directory: "/tmp" });
     const resumed = resume.mock.calls[0]![1];
     expect(resumed.allowUserQuestions).toBe(false);
-    expect(resumed.skillDirectories.some((path) => path.endsWith("create-toy-box-editor"))).toBe(
-      false,
-    );
+    expect(
+      resumed.skillDirectories.some((path) => path.endsWith("create-agent-teams-editor")),
+    ).toBe(false);
   },
 );
 

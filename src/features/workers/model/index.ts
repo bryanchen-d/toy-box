@@ -40,7 +40,7 @@ export type WorkerOwner =
   | { type: "session"; parentSessionId: string }
   | { type: "file"; file: SessionFile }
   | { type: "app"; appId: string }
-  | { type: "channel"; channelId: string }
+  | { type: "team"; teamId: string }
   | { type: "inbox" };
 
 /** A Session identity whose lifecycle belongs to another resource. */
@@ -63,7 +63,7 @@ export function workerParentSessionId(worker: Worker): string | undefined {
     case "file":
       return worker.file.sessionId;
     case "app":
-    case "channel":
+    case "team":
     case "inbox":
       return;
   }

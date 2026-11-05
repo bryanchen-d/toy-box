@@ -8,7 +8,7 @@ const CENTER: Point = { x: 0, y: 0 };
 
 /** A single ink rising gently: the session placeholder. */
 const RISING: Ink = { color: "#facc15", home: { x: 0, y: 0 }, drift: { x: 0, y: -25 } };
-/** Two inks converging from below and above: the channel placeholder. */
+/** Two inks converging from below and above: the team placeholder. */
 const FROM_BELOW: Ink = { color: "#facc15", home: { x: 0, y: 26 }, drift: { x: 0, y: -44 } };
 const FROM_ABOVE: Ink = { color: "#22d3ee", home: { x: 0, y: -26 }, drift: { x: 0, y: 44 } };
 

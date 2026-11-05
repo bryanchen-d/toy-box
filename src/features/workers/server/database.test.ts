@@ -34,22 +34,22 @@ async function openWorkersTestDatabase(): Promise<void> {
 }
 
 describe("worker ownership", () => {
-  test("public owner reads select one channel without exposing another's Workers", async () => {
+  test("public owner reads select one team without exposing another's Workers", async () => {
     await openWorkersTestDatabase();
-    for (const channelId of ["a", "b"]) {
+    for (const teamId of ["a", "b"]) {
       await registerWorkerSession({
-        type: "channel",
-        channelId,
-        sessionId: channelId,
+        type: "team",
+        teamId,
+        sessionId: teamId,
         createdAt: new Date(0).toISOString(),
         ephemeral: false,
         name: "Reviewer",
       });
     }
-    const owner = { type: "channel", channelId: "a" } as const;
+    const owner = { type: "team", teamId: "a" } as const;
     expect((await listWorkers(owner)).map((worker) => worker.sessionId)).toEqual(["a"]);
     expect(await getWorker("b", owner)).toBeNull();
-    expect((await getWorker("b", "channel"))?.name).toBe("Reviewer");
+    expect((await getWorker("b", "team"))?.name).toBe("Reviewer");
   });
 
   test("public detail updates preserve omitted fields and replace or clear opaque metadata", async () => {
@@ -157,28 +157,28 @@ describe("worker ownership", () => {
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "session",
-      sessionId: "toy-box-worker-a",
-      parentSessionId: "toy-box-parent-a",
+      sessionId: "agent-teams-worker-a",
+      parentSessionId: "agent-teams-parent-a",
       ephemeral: false,
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "session",
-      sessionId: "toy-box-worker-b",
-      parentSessionId: "toy-box-parent-b",
+      sessionId: "agent-teams-worker-b",
+      parentSessionId: "agent-teams-parent-b",
       ephemeral: true,
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "file",
-      sessionId: "toy-box-worker-c",
+      sessionId: "agent-teams-worker-c",
       ephemeral: true,
-      file: { kind: "session", sessionId: "toy-box-parent-a", path: "notes.md" },
+      file: { kind: "session", sessionId: "agent-teams-parent-a", path: "notes.md" },
     });
 
-    expect(await getWorkerSessionIdsForParent("toy-box-parent-a")).toEqual([
-      "toy-box-worker-a",
-      "toy-box-worker-c",
+    expect(await getWorkerSessionIdsForParent("agent-teams-parent-a")).toEqual([
+      "agent-teams-worker-a",
+      "agent-teams-worker-c",
     ]);
   });
 
@@ -188,36 +188,36 @@ describe("worker ownership", () => {
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "file",
-      sessionId: "toy-box-file-worker",
-      file: { kind: "session", sessionId: "toy-box-parent", path: "notes.md" },
+      sessionId: "agent-teams-file-worker",
+      file: { kind: "session", sessionId: "agent-teams-parent", path: "notes.md" },
       ephemeral: true,
       name: "Editor",
       metadata: { task: "Review notes" },
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
-      type: "channel",
-      sessionId: "toy-box-channel-worker",
-      channelId: "channel-a",
+      type: "team",
+      sessionId: "agent-teams-team-worker",
+      teamId: "team-a",
       ephemeral: false,
       name: "Critic",
       metadata: { seenThrough: 4 },
     });
 
-    expect(await getPersistedWorker("toy-box-file-worker")).toEqual({
+    expect(await getPersistedWorker("agent-teams-file-worker")).toEqual({
       createdAt: new Date(0).toISOString(),
       type: "file",
-      sessionId: "toy-box-file-worker",
-      file: { kind: "session", sessionId: "toy-box-parent", path: "notes.md" },
+      sessionId: "agent-teams-file-worker",
+      file: { kind: "session", sessionId: "agent-teams-parent", path: "notes.md" },
       ephemeral: true,
       name: "Editor",
       metadata: { task: "Review notes" },
     });
-    expect(await getPersistedWorker("toy-box-channel-worker")).toEqual({
+    expect(await getPersistedWorker("agent-teams-team-worker")).toEqual({
       createdAt: new Date(0).toISOString(),
-      type: "channel",
-      sessionId: "toy-box-channel-worker",
-      channelId: "channel-a",
+      type: "team",
+      sessionId: "agent-teams-team-worker",
+      teamId: "team-a",
       ephemeral: false,
       name: "Critic",
       metadata: { seenThrough: 4 },
@@ -230,29 +230,29 @@ describe("worker ownership", () => {
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "file",
-      sessionId: "toy-box-file-worker",
+      sessionId: "agent-teams-file-worker",
       ephemeral: true,
-      file: { kind: "session", sessionId: "toy-box-parent", path: "notes.md" },
+      file: { kind: "session", sessionId: "agent-teams-parent", path: "notes.md" },
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "app",
-      sessionId: "toy-box-app-worker",
+      sessionId: "agent-teams-app-worker",
       appId: "app-a",
       ephemeral: false,
     });
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "session",
-      sessionId: "toy-box-session-worker",
-      parentSessionId: "toy-box-parent",
+      sessionId: "agent-teams-session-worker",
+      parentSessionId: "agent-teams-parent",
       ephemeral: true,
     });
     expect(await getEphemeralWorkerSessionIds()).toEqual([
-      "toy-box-file-worker",
-      "toy-box-session-worker",
+      "agent-teams-file-worker",
+      "agent-teams-session-worker",
     ]);
-    expect(await getWorkerSessionIdsForApp("app-a")).toEqual(["toy-box-app-worker"]);
+    expect(await getWorkerSessionIdsForApp("app-a")).toEqual(["agent-teams-app-worker"]);
   });
 
   test("unregisters workers and treats missing records as a no-op", async () => {
@@ -261,18 +261,18 @@ describe("worker ownership", () => {
     await registerWorkerSession({
       createdAt: new Date(0).toISOString(),
       type: "session",
-      sessionId: "toy-box-worker",
-      parentSessionId: "toy-box-parent",
+      sessionId: "agent-teams-worker",
+      parentSessionId: "agent-teams-parent",
       ephemeral: false,
     });
-    await unregisterWorkerSession("toy-box-worker");
-    await unregisterWorkerSession("toy-box-worker");
+    await unregisterWorkerSession("agent-teams-worker");
+    await unregisterWorkerSession("agent-teams-worker");
 
-    expect(await getPersistedWorker("toy-box-worker")).toBeNull();
+    expect(await getPersistedWorker("agent-teams-worker")).toBeNull();
   });
 
   test("read paths no-op when the server-state database does not exist", async () => {
-    expect(await getWorkerSessionIdsForParent("toy-box-parent")).toEqual([]);
+    expect(await getWorkerSessionIdsForParent("agent-teams-parent")).toEqual([]);
     expect(await getWorkerSessionIdsForApp("app-a")).toEqual([]);
     expect(await getEphemeralWorkerSessionIds()).toEqual([]);
     expect(await getPersistedWorker("missing-worker")).toBeNull();

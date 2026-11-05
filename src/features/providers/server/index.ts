@@ -36,7 +36,7 @@ export async function listModels(): Promise<ModelInfo[]> {
 export async function updateProvider(providerId: string) {
   const { id } = getSessionProvider(providerId);
   const result = await cli.updateProvider(id);
-  // Refresh even when unchanged: the CLI may have been upgraded outside Toy Box.
+  // Refresh even when unchanged: the CLI may have been upgraded outside Agent Teams.
   modelsByProvider.delete(id);
   broadcast({ type: "providers.changed" });
   return result;

@@ -1,6 +1,6 @@
-/** Complete compile-time contract for the authored `@toy-box/sdk` module. */
+/** Complete compile-time contract for the authored `@agent-teams/sdk` module. */
 
-export { channelTasksDiff } from "@channels/model";
+export { teamTasksDiff } from "@teams/model";
 
 import type {
   ComponentProps,
@@ -26,20 +26,20 @@ import type {
 import type { ContextTier, ModelConfiguration, ModelInfo } from "@providers/model";
 import type { WorkspaceSessionStatus } from "@workspace/model/state/reducer";
 import type {
-  Channel,
-  ChannelAgent,
-  ChannelMessage,
-  ChannelState,
-  PostChannelMessageInput,
-  channelStatus,
-} from "@channels/model";
+  Team,
+  TeamAgent,
+  TeamMessage,
+  TeamState,
+  PostTeamMessageInput,
+  teamStatus,
+} from "@teams/model";
 
 export type {
   AppInstance,
   AppShare,
-  Channel,
-  ChannelMessage,
-  ChannelState,
+  Team,
+  TeamMessage,
+  TeamState,
   ContextTier,
   ModelConfiguration,
   ModelInfo,
@@ -208,25 +208,25 @@ export declare function AppSharePicker(props: {
 
 export declare function useWorkspace<T>(selector: (workspace: AppWorkspace) => T): T;
 
-/** The shared channel catalog, including each team's running agents and unread/reply status. */
-export declare function useChannels(): {
-  channel: Channel;
-  agents: (ChannelAgent & { isRunning: boolean })[];
-  status: ReturnType<typeof channelStatus>;
+/** The shared team catalog, including each team's running agents and unread/reply status. */
+export declare function useTeams(): {
+  team: Team;
+  agents: (TeamAgent & { isRunning: boolean })[];
+  status: ReturnType<typeof teamStatus>;
 }[];
 
-/** Observe one channel through the same cached stream as the channel pane. */
-export declare function useChannel(
-  channelId: string,
+/** Observe one team through the same cached stream as the team pane. */
+export declare function useTeam(
+  teamId: string,
   options?: { visible?: boolean; mode?: "active" | "passive" },
 ): {
-  state: ChannelState | undefined;
+  state: TeamState | undefined;
   unreadAfter: number | null | undefined;
   loadPrevious(throughSequence?: number): Promise<void>;
   /** Resolves when the user message is persisted, not when the team finishes the request. */
   postMessage(
-    message: Pick<PostChannelMessageInput, "content" | "attachments" | "threadSequence">,
-  ): Promise<ChannelMessage>;
+    message: Pick<PostTeamMessageInput, "content" | "attachments" | "threadSequence">,
+  ): Promise<TeamMessage>;
   postError: Error | null;
 };
 

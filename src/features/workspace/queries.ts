@@ -9,7 +9,7 @@ import {
   invalidateSessionsStateQuery,
 } from "@sessions/queryCache";
 import { providerQueries } from "@providers/queries";
-import { applyChannelListEvent } from "@channels/queryCache";
+import { applyTeamListEvent } from "@teams/queryCache";
 import { applyAutomationListEvent } from "@automations/queryCache";
 import { applyInboxListEvent } from "@inbox/queryCache";
 import { applyAppListEvent } from "@apps/queryCache";
@@ -42,7 +42,7 @@ export function applyWorkspaceEvent(queryClient: QueryClient, event: WorkspaceEv
   )?.settings;
   getWorkspaceQuerySource(queryClient).recordEvent(event);
   applyWorkspaceEventToSessionQueries(queryClient, event);
-  applyChannelListEvent(queryClient, event);
+  applyTeamListEvent(queryClient, event);
   applyAutomationListEvent(queryClient, event);
   applyInboxListEvent(queryClient, event);
   applyAppListEvent(queryClient, event);

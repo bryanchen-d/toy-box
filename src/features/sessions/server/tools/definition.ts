@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-/** Every handler sees Toy Box session identity, regardless of the native backend. */
+/** Every handler sees Agent Teams session identity, regardless of the native backend. */
 export type ToolInvocation = {
   sessionId: string;
   toolCallId: string;

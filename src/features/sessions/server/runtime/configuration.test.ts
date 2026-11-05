@@ -1,9 +1,9 @@
-import { createStoredChannel } from "@channels/server/testFixtures";
+import { createStoredTeam } from "@teams/server/testFixtures";
 import { describe, expect, jest, mock, onTestFinished, spyOn, test } from "bun:test";
 import { homedir } from "node:os";
 import type { SessionConnection } from "@providers/server/provider";
-import { ChannelDatabase } from "@channels/server/database";
-import * as channelAgent from "@channels/server/agent";
+import { TeamDatabase } from "@teams/server/database";
+import * as teamAgent from "@teams/server/agent";
 import { WorkerDatabase } from "@workers/server/database";
 import * as state from "@/server/database";
 import * as sdk from "../providers";
@@ -18,7 +18,7 @@ import { createSession, deliverSessionMessage, recreateSession } from "./index";
 import { SessionStream } from "./sessionStream";
 import { createInitialSessionState } from "@sessions/model/reducer";
 
-async function setup(channelWorker: boolean, agent: "member" | "lead" = "member") {
+async function setup(teamWorker: boolean, agent: "member" | "lead" = "member") {
   let sessionId = `configuration-${crypto.randomUUID()}`;
   const db = await state.createTestDatabase();
   spyOn(state, "getStateDatabase").mockResolvedValue(db);
@@ -37,20 +37,20 @@ async function setup(channelWorker: boolean, agent: "member" | "lead" = "member"
     handles.push(handle);
     return handle.session;
   });
-  const channels = new ChannelDatabase(db);
-  if (channelWorker) {
-    const channel = await createStoredChannel(channels, {
+  const teams = new TeamDatabase(db);
+  if (teamWorker) {
+    const team = await createStoredTeam(teams, {
       name: "Configuration",
-      purpose: "Verify channel agent configuration.",
+      purpose: "Verify team agent configuration.",
       model: { provider: "copilot", name: "gpt-5.5" },
     });
     if (agent === "lead") {
-      sessionId = channel.id;
+      sessionId = team.id;
     } else {
-      await channels.createMember({
+      await teams.createMember({
         createdAt: new Date(0).toISOString(),
-        type: "channel",
-        channelId: channel.id,
+        type: "team",
+        teamId: team.id,
         sessionId,
         ephemeral: false,
         name: "Critic",
@@ -221,8 +221,8 @@ describe("Session-owned configuration lifetime", () => {
         "open_session",
         "open_file",
         "list_models",
-        "list_channels",
-        "create_channel_members",
+        "list_teams",
+        "create_team_members",
       ]),
     );
     expect(standard).not.toContain("create_session");
@@ -237,17 +237,17 @@ describe("Session-owned configuration lifetime", () => {
         "register_editor",
         "update_settings",
         "list_models",
-        "list_channels",
-        "create_channel_members",
+        "list_teams",
+        "create_team_members",
       ]),
     );
     expect(hyper).not.toContain("update_session_title");
 
     const automation = await toolsFor("automation");
     expect(automation).toEqual(
-      expect.arrayContaining(["list_models", "list_channels", "update_settings"]),
+      expect.arrayContaining(["list_models", "list_teams", "update_settings"]),
     );
-    expect(automation).not.toContain("create_channel_members");
+    expect(automation).not.toContain("create_team_members");
     expect(automation).not.toContain("open_file");
 
     const inboxId = `${sessionId}-inbox`;
@@ -259,27 +259,22 @@ describe("Session-owned configuration lifetime", () => {
     });
     const inbox = (await getSessionConfiguration(inboxId, "worker")).tools.map((tool) => tool.name);
     expect(inbox).toEqual(
-      expect.arrayContaining([
-        "list_models",
-        "list_channels",
-        "create_channel_members",
-        "send_to_inbox",
-      ]),
+      expect.arrayContaining(["list_models", "list_teams", "create_team_members", "send_to_inbox"]),
     );
     expect(inbox).not.toContain("update_settings");
 
     const worker = await toolsFor("worker");
-    expect(worker).not.toContain("list_channels");
+    expect(worker).not.toContain("list_teams");
     expect(worker).toContain("list_models");
-    expect(worker).not.toContain("create_channel_members");
+    expect(worker).not.toContain("create_team_members");
     expect(worker).not.toContain("open_file");
   });
 
   test.each(["copilot", "codex"] as const)(
-    "inherited Channel agent models preserve an existing %s provider when the workspace default changes",
+    "inherited Team agent models preserve an existing %s provider when the workspace default changes",
     async (providerId) => {
       const { sessionId, db } = await setup(true);
-      await new ChannelDatabase(db).updateMember(sessionId, { model: null });
+      await new TeamDatabase(db).updateMember(sessionId, { model: null });
       const defaultModel = {
         provider: providerId === "copilot" ? "codex" : "copilot",
         name: "new-default",
@@ -305,10 +300,10 @@ describe("Session-owned configuration lifetime", () => {
     },
   );
 
-  test("channel tool availability changes reconnect only between executions", async () => {
+  test("team tool availability changes reconnect only between executions", async () => {
     const { sessionId, handles, resume } = await setup(true);
-    const getConfiguration = channelAgent.getChannelAgentConfiguration;
-    const configuration = spyOn(channelAgent, "getChannelAgentConfiguration").mockImplementation(
+    const getConfiguration = teamAgent.getTeamAgentConfiguration;
+    const configuration = spyOn(teamAgent, "getTeamAgentConfiguration").mockImplementation(
       async (worker) => {
         const current = await getConfiguration(worker);
         return {
@@ -330,8 +325,8 @@ describe("Session-owned configuration lifetime", () => {
     expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
     expect(resume.mock.calls[0]![1].tools).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "read_channel", alwaysAvailable: true }),
-        expect.objectContaining({ name: "send_channel_message", alwaysAvailable: true }),
+        expect.objectContaining({ name: "read_team", alwaysAvailable: true }),
+        expect.objectContaining({ name: "send_team_message", alwaysAvailable: true }),
         expect.objectContaining({ name: "set_agent_status", alwaysAvailable: true }),
         expect.objectContaining({ name: "finish_agent_turn", alwaysAvailable: true }),
       ]),
@@ -341,12 +336,12 @@ describe("Session-owned configuration lifetime", () => {
     expect(resume).toHaveBeenCalledTimes(1);
   });
 
-  test("Channel agents refresh changed configuration only between executions", async () => {
+  test("Team agents refresh changed configuration only between executions", async () => {
     const { sessionId, db, create, resume, handles } = await setup(true);
     const receipt = await createSession(
       sessionId,
       {
-        systemMessage: { type: "channel_message", senderName: "You" },
+        systemMessage: { type: "team_message", senderName: "You" },
       },
       { sessionType: "worker" },
     );
@@ -362,16 +357,16 @@ describe("Session-owned configuration lifetime", () => {
     const initialToolNames = initialConfiguration.tools?.map((tool) => tool.name) ?? [];
     expect(initialToolNames).toEqual(
       expect.arrayContaining([
-        "read_channel",
+        "read_team",
         "list_models",
         "set_agent_status",
         "finish_agent_turn",
         "update_member",
       ]),
     );
-    expect(initialToolNames).not.toContain("create_channel_members");
+    expect(initialToolNames).not.toContain("create_team_members");
     expect(initialToolNames).not.toContain("list_sessions");
-    await new ChannelDatabase(db).updateMember(sessionId, {
+    await new TeamDatabase(db).updateMember(sessionId, {
       role: "Evolved role",
       avatar: { mark: "M5 12h14M12 5v14", color: "#7c3aed" },
       model: { provider: "copilot", name: "model-two" },
@@ -413,21 +408,21 @@ describe("Session-owned configuration lifetime", () => {
 
   test("a lead model edit reaches its existing session on the next execution", async () => {
     const { sessionId, db, create, resume, handles } = await setup(true, "lead");
-    const channels = new ChannelDatabase(db);
-    const agent = await channels.getAgent(sessionId);
-    if (!agent) throw new Error("Channel lead not found.");
-    const channel = await channels.getChannel(agent.channelId);
-    if (!channel) throw new Error("Channel not found.");
+    const teams = new TeamDatabase(db);
+    const agent = await teams.getAgent(sessionId);
+    if (!agent) throw new Error("Team lead not found.");
+    const team = await teams.getTeam(agent.teamId);
+    if (!team) throw new Error("Team not found.");
 
     const initial = await createSession(
       sessionId,
       { content: "Start work" },
       { sessionType: "worker" },
     );
-    expect(create.mock.calls[0]![1].model).toEqual(channel.model);
+    expect(create.mock.calls[0]![1].model).toEqual(team.model);
 
     const model = { provider: "copilot", name: "gpt-6", reasoningEffort: "high" };
-    await channels.editChannel({ channelId: channel.id, model });
+    await teams.editTeam({ teamId: team.id, model });
     await deliverSessionMessage(sessionId, { content: "Still running", immediate: true });
     expect(resume).not.toHaveBeenCalled();
     expect(handles[0]!.disconnect).not.toHaveBeenCalled();
@@ -440,18 +435,18 @@ describe("Session-owned configuration lifetime", () => {
   });
 
   test.each(["member", "lead"] as const)(
-    "a %s moves to the channel's new directory only on its next execution",
+    "a %s moves to the team's new directory only on its next execution",
     async (agentType) => {
       const { sessionId, db, create, resume, readDirectory, handles } = await setup(
         true,
         agentType,
       );
-      const channels = new ChannelDatabase(db);
-      const agent = await channels.getAgent(sessionId);
-      if (!agent) throw new Error("Channel agent not found.");
-      const channel = await channels.getChannel(agent.channelId);
-      if (!channel) throw new Error("Channel not found.");
-      await channels.updateChannel(channel.id, { directory: "/workspace/original" });
+      const teams = new TeamDatabase(db);
+      const agent = await teams.getAgent(sessionId);
+      if (!agent) throw new Error("Team agent not found.");
+      const team = await teams.getTeam(agent.teamId);
+      if (!team) throw new Error("Team not found.");
+      await teams.updateTeam(team.id, { directory: "/workspace/original" });
 
       const first = await createSession(
         sessionId,
@@ -460,7 +455,7 @@ describe("Session-owned configuration lifetime", () => {
       );
       expect(create.mock.calls[0]![1].directory).toBe("/workspace/original");
       readDirectory.mockRejectedValue(new Error("Native directory lookup is unavailable."));
-      await channels.updateChannel(channel.id, { directory: "/workspace/next" });
+      await teams.updateTeam(team.id, { directory: "/workspace/next" });
       await deliverSessionMessage(sessionId, { content: "Still running", immediate: true });
       expect(resume).not.toHaveBeenCalled();
       expect(handles[0]!.disconnect).not.toHaveBeenCalled();
@@ -472,18 +467,18 @@ describe("Session-owned configuration lifetime", () => {
       expect(resume.mock.calls[0]![1].directory).toBe("/workspace/next");
       expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
 
-      await channels.updateChannel(channel.id, { directory: null });
+      await teams.updateTeam(team.id, { directory: null });
       SessionStream.get(sessionId)!.finish();
       await deliverSessionMessage(sessionId, { content: "Continue without a project" });
       expect(resume.mock.calls[1]![1].directory).toBe(homedir());
     },
   );
 
-  test("bounded SDK operations do not refresh changed Channel agent configuration", async () => {
+  test("bounded SDK operations do not refresh changed Team agent configuration", async () => {
     const { sessionId, db, resume, handles } = await setup(true);
     await createSession(sessionId, { content: "Start" }, { sessionType: "worker" });
     SessionStream.get(sessionId)!.finish();
-    await new ChannelDatabase(db).updateMember(sessionId, {
+    await new TeamDatabase(db).updateMember(sessionId, {
       role: "Changed role",
       model: { provider: "copilot", name: "model-one" },
     });

@@ -1,12 +1,12 @@
-/** Versioned compiler/host bridge used to load apps against Toy Box's shared runtime. */
-export const APP_RUNTIME_PARAMETER = "__TOYBOX_APP_RUNTIME_V2__";
+/** Versioned compiler/host bridge used to load apps against Agent Teams' shared runtime. */
+export const APP_RUNTIME_PARAMETER = "__AGENT_TEAMS_APP_RUNTIME_V2__";
 
 export const APP_DEPENDENCIES = {
   react: { runtime: "React", typePackage: "@types/react" },
   "react/compiler-runtime": { runtime: "ReactCompilerRuntime" },
   "react/jsx-runtime": { runtime: "JsxRuntime" },
   "react/jsx-dev-runtime": { runtime: "JsxDevRuntime" },
-  "@toy-box/sdk": { runtime: "AppSdk" },
+  "@agent-teams/sdk": { runtime: "AppSdk" },
   "lucide-react": { runtime: "Icons" },
   "motion/react-m": { runtime: "Motion", typePackage: "motion" },
   zod: { runtime: "Zod", typePackage: "zod" },

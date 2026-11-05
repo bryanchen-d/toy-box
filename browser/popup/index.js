@@ -62,11 +62,11 @@ async function handleSubmit(event) {
   const task = ui.prompt.value.trim();
   if (!task || !state.page.url) return;
 
-  setSubmission("sending", "Sending to Toy Box.");
+  setSubmission("sending", "Sending to Agent Teams.");
 
   try {
     await sendPageToInbox({ task, page: state.page, viewport: state.viewport });
-    setSubmission("sent", "Sent to Toy Box.");
+    setSubmission("sent", "Sent to Agent Teams.");
     window.setTimeout(() => window.close(), 250);
   } catch (error) {
     setSubmission("error", getErrorMessage(error, "Couldn’t send this prompt."));

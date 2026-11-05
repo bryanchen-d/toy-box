@@ -5,5 +5,5 @@ export default rootRoute("__root.tsx", [
   physical("/api", "api"),
   physical("/api", "../../inbox/routes"),
   physical("/api", "../../files/routes"),
-  physical("/api", "../../channels/routes"),
+  physical("/api", "../../teams/routes"),
 ]);

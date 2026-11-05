@@ -8,8 +8,8 @@ creating another source of transcript truth.
 
 - `registry.ts` owns cached provider connections, single-flight resume, creation, explicit rename, automatic
   title updates, and complete deletion. Cached sessions retain their application-supplied
-  configuration lifetime; runtime acquisition replaces a private Channel Agent session when its
-  effective configuration changed, while unchanged Channel Agents and ordinary Sessions reuse their
+  configuration lifetime; runtime acquisition replaces a private Team Agent session when its
+  effective configuration changed, while unchanged Team Agents and ordinary Sessions reuse their
   cached session. Active executions retain that session; bounded provider operations restart its idle
   window. Idle sessions disconnect after 30 minutes and resume from durable provider history on their
   next execution or control operation. History reads bypass connections. Managed supervisors may release a retained session immediately once their workflow

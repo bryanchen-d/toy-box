@@ -29,7 +29,7 @@ export function startClaudeQuery(
 ): Query {
   const executable = Bun.which("claude");
   if (!executable)
-    throw new Error("Install Claude Code and run `claude` to sign in, then refresh Toy Box.");
+    throw new Error("Install Claude Code and run `claude` to sign in, then refresh Agent Teams.");
   const native = query({ prompt, options: { pathToClaudeCodeExecutable: executable, ...options } });
   queries.add(native);
   return native;

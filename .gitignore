@@ -13,7 +13,7 @@ test-results
 playwright-report
 
 # CLI binary
-toy-box
+agent-teams
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
 

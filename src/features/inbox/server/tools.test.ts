@@ -48,7 +48,7 @@ function createInboxWorker(sessionId: string) {
 
 test("send_to_inbox attaches an existing nested file without rewriting it, and can clear its reference", async () => {
   await openInboxToolTestDatabase();
-  const sessionId = `toy-box-${crypto.randomUUID()}`;
+  const sessionId = `agent-teams-${crypto.randomUUID()}`;
   await createInboxWorker(sessionId);
   const artifact = "reports/research.md";
   const path = resolveSessionArtifactPath(sessionId, artifact)!;
@@ -85,7 +85,7 @@ test("send_to_inbox attaches an existing nested file without rewriting it, and c
 
 test("send_to_inbox rejects invalid artifacts without replacing the existing result", async () => {
   await openInboxToolTestDatabase();
-  const sessionId = `toy-box-${crypto.randomUUID()}`;
+  const sessionId = `agent-teams-${crypto.randomUUID()}`;
   await createInboxWorker(sessionId);
   await Bun.write(resolveSessionArtifactPath(sessionId, "reports/result.md")!, "Result");
   onTestFinished(() => deleteSessionFiles(sessionId));

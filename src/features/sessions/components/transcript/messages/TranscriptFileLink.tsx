@@ -89,5 +89,5 @@ export const transcriptLinkComponents = {
 } satisfies Components;
 
 // Sanitization still strips unsafe HTML and URL protocols. Omitting harden
-// preserves relative hrefs so Toy Box can interpret them as session files.
+// preserves relative hrefs so Agent Teams can interpret them as session files.
 export const transcriptRehypePlugins = [defaultRehypePlugins.raw, defaultRehypePlugins.sanitize];

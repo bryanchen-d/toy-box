@@ -1,4 +1,4 @@
-/** Reactive hooks exposed through the authored `@toy-box/sdk` module. */
+/** Reactive hooks exposed through the authored `@agent-teams/sdk` module. */
 import { useSelector } from "@tanstack/react-store";
 import type { AppHandle, AppWorkspace } from "@apps/sdk";
 import { consumeAppShare } from "@apps/server/functions";
@@ -6,8 +6,8 @@ import { cancelWorker, spawnWorker } from "@workers/server/functions";
 import { useAppHost } from "../../host/context";
 
 export { useFile } from "@files/useFile";
-export { useChannel } from "@channels/useChannel";
-export { useChannels } from "@channels/useChannels";
+export { useTeam } from "@teams/useTeam";
+export { useTeams } from "@teams/useTeams";
 
 export function useApp(): AppHandle {
   const { savedApp: state, workspace, actions } = useAppHost();

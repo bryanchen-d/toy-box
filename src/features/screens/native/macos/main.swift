@@ -108,7 +108,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         self.id = id
         self.target = target
         self.writer = writer
-        self.queue = DispatchQueue(label: "toy-box.screen.capture.\(id)", qos: .userInitiated)
+        self.queue = DispatchQueue(label: "agent-teams.screen.capture.\(id)", qos: .userInitiated)
         self.quality = options["quality"] as! Double
         self.pointPixelScale = Double(filter.pointPixelScale)
         self.maximumSize = CGSize(width: options["width"] as! Int, height: options["height"] as! Int)
@@ -435,7 +435,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         if !CGPreflightScreenCaptureAccess() {
             _ = CGRequestScreenCaptureAccess()
             if !CGPreflightScreenCaptureAccess() {
-                throw ScreenFailure(message: "Allow the app running Toy Box (for example Terminal or Conduit) in System Settings > Privacy & Security > Screen & System Audio Recording, then retry. Restart Toy Box if required.")
+                throw ScreenFailure(message: "Allow the app running Agent Teams (for example Terminal or Conduit) in System Settings > Privacy & Security > Screen & System Audio Recording, then retry. Restart Agent Teams if required.")
             }
         }
     }
@@ -449,7 +449,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
 
     private func requireInputPermission() throws {
         guard AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) else {
-            throw ScreenFailure(message: "Allow the app running Toy Box (for example Terminal or Conduit) in System Settings > Privacy & Security > Accessibility, then retry.")
+            throw ScreenFailure(message: "Allow the app running Agent Teams (for example Terminal or Conduit) in System Settings > Privacy & Security > Accessibility, then retry.")
         }
     }
 

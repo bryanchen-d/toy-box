@@ -20,23 +20,23 @@ const parentSnapshot: SessionState = createInitialSessionState({
 const fileWorker = {
   createdAt: new Date(0).toISOString(),
   type: "file",
-  sessionId: "toy-box-worker",
+  sessionId: "agent-teams-worker",
   ephemeral: true,
-  file: { kind: "session", sessionId: "toy-box-parent", path: "report.md" },
+  file: { kind: "session", sessionId: "agent-teams-parent", path: "report.md" },
 } as const;
 const sessionWorker = {
   createdAt: new Date(0).toISOString(),
   type: "session",
-  sessionId: "toy-box-worker",
+  sessionId: "agent-teams-worker",
   ephemeral: false,
-  parentSessionId: "toy-box-parent",
+  parentSessionId: "agent-teams-parent",
 } as const;
 const appWorker = {
   createdAt: new Date(0).toISOString(),
   type: "app",
-  sessionId: "toy-box-worker",
+  sessionId: "agent-teams-worker",
   ephemeral: true,
-  appId: "toy-box-app-a",
+  appId: "agent-teams-app-a",
 } as const;
 
 let workerIsLive: boolean;
@@ -135,23 +135,23 @@ describe("superviseWorker", () => {
       message: { content: "Do one focused job." },
     });
 
-    expect(receipt.sessionId).toBe("toy-box-worker");
+    expect(receipt.sessionId).toBe("agent-teams-worker");
     expect(registerWorkerSessionMock).toHaveBeenCalledWith(worker);
     await waitFor(() => expect(createSessionMock).toHaveBeenCalledTimes(1));
     expect(createSessionMock).toHaveBeenCalledWith(
-      "toy-box-worker",
+      "agent-teams-worker",
       { content: "Do one focused job.", model: parentModel },
       {
         directory: parentDirectory,
         sessionType: "worker",
-        parentSessionId: "toy-box-parent",
+        parentSessionId: "agent-teams-parent",
         useWorktree: false,
         name: "Focused job",
       },
     );
     expect(admissionCalls.slice(0, 2)).toEqual(["register", "create"]);
-    expect(getSessionSnapshotMock).toHaveBeenCalledWith("toy-box-parent");
-    expect(getSessionDirectoryMock).toHaveBeenCalledWith("toy-box-parent");
+    expect(getSessionSnapshotMock).toHaveBeenCalledWith("agent-teams-parent");
+    expect(getSessionDirectoryMock).toHaveBeenCalledWith("agent-teams-parent");
     expect(deleteSessionIfExistsMock).not.toHaveBeenCalled();
 
     const completion = receipt.waitForCompletion();
@@ -160,7 +160,7 @@ describe("superviseWorker", () => {
 
     await expect(completion).resolves.toEqual({ status: "completed", response: "Done." });
     expect(deleteSessionIfExistsMock).toHaveBeenCalledTimes(1);
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
   });
 
   test("admits without waiting for startup and executes without a completion observer", async () => {
@@ -272,7 +272,7 @@ describe("superviseWorker", () => {
     expect(getSessionDirectoryMock).not.toHaveBeenCalled();
     expect(getSessionSnapshotMock).not.toHaveBeenCalled();
     expect(createSessionMock).toHaveBeenCalledWith(
-      "toy-box-worker",
+      "agent-teams-worker",
       { content: "Generate a pattern.", model: explicitModel },
       {
         directory: undefined,
@@ -281,7 +281,7 @@ describe("superviseWorker", () => {
         useWorktree: false,
       },
     );
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
   });
 
   test("deletes failed workers while preserving their completion result", async () => {
@@ -296,7 +296,7 @@ describe("superviseWorker", () => {
       status: "failed",
       response: "Could not finish.",
     });
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
   });
 
   test("retains coordinated workers after completion", async () => {
@@ -314,7 +314,7 @@ describe("superviseWorker", () => {
     });
     expect(createSessionMock.mock.calls[0]![2]).toMatchObject({
       sessionType: "worker",
-      parentSessionId: "toy-box-parent",
+      parentSessionId: "agent-teams-parent",
       useWorktree: true,
     });
     expect(deleteSessionIfExistsMock).not.toHaveBeenCalled();
@@ -342,10 +342,10 @@ describe("superviseWorker", () => {
     await waitFor(() => expect(createSessionMock).toHaveBeenCalledTimes(1));
     workerIsLive = true;
 
-    await expect(cancelWorker("toy-box-worker")).resolves.toBe(true);
-    expect(abortSessionMock).toHaveBeenCalledWith("toy-box-worker");
+    await expect(cancelWorker("agent-teams-worker")).resolves.toBe(true);
+    expect(abortSessionMock).toHaveBeenCalledWith("agent-teams-worker");
     await expect(receipt.waitForCompletion()).rejects.toBeInstanceOf(WorkerCanceledError);
-    await expect(cancelWorker("toy-box-worker")).resolves.toBe(false);
+    await expect(cancelWorker("agent-teams-worker")).resolves.toBe(false);
   });
 
   test("cleans up a reserved worker id when session creation fails", async () => {
@@ -363,7 +363,7 @@ describe("superviseWorker", () => {
       status: "failed",
       error: creationError.message,
     });
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
   });
 
   test.each([
@@ -371,7 +371,7 @@ describe("superviseWorker", () => {
     { ...appWorker, ephemeral: false },
     {
       type: "inbox",
-      sessionId: "toy-box-worker",
+      sessionId: "agent-teams-worker",
       createdAt: new Date(0).toISOString(),
       ephemeral: false,
     },
@@ -445,7 +445,7 @@ describe("superviseWorker", () => {
     const receipt = await superviseWorker({
       worker: {
         type: "inbox",
-        sessionId: "toy-box-worker",
+        sessionId: "agent-teams-worker",
         createdAt: new Date(0).toISOString(),
         ephemeral: false,
       },
@@ -453,11 +453,11 @@ describe("superviseWorker", () => {
       message: { content: "Start background work." },
     });
     await starting.promise;
-    await expect(cancelWorker("toy-box-worker")).resolves.toBe(true);
+    await expect(cancelWorker("agent-teams-worker")).resolves.toBe(true);
     release.resolve();
     await expect(receipt.waitForCompletion()).rejects.toBeInstanceOf(WorkerCanceledError);
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
-    expect(await cancelWorker("toy-box-worker")).toBe(false);
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
+    expect(await cancelWorker("agent-teams-worker")).toBe(false);
   });
 
   test("cleans up a reserved worker id when parent directory loading fails", async () => {
@@ -476,20 +476,20 @@ describe("superviseWorker", () => {
       error: directoryError.message,
     });
     expect(createSessionMock).not.toHaveBeenCalled();
-    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("toy-box-worker");
+    expect(deleteSessionIfExistsMock).toHaveBeenCalledWith("agent-teams-worker");
   });
 
   test("sweeps ephemeral workers left by a previous process", async () => {
     getEphemeralWorkerSessionIdsMock.mockImplementationOnce(async () => [
-      "toy-box-worker-a",
-      "toy-box-worker-b",
+      "agent-teams-worker-a",
+      "agent-teams-worker-b",
     ]);
 
     await sweepAbandonedWorkers();
 
     expect(deleteSessionIfExistsMock.mock.calls.map(([sessionId]) => sessionId)).toEqual([
-      "toy-box-worker-a",
-      "toy-box-worker-b",
+      "agent-teams-worker-a",
+      "agent-teams-worker-b",
     ]);
   });
 

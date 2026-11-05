@@ -13,11 +13,11 @@ import { Route as indexRouteImport } from './routes/index'
 import { Route as ApiInboxRouteImport } from './../inbox/routes/inbox'
 import { Route as ApiWorkspaceRouteImport } from './routes/api/workspace'
 import { Route as ApiServeScopeSplatRouteImport } from './../files/routes/serve/$scope/$'
-import { Route as ApiV1ChannelsDotindexRouteImport } from './../channels/routes/v1/channels.index'
-import { Route as ApiV1ChannelsChannelIdRouteImport } from './../channels/routes/v1/channels/$channelId'
+import { Route as ApiV1TeamsDotindexRouteImport } from './../teams/routes/v1/teams.index'
+import { Route as ApiV1TeamsTeamIdRouteImport } from './../teams/routes/v1/teams/$teamId'
 import { Route as ApiWatchScopeSplatRouteImport } from './../files/routes/watch/$scope/$'
-import { Route as ApiV1ChannelsChannelIdDotmessagesRouteImport } from './../channels/routes/v1/channels/$channelId.messages'
-import { Route as ApiV1ChannelsChannelIdDotreadRouteImport } from './../channels/routes/v1/channels/$channelId.read'
+import { Route as ApiV1TeamsTeamIdDotmessagesRouteImport } from './../teams/routes/v1/teams/$teamId.messages'
+import { Route as ApiV1TeamsTeamIdDotreadRouteImport } from './../teams/routes/v1/teams/$teamId.read'
 
 const indexRoute = indexRouteImport.update({
   id: '/',
@@ -39,14 +39,14 @@ const ApiServeScopeSplatRoute = ApiServeScopeSplatRouteImport.update({
   path: '/api/serve/$scope/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiV1ChannelsDotindexRoute = ApiV1ChannelsDotindexRouteImport.update({
-  id: '/api/v1/channels/',
-  path: '/api/v1/channels/',
+const ApiV1TeamsDotindexRoute = ApiV1TeamsDotindexRouteImport.update({
+  id: '/api/v1/teams/',
+  path: '/api/v1/teams/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiV1ChannelsChannelIdRoute = ApiV1ChannelsChannelIdRouteImport.update({
-  id: '/api/v1/channels/$channelId',
-  path: '/api/v1/channels/$channelId',
+const ApiV1TeamsTeamIdRoute = ApiV1TeamsTeamIdRouteImport.update({
+  id: '/api/v1/teams/$teamId',
+  path: '/api/v1/teams/$teamId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWatchScopeSplatRoute = ApiWatchScopeSplatRouteImport.update({
@@ -54,40 +54,39 @@ const ApiWatchScopeSplatRoute = ApiWatchScopeSplatRouteImport.update({
   path: '/api/watch/$scope/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiV1ChannelsChannelIdDotmessagesRoute =
-  ApiV1ChannelsChannelIdDotmessagesRouteImport.update({
+const ApiV1TeamsTeamIdDotmessagesRoute =
+  ApiV1TeamsTeamIdDotmessagesRouteImport.update({
     id: '/messages',
     path: '/messages',
-    getParentRoute: () => ApiV1ChannelsChannelIdRoute,
+    getParentRoute: () => ApiV1TeamsTeamIdRoute,
   } as any)
-const ApiV1ChannelsChannelIdDotreadRoute =
-  ApiV1ChannelsChannelIdDotreadRouteImport.update({
-    id: '/read',
-    path: '/read',
-    getParentRoute: () => ApiV1ChannelsChannelIdRoute,
-  } as any)
+const ApiV1TeamsTeamIdDotreadRoute = ApiV1TeamsTeamIdDotreadRouteImport.update({
+  id: '/read',
+  path: '/read',
+  getParentRoute: () => ApiV1TeamsTeamIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof indexRoute
   '/api/inbox': typeof ApiInboxRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/api/serve/$scope/$': typeof ApiServeScopeSplatRoute
-  '/api/v1/channels/$channelId': typeof ApiV1ChannelsChannelIdRouteWithChildren
+  '/api/v1/teams/$teamId': typeof ApiV1TeamsTeamIdRouteWithChildren
   '/api/watch/$scope/$': typeof ApiWatchScopeSplatRoute
-  '/api/v1/channels/': typeof ApiV1ChannelsDotindexRoute
-  '/api/v1/channels/$channelId/messages': typeof ApiV1ChannelsChannelIdDotmessagesRoute
-  '/api/v1/channels/$channelId/read': typeof ApiV1ChannelsChannelIdDotreadRoute
+  '/api/v1/teams/': typeof ApiV1TeamsDotindexRoute
+  '/api/v1/teams/$teamId/messages': typeof ApiV1TeamsTeamIdDotmessagesRoute
+  '/api/v1/teams/$teamId/read': typeof ApiV1TeamsTeamIdDotreadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof indexRoute
   '/api/inbox': typeof ApiInboxRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/api/serve/$scope/$': typeof ApiServeScopeSplatRoute
-  '/api/v1/channels/$channelId': typeof ApiV1ChannelsChannelIdRouteWithChildren
+  '/api/v1/teams/$teamId': typeof ApiV1TeamsTeamIdRouteWithChildren
   '/api/watch/$scope/$': typeof ApiWatchScopeSplatRoute
-  '/api/v1/channels': typeof ApiV1ChannelsDotindexRoute
-  '/api/v1/channels/$channelId/messages': typeof ApiV1ChannelsChannelIdDotmessagesRoute
-  '/api/v1/channels/$channelId/read': typeof ApiV1ChannelsChannelIdDotreadRoute
+  '/api/v1/teams': typeof ApiV1TeamsDotindexRoute
+  '/api/v1/teams/$teamId/messages': typeof ApiV1TeamsTeamIdDotmessagesRoute
+  '/api/v1/teams/$teamId/read': typeof ApiV1TeamsTeamIdDotreadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,11 +94,11 @@ export interface FileRoutesById {
   '/api/inbox': typeof ApiInboxRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/api/serve/$scope/$': typeof ApiServeScopeSplatRoute
-  '/api/v1/channels/$channelId': typeof ApiV1ChannelsChannelIdRouteWithChildren
+  '/api/v1/teams/$teamId': typeof ApiV1TeamsTeamIdRouteWithChildren
   '/api/watch/$scope/$': typeof ApiWatchScopeSplatRoute
-  '/api/v1/channels/': typeof ApiV1ChannelsDotindexRoute
-  '/api/v1/channels/$channelId/messages': typeof ApiV1ChannelsChannelIdDotmessagesRoute
-  '/api/v1/channels/$channelId/read': typeof ApiV1ChannelsChannelIdDotreadRoute
+  '/api/v1/teams/': typeof ApiV1TeamsDotindexRoute
+  '/api/v1/teams/$teamId/messages': typeof ApiV1TeamsTeamIdDotmessagesRoute
+  '/api/v1/teams/$teamId/read': typeof ApiV1TeamsTeamIdDotreadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -108,33 +107,33 @@ export interface FileRouteTypes {
     | '/api/inbox'
     | '/api/workspace'
     | '/api/serve/$scope/$'
-    | '/api/v1/channels/$channelId'
+    | '/api/v1/teams/$teamId'
     | '/api/watch/$scope/$'
-    | '/api/v1/channels/'
-    | '/api/v1/channels/$channelId/messages'
-    | '/api/v1/channels/$channelId/read'
+    | '/api/v1/teams/'
+    | '/api/v1/teams/$teamId/messages'
+    | '/api/v1/teams/$teamId/read'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/inbox'
     | '/api/workspace'
     | '/api/serve/$scope/$'
-    | '/api/v1/channels/$channelId'
+    | '/api/v1/teams/$teamId'
     | '/api/watch/$scope/$'
-    | '/api/v1/channels'
-    | '/api/v1/channels/$channelId/messages'
-    | '/api/v1/channels/$channelId/read'
+    | '/api/v1/teams'
+    | '/api/v1/teams/$teamId/messages'
+    | '/api/v1/teams/$teamId/read'
   id:
     | '__root__'
     | '/'
     | '/api/inbox'
     | '/api/workspace'
     | '/api/serve/$scope/$'
-    | '/api/v1/channels/$channelId'
+    | '/api/v1/teams/$teamId'
     | '/api/watch/$scope/$'
-    | '/api/v1/channels/'
-    | '/api/v1/channels/$channelId/messages'
-    | '/api/v1/channels/$channelId/read'
+    | '/api/v1/teams/'
+    | '/api/v1/teams/$teamId/messages'
+    | '/api/v1/teams/$teamId/read'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -142,9 +141,9 @@ export interface RootRouteChildren {
   ApiInboxRoute: typeof ApiInboxRoute
   ApiWorkspaceRoute: typeof ApiWorkspaceRoute
   ApiServeScopeSplatRoute: typeof ApiServeScopeSplatRoute
-  ApiV1ChannelsChannelIdRoute: typeof ApiV1ChannelsChannelIdRouteWithChildren
+  ApiV1TeamsTeamIdRoute: typeof ApiV1TeamsTeamIdRouteWithChildren
   ApiWatchScopeSplatRoute: typeof ApiWatchScopeSplatRoute
-  ApiV1ChannelsDotindexRoute: typeof ApiV1ChannelsDotindexRoute
+  ApiV1TeamsDotindexRoute: typeof ApiV1TeamsDotindexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -177,18 +176,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiServeScopeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/v1/channels/': {
-      id: '/api/v1/channels/'
-      path: '/api/v1/channels'
-      fullPath: '/api/v1/channels/'
-      preLoaderRoute: typeof ApiV1ChannelsDotindexRouteImport
+    '/api/v1/teams/': {
+      id: '/api/v1/teams/'
+      path: '/api/v1/teams'
+      fullPath: '/api/v1/teams/'
+      preLoaderRoute: typeof ApiV1TeamsDotindexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/v1/channels/$channelId': {
-      id: '/api/v1/channels/$channelId'
-      path: '/api/v1/channels/$channelId'
-      fullPath: '/api/v1/channels/$channelId'
-      preLoaderRoute: typeof ApiV1ChannelsChannelIdRouteImport
+    '/api/v1/teams/$teamId': {
+      id: '/api/v1/teams/$teamId'
+      path: '/api/v1/teams/$teamId'
+      fullPath: '/api/v1/teams/$teamId'
+      preLoaderRoute: typeof ApiV1TeamsTeamIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/watch/$scope/$': {
@@ -198,48 +197,44 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWatchScopeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/v1/channels/$channelId/messages': {
-      id: '/api/v1/channels/$channelId/messages'
+    '/api/v1/teams/$teamId/messages': {
+      id: '/api/v1/teams/$teamId/messages'
       path: '/messages'
-      fullPath: '/api/v1/channels/$channelId/messages'
-      preLoaderRoute: typeof ApiV1ChannelsChannelIdDotmessagesRouteImport
-      parentRoute: typeof ApiV1ChannelsChannelIdRoute
+      fullPath: '/api/v1/teams/$teamId/messages'
+      preLoaderRoute: typeof ApiV1TeamsTeamIdDotmessagesRouteImport
+      parentRoute: typeof ApiV1TeamsTeamIdRoute
     }
-    '/api/v1/channels/$channelId/read': {
-      id: '/api/v1/channels/$channelId/read'
+    '/api/v1/teams/$teamId/read': {
+      id: '/api/v1/teams/$teamId/read'
       path: '/read'
-      fullPath: '/api/v1/channels/$channelId/read'
-      preLoaderRoute: typeof ApiV1ChannelsChannelIdDotreadRouteImport
-      parentRoute: typeof ApiV1ChannelsChannelIdRoute
+      fullPath: '/api/v1/teams/$teamId/read'
+      preLoaderRoute: typeof ApiV1TeamsTeamIdDotreadRouteImport
+      parentRoute: typeof ApiV1TeamsTeamIdRoute
     }
   }
 }
 
-interface ApiV1ChannelsChannelIdRouteChildren {
-  ApiV1ChannelsChannelIdDotmessagesRoute: typeof ApiV1ChannelsChannelIdDotmessagesRoute
-  ApiV1ChannelsChannelIdDotreadRoute: typeof ApiV1ChannelsChannelIdDotreadRoute
+interface ApiV1TeamsTeamIdRouteChildren {
+  ApiV1TeamsTeamIdDotmessagesRoute: typeof ApiV1TeamsTeamIdDotmessagesRoute
+  ApiV1TeamsTeamIdDotreadRoute: typeof ApiV1TeamsTeamIdDotreadRoute
 }
 
-const ApiV1ChannelsChannelIdRouteChildren: ApiV1ChannelsChannelIdRouteChildren =
-  {
-    ApiV1ChannelsChannelIdDotmessagesRoute:
-      ApiV1ChannelsChannelIdDotmessagesRoute,
-    ApiV1ChannelsChannelIdDotreadRoute: ApiV1ChannelsChannelIdDotreadRoute,
-  }
+const ApiV1TeamsTeamIdRouteChildren: ApiV1TeamsTeamIdRouteChildren = {
+  ApiV1TeamsTeamIdDotmessagesRoute: ApiV1TeamsTeamIdDotmessagesRoute,
+  ApiV1TeamsTeamIdDotreadRoute: ApiV1TeamsTeamIdDotreadRoute,
+}
 
-const ApiV1ChannelsChannelIdRouteWithChildren =
-  ApiV1ChannelsChannelIdRoute._addFileChildren(
-    ApiV1ChannelsChannelIdRouteChildren,
-  )
+const ApiV1TeamsTeamIdRouteWithChildren =
+  ApiV1TeamsTeamIdRoute._addFileChildren(ApiV1TeamsTeamIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   ApiInboxRoute: ApiInboxRoute,
   ApiWorkspaceRoute: ApiWorkspaceRoute,
   ApiServeScopeSplatRoute: ApiServeScopeSplatRoute,
-  ApiV1ChannelsChannelIdRoute: ApiV1ChannelsChannelIdRouteWithChildren,
+  ApiV1TeamsTeamIdRoute: ApiV1TeamsTeamIdRouteWithChildren,
   ApiWatchScopeSplatRoute: ApiWatchScopeSplatRoute,
-  ApiV1ChannelsDotindexRoute: ApiV1ChannelsDotindexRoute,
+  ApiV1TeamsDotindexRoute: ApiV1TeamsDotindexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

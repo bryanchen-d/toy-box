@@ -6,7 +6,7 @@ const realWorkersModule = { ...workersModule };
 type SpawnWorkerInput = Parameters<typeof workersModule.spawnSessionWorker>[0];
 
 const spawnWorkerMock = mock(async (_input: SpawnWorkerInput) => ({
-  sessionId: "toy-box-worker",
+  sessionId: "agent-teams-worker",
 }));
 
 mock.module("@workers/server", () => ({
@@ -40,9 +40,9 @@ describe("worker SDK tool", () => {
       invocation(),
     );
 
-    expect(JSON.parse(String(result))).toEqual({ sessionId: "toy-box-worker" });
+    expect(JSON.parse(String(result))).toEqual({ sessionId: "agent-teams-worker" });
     expect(spawnWorkerMock).toHaveBeenCalledWith({
-      parentSessionId: "toy-box-caller",
+      parentSessionId: "agent-teams-caller",
       ephemeral: false,
       name: "Runtime reviewer",
       message: { content: "Review the runtime", model },
@@ -56,7 +56,7 @@ describe("worker SDK tool", () => {
     const result = await tool?.handler?.({ task: "Run once", ephemeral: true }, invocation());
 
     expect(JSON.parse(String(result))).toEqual({
-      sessionId: "toy-box-worker",
+      sessionId: "agent-teams-worker",
     });
     expect(spawnWorkerMock.mock.calls[0]?.[0].ephemeral).toBe(true);
   });
@@ -64,7 +64,7 @@ describe("worker SDK tool", () => {
 
 function invocation(): ToolInvocation {
   return {
-    sessionId: "toy-box-caller",
+    sessionId: "agent-teams-caller",
     toolCallId: "tool-call",
     toolName: "spawn_worker",
     arguments: {},

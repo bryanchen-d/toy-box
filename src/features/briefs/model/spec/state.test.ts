@@ -93,7 +93,7 @@ describe("brief spec", () => {
           kind: "pseudocode",
           change: "new",
           language: "bash",
-          content: "toy-box migrate --durable-state",
+          content: "agent-teams migrate --durable-state",
         },
       ],
     });

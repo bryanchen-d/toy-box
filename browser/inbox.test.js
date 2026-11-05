@@ -12,7 +12,7 @@ afterEach(() => {
 describe("browser Inbox dispatch", () => {
   test("sends all available page context to the configured Inbox endpoint", async () => {
     let request;
-    installServerSetting("https://example.com/toy-box/");
+    installServerSetting("https://example.com/agent-teams/");
     globalThis.fetch = async (url, options) => {
       request = { url, options };
       return Response.json({}, { status: 202 });
@@ -31,7 +31,7 @@ describe("browser Inbox dispatch", () => {
     });
 
     const body = JSON.parse(request.options.body);
-    expect(request.url).toBe("https://example.com/toy-box/api/inbox");
+    expect(request.url).toBe("https://example.com/agent-teams/api/inbox");
     expect(request.options).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -68,7 +68,7 @@ describe("browser Inbox dispatch", () => {
   });
 
   test("identifies the configured server when a network request fails", async () => {
-    installServerSetting("http://toy-box.local:4100");
+    installServerSetting("http://agent-teams.local:4100");
     globalThis.fetch = async () => {
       throw new TypeError("Failed to fetch");
     };
@@ -78,7 +78,7 @@ describe("browser Inbox dispatch", () => {
         task: "Summarize the article.",
         page: { url: "https://example.org/article" },
       }),
-    ).rejects.toThrow("Couldn’t reach Toy Box at http://toy-box.local:4100/api/inbox.");
+    ).rejects.toThrow("Couldn’t reach Agent Teams at http://agent-teams.local:4100/api/inbox.");
   });
 
   test("reports an Inbox response error", async () => {

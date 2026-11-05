@@ -128,7 +128,7 @@ describe("SDK coordination tools", () => {
   test("rejects self-delivery instead of turning a subagent reply into a new root prompt", async () => {
     await expect(
       deliverMessageTool.handler(
-        { sessionId: "toy-box-caller", message: "Ownership returned to parent." },
+        { sessionId: "agent-teams-caller", message: "Ownership returned to parent." },
         invocation("deliver_message"),
       ),
     ).rejects.toThrow("cannot target the invoking session");
@@ -137,11 +137,11 @@ describe("SDK coordination tools", () => {
 
   test("uses the source tool call as cross-session delivery identity", async () => {
     const result = await deliverMessageTool.handler(
-      { sessionId: "toy-box-recipient", message: "Please review this", model: undefined },
+      { sessionId: "agent-teams-recipient", message: "Please review this", model: undefined },
       invocation("deliver_message"),
     );
 
-    expect(deliverSessionMessageMock).toHaveBeenCalledWith("toy-box-recipient", {
+    expect(deliverSessionMessageMock).toHaveBeenCalledWith("agent-teams-recipient", {
       clientId: "tool-call",
       content: "Please review this",
       model: undefined,
@@ -160,7 +160,7 @@ describe("SDK session title tool", () => {
     );
 
     expect(updateSessionTitleMock).toHaveBeenCalledWith(
-      "toy-box-caller",
+      "agent-teams-caller",
       "Terminal Reconnect Scrollback",
     );
     expect(JSON.parse(String(result))).toEqual({ applied: true });
@@ -224,7 +224,7 @@ describe("SDK lifecycle tools", () => {
 
 function invocation(toolName: string): ToolInvocation {
   return {
-    sessionId: "toy-box-caller",
+    sessionId: "agent-teams-caller",
     toolCallId: "tool-call",
     toolName,
     arguments: {},

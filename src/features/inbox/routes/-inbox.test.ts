@@ -16,7 +16,7 @@ async function post(init: RequestInit) {
     throw new Error("Inbox route must handle POST requests.");
   }
   const response = await handlers.POST({
-    request: new Request("http://toy-box.test/api/inbox", { ...init, method: "POST" }),
+    request: new Request("http://agent-teams.test/api/inbox", { ...init, method: "POST" }),
     context: undefined,
     params: {},
     pathname: "/api/inbox",

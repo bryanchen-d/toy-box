@@ -5,11 +5,11 @@ export async function initializeWorkerSchema(db: Bun.SQL): Promise<void> {
       session_id        TEXT PRIMARY KEY,
       created_at        INTEGER NOT NULL DEFAULT (CAST(unixepoch('subsec') * 1000 AS INTEGER)),
       worker_type       TEXT NOT NULL
-        CHECK (worker_type IN ('session', 'file', 'app', 'channel', 'inbox')),
+        CHECK (worker_type IN ('session', 'file', 'app', 'team', 'inbox')),
       parent_session_id TEXT,
       file_path         TEXT,
       app_id            TEXT,
-      channel_id        TEXT,
+      team_id        TEXT,
       ephemeral         INTEGER NOT NULL
         CHECK (ephemeral IN (0, 1)),
       name              TEXT,
@@ -17,7 +17,7 @@ export async function initializeWorkerSchema(db: Bun.SQL): Promise<void> {
       CHECK ((parent_session_id IS NOT NULL) = (worker_type IN ('session', 'file'))),
       CHECK ((file_path IS NOT NULL) = (worker_type = 'file')),
       CHECK ((app_id IS NOT NULL) = (worker_type = 'app')),
-      CHECK ((channel_id IS NOT NULL) = (worker_type = 'channel')),
+      CHECK ((team_id IS NOT NULL) = (worker_type = 'team')),
       CHECK (worker_type <> 'inbox' OR ephemeral = 0)
     );
 
@@ -27,8 +27,8 @@ export async function initializeWorkerSchema(db: Bun.SQL): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_workers_app_id
       ON workers(app_id);
 
-    CREATE INDEX IF NOT EXISTS idx_workers_channel_id
-      ON workers(channel_id, session_id);
+    CREATE INDEX IF NOT EXISTS idx_workers_team_id
+      ON workers(team_id, session_id);
 
     CREATE INDEX IF NOT EXISTS idx_workers_type_created
       ON workers(worker_type, created_at DESC, session_id);

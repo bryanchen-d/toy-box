@@ -14,7 +14,7 @@ import crossws from "crossws/adapters/bun";
 export function socketDevelopment(): Plugin {
   let listener: ReturnType<typeof Bun.serve> | undefined;
   return {
-    name: "toy-box:websocket-development",
+    name: "agent-teams:websocket-development",
     apply: "serve",
     async config() {
       const { socketHooks } = (await import(

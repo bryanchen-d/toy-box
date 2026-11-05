@@ -9,16 +9,16 @@ const typeLibraryRoot = Bun.isStandaloneExecutable
   ? join(import.meta.dir, "app-type-library")
   : resolve(Bun.fileURLToPath(new URL("../../../../../", import.meta.url)));
 const typeLibraryNodeModules = join(typeLibraryRoot, "node_modules");
-const lucideFileName = join(typeLibraryRoot, ".toybox-lucide.d.ts");
+const lucideFileName = join(typeLibraryRoot, ".agent-teams-lucide.d.ts");
 const lucideSource = `import type { ComponentType, SVGProps } from "react";
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 ${APP_ICON_NAMES.map((name) => `export declare const ${name}: Icon;`).join("\n")}`;
-const appFileName = join(typeLibraryRoot, ".toybox-app.tsx");
-const componentCheckFileName = join(typeLibraryRoot, ".toybox-app-check.ts");
+const appFileName = join(typeLibraryRoot, ".agent-teams-app.tsx");
+const componentCheckFileName = join(typeLibraryRoot, ".agent-teams-app-check.ts");
 const componentCheckSource = `import type { ComponentType } from "react";
-import App from "./.toybox-app";
+import App from "./.agent-teams-app";
 export const component: ComponentType = App;`;
-const appSdkFileName = join(typeLibraryRoot, ".toybox-sdk.ts");
+const appSdkFileName = join(typeLibraryRoot, ".agent-teams-sdk.ts");
 const typeScriptLib = join(typeLibraryNodeModules, "app-typescript/lib");
 const appFiles = [appFileName, componentCheckFileName];
 const compilerOptions: ts.CompilerOptions = {
@@ -27,7 +27,7 @@ const compilerOptions: ts.CompilerOptions = {
   types: [],
 };
 const virtualDependencyFiles = new Map([
-  ["@toy-box/sdk", appSdkFileName],
+  ["@agent-teams/sdk", appSdkFileName],
   ["lucide-react", lucideFileName],
 ]);
 
@@ -110,7 +110,7 @@ function createCompilerHost(
           resolvedModule: {
             resolvedFileName: knownFile,
             extension: knownFile.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
-            isExternalLibraryImport: moduleName !== "@toy-box/sdk",
+            isExternalLibraryImport: moduleName !== "@agent-teams/sdk",
           },
         };
       }

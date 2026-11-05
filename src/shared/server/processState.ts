@@ -3,7 +3,7 @@
 // global broadcast listener sets.
 
 export function getProcessValue<T>(name: string, create: () => T): T {
-  const key = Symbol.for(`toy-box.${name}`);
+  const key = Symbol.for(`agent-teams.${name}`);
   const store = globalThis as typeof globalThis & Record<symbol, T | undefined>;
   return (store[key] ??= create());
 }

@@ -82,7 +82,7 @@ test("native input preserves skills and ordered images", () => {
 
 test("ordinary, malformed, and partial display spans cannot hide native user text", () => {
   const text = "ordinary user input";
-  for (const placeholder of ["[Pasted text]", "toybox-system:{bad}"]) {
+  for (const placeholder of ["[Pasted text]", "agent-teams-system:{bad}"]) {
     expect(
       decodeInput(
         userItem([
@@ -105,7 +105,7 @@ test("ordinary, malformed, and partial display spans cannot hide native user tex
           text_elements: [
             {
               byteRange: { start: 1, end: Buffer.byteLength(text) },
-              placeholder: 'toybox-system:{"type":"channel_message","senderName":"Ada"}',
+              placeholder: 'agent-teams-system:{"type":"team_message","senderName":"Ada"}',
             },
           ],
         },

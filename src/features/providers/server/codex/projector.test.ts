@@ -12,11 +12,11 @@ function itemEvent(item: ThreadItem, method = "item/completed"): RpcNotification
   return { method, params: { threadId: "native", turnId: "turn", item } };
 }
 
-test("native Toy Box tools keep their friendly identity and result live and after replay", () => {
+test("native Agent Teams tools keep their friendly identity and result live and after replay", () => {
   const item: ThreadItem = {
     type: "dynamicToolCall",
     id: "call-title",
-    namespace: "toy_box",
+    namespace: "agent_teams",
     tool: "update_session_title",
     arguments: { title: "Native tools" },
     status: "completed",
@@ -57,7 +57,7 @@ test.each([
   const item: ThreadItem = {
     type: "dynamicToolCall",
     id: "file-visibility",
-    namespace: "toy_box",
+    namespace: "agent_teams",
     tool,
     arguments: { path: join(sessionArtifactsDirectory("owner"), "plan.md") },
     status: "completed",

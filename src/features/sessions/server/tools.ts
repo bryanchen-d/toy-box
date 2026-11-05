@@ -8,7 +8,7 @@ export const STANDARD_SESSION_INSTRUCTIONS =
   "Keep this session's title recognizable. Before completing the first turn, you MUST call `update_session_title` once with a concise 2-6 word title after understanding the user's initial intent. On later turns, call it again before responding only when the session's focus has changed materially, not for ordinary follow-ups or refinements. Do not mention routine title updates to the user.";
 
 export const HYPER_SESSION_INSTRUCTIONS =
-  "This is Toy Box's Hyper session, a global floating session window for observing other sessions, managing the Toy Box environment, answering questions, and performing tasks.";
+  "This is Agent Teams' Hyper session, a global floating session window for observing other sessions, managing the Agent Teams environment, answering questions, and performing tasks.";
 
 const updateSessionTitleTool = defineTool("update_session_title", {
   description:
@@ -31,7 +31,7 @@ export const sessionTitleTools = [updateSessionTitleTool];
 export const modelTools = [
   defineTool("list_models", {
     description:
-      "Lists available providers and models with the IDs and options needed to configure sessions and channel members.",
+      "Lists available providers and models with the IDs and options needed to configure sessions and team members.",
     parameters: z
       .object({
         provider: z
@@ -50,7 +50,7 @@ export const modelTools = [
 export const sessionHistoryTools = [
   defineTool("list_sessions", {
     description:
-      "Discover Toy Box and native session histories across available providers. Returns session metadata, newest first, and the total number of matches. Search by title to narrow the results.",
+      "Discover Agent Teams and native session histories across available providers. Returns session metadata, newest first, and the total number of matches. Search by title to narrow the results.",
     parameters: z.object({
       query: z.string().optional().describe("Optional case-insensitive title substring."),
       limit: z.number().int().min(1).max(100).optional().describe("Maximum results (default 20)."),
@@ -66,7 +66,8 @@ export const sessionHistoryTools = [
     },
   }),
   defineTool("read_session", {
-    description: "Read a session's conversation and artifacts using its public Toy Box session ID.",
+    description:
+      "Read a session's conversation and artifacts using its public Agent Teams session ID.",
     parameters: z.object({ sessionId: z.string() }),
     handler: async ({ sessionId }) => (await import("./runtime")).getSessionSnapshot(sessionId),
   }),
@@ -113,7 +114,7 @@ const waitForSessions = defineTool("wait_for_sessions", {
 
 const deliverMessage = defineTool("deliver_message", {
   description:
-    "Delivers a message to another Toy Box session. Never target the invoking session; " +
+    "Delivers a message to another Agent Teams session. Never target the invoking session; " +
     "subagent results return to their parent through the provider automatically. " +
     "If that session is already running, the message is queued automatically. " +
     "If it is idle, the session is resumed and the message starts immediately.",

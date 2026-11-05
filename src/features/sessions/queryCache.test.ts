@@ -155,7 +155,7 @@ describe("session query cache", () => {
 
   test("first-turn promotion and renaming retain the session's identity and initial artifact", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-upserted-session";
+    const sessionId = "agent-teams-upserted-session";
 
     applyWorkspaceEventToSessionQueries(queryClient, {
       type: "session.upserted",
@@ -197,7 +197,7 @@ describe("session query cache", () => {
 
   test("worker upserts retain durable metadata and parentage", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-upsert";
+    const sessionId = "agent-teams-upsert";
     seedState(queryClient, {
       sessions: [createSession(sessionId)],
     });
@@ -231,7 +231,7 @@ describe("session query cache", () => {
 
   test("classifies a parentless app worker", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-app-worker";
+    const sessionId = "agent-teams-app-worker";
 
     upsertSessionInState(queryClient, {
       id: sessionId,
@@ -243,20 +243,20 @@ describe("session query cache", () => {
     });
   });
 
-  test("retains Channel worker metadata without projecting it as an ordinary session", () => {
+  test("retains Team worker metadata without projecting it as an ordinary session", () => {
     const queryClient = new QueryClient();
 
     upsertSessionInState(queryClient, {
-      id: "channel-worker-session",
+      id: "team-worker-session",
       sessionType: "worker",
       worktree: { branch: "agent", baseBranch: "main", path: "/tmp/agent" },
     });
 
     const state = readState(queryClient);
     expect(state.ownership).toEqual({
-      "channel-worker-session": { type: "worker", parentSessionId: null },
+      "team-worker-session": { type: "worker", parentSessionId: null },
     });
-    expect(state.worktrees).toHaveProperty("channel-worker-session");
+    expect(state.worktrees).toHaveProperty("team-worker-session");
     expect(selectNonWorkerSessions(state)).toEqual([]);
   });
 
@@ -273,7 +273,7 @@ describe("session query cache", () => {
 
   test("upsert preserves title when omitted", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-title-preserved";
+    const sessionId = "agent-teams-title-preserved";
     seedState(queryClient, {
       sessions: [createSession(sessionId)],
     });
@@ -315,7 +315,7 @@ describe("session query cache", () => {
 
   test("renaming preserves catalog metadata and its modified time", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-modified-preserved";
+    const sessionId = "agent-teams-modified-preserved";
     seedState(queryClient, {
       sessions: [
         {
@@ -353,7 +353,7 @@ describe("session query cache", () => {
 
   test("delete removes durable session-side structures", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-delete";
+    const sessionId = "agent-teams-delete";
     seedState(queryClient, {
       sessions: [createSession(sessionId)],
       ownership: { [sessionId]: { type: "worker", parentSessionId: "parent" } },
@@ -379,8 +379,8 @@ describe("session query cache", () => {
 
   test("touch invalidates the session list and affected detail", () => {
     const queryClient = new QueryClient();
-    const sessionId = "toy-box-touched";
-    const otherSessionId = "toy-box-untouched";
+    const sessionId = "agent-teams-touched";
+    const otherSessionId = "agent-teams-untouched";
     seedState(queryClient, { sessions: [createSession(sessionId)] });
     for (const id of [sessionId, otherSessionId]) {
       queryClient.setQueryData(sessionQueries.detail(id).queryKey, createInitialSessionView());

@@ -10,7 +10,7 @@ type SdkSkillMetadata = {
   path?: string;
 };
 
-/** Normalize enabled, user-invocable SDK skills into Toy Box's two scope types. */
+/** Normalize enabled, user-invocable SDK skills into Agent Teams' two scope types. */
 export function toSessionSkills(skills: readonly SdkSkillMetadata[]): SessionSkill[] {
   return skills
     .filter((skill) => skill.userInvocable && skill.enabled)

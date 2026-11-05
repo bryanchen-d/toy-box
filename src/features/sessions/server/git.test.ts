@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { git, resolveSessionContext } from "./git";
 
 async function createDirectory() {
-  const path = await realpath(await mkdtemp(join(tmpdir(), "toy-box-location-")));
+  const path = await realpath(await mkdtemp(join(tmpdir(), "agent-teams-location-")));
   onTestFinished(() => rm(path, { recursive: true, force: true }));
   return path;
 }
@@ -43,7 +43,7 @@ test("recognizes a detached checkout without inventing a branch", async () => {
   await git(
     root,
     "-c",
-    "user.name=Toy Box Test",
+    "user.name=Agent Teams Test",
     "-c",
     "user.email=test@example.invalid",
     "commit",

@@ -34,7 +34,7 @@ and the conversation-rewind limitation.
 | Edit statistics                 | Providers supply edit data to the shared patch parser and diff counter. Codex normalizes raw additions/deletions and update hunks.         |
 | Questions                       | Provider correlates native requests and answers with domain tool calls, including multi-question requests.                                 |
 | Host tools                      | Feature handlers receive public session identity and validated arguments. Providers adapt schemas, results, and terminal behavior.         |
-| Skills and MCP                  | Provider combines native configuration with supplied Toy Box skill directories; native MCP configuration remains native.                   |
+| Skills and MCP                  | Provider combines native configuration with supplied Agent Teams skill directories; native MCP configuration remains native.               |
 | Artifacts and files             | Sessions owns artifact locations and discovers files through shared observation and snapshot reads. Providers do not project membership.   |
 | Rename and inferred title       | Explicit names are preserved when automatic titles arrive.                                                                                 |
 | Rewind                          | Provider removes conversation from the selected root user turn, preserving files.                                                          |
@@ -56,13 +56,13 @@ the existing SDK fixtures and also execute against the installed CLI.
 Public session UUIDs are allocated before a provider is chosen. Copilot and Claude reuse that UUID;
 Codex allocates its own native identity. The sessions table stores a native ID override only when it differs,
 preserving the same public ID across drafts, native history, tools,
-artifacts, channels, Inbox, and automations. Native external histories remain discoverable.
+artifacts, teams, Inbox, and automations. Native external histories remain discoverable.
 
 The same model name may exist in both catalogs. `{ provider, name }` is its identity;
 provider identity is required for every model configuration. A session can switch
 models within its provider between turns. Changing providers requires a new session.
 
-Configurable context tiers are currently unavailable in Toy Box for Codex and Claude:
+Configurable context tiers are currently unavailable in Agent Teams for Codex and Claude:
 
 - Codex accepts `model_context_window` overrides on creation and resume, but does not
   restore the override from native history. Its public history API omits the window,
@@ -70,7 +70,7 @@ Configurable context tiers are currently unavailable in Toy Box for Codex and Cl
 - Claude supports a native `CLAUDE_CODE_DISABLE_1M_CONTEXT` cap, but the selection is
   absent from exported history and is not restored on resume.
 
-Both providers inherit native context defaults and user configuration. Toy Box adds
+Both providers inherit native context defaults and user configuration. Agent Teams adds
 no provider-specific persistence to retain context tiers.
 
 Codex streams command output through `item/commandExecution/outputDelta`, except each command's
@@ -82,7 +82,7 @@ main thread's last request, or its size after a compaction, paired with the turn
 window for that model. Codex and Copilot report usage again right after compacting.
 
 All three providers compact long conversations automatically: Codex at 90% of its model's full
-window, Copilot in the background from 80% of its limit, and Claude near its window, which Toy Box
+window, Copilot in the background from 80% of its limit, and Claude near its window, which Agent Teams
 enables whatever the owner's Claude setting. Transcripts keep every message across compactions,
 live and in history, except within Claude subagent transcripts.
 
@@ -91,17 +91,17 @@ provider's API exposes a fixed set of limit fields, so each provider reads those
 appears only when the account reports it. Codex `account/rateLimits/read` reports a main bucket and
 any per-model buckets, each with two rolling-window slots named by their length ("5-hour",
 "Weekly"); a per-model bucket's limits also name its model. Copilot's plan comes from
-`account.getCurrentAuth`; of `account.getQuota`'s quotas, Toy Box shows only premium requests, and
+`account.getCurrentAuth`; of `account.getQuota`'s quotas, Agent Teams shows only premium requests, and
 only when the plan meters them. Claude's experimental usage request has a 5-hour window, a weekly
 window, weekly Opus and Sonnet windows, and per-model weekly windows that the server names. The same
-response carries an undeclared generic `limits` array, which Toy Box does not read because the SDK
+response carries an undeclared generic `limits` array, which Agent Teams does not read because the SDK
 does not type it.
 
 Provider failures are isolated during catalog/history discovery, so Codex alone works.
 Copilot discovery and context use the SDK's `listSessions()` and `getSessionMetadata()`;
 history uses `rpc.sessions.readPersistedEvents()` without resuming. Native history files are not parsed for metadata. An empty
 native handle is not yet catalog history; Sessions owns the draft until its first turn.
-A private Channel Agent without an explicit model inherits workspace defaults within its existing
+A private Team Agent without an explicit model inherits workspace defaults within its existing
 provider; a changed default provider applies to new conversations. Discovery reads
 session identities and managed ownership across the native catalog request, preserving
 public identity when creation or deletion overlaps a refresh. A catalog containing
@@ -110,11 +110,11 @@ recording their identities. Known catalogs and unrelated providers do not wait. 
 sessions remain hidden from the ordinary session list and accessible through their
 owning feature; user-selected provider filters apply afterward.
 
-Codex registers deferred native tools in the `toy_box` namespace at creation and
+Codex registers deferred native tools in the `agent_teams` namespace at creation and
 handles their callbacks over app-server stdio. Codex persists the catalog across resume.
 Imported conversations keep their native tool catalog and receive best-effort
 support. Installed native MCP servers remain available through the owner's configuration.
-Both providers receive the same Toy Box definitions, instructions, and bundled skills.
+Both providers receive the same Agent Teams definitions, instructions, and bundled skills.
 
 Both providers enable interactive questions for standard and Hyper sessions; unattended
 managed roles do not wait for user input. Codex questions can be batched, secret, or
@@ -123,7 +123,7 @@ question tools. Codex's public history API omits questions, answers, and `update
 checklists, so those are projected live but are absent when rebuilding a session
 from native history. Codex retains their underlying tool calls for model context;
 plan-mode prose is a separate durable item. Codex history keeps at most 64 KiB of
-each command's output. The provider owns no Toy Box database
+each command's output. The provider owns no Agent Teams database
 tables; Sessions owns the shared session identities and resources.
 Original inputs preserve system-message semantics and images. Images use native image
 inputs. Imported local images are read back when available and retain an unavailable-file reference
@@ -135,7 +135,7 @@ the shared reducer handles replacement and status changes. Both providers use th
 existing diff parser and counter. Codex supplies raw contents for added/deleted files
 and unified hunks for updates, so its adapter only normalizes that native format.
 
-Session files live under `~/.toy-box/sessions/<public-id>/artifacts` from draft creation
+Session files live under `~/.agent-teams/sessions/<public-id>/artifacts` from draft creation
 onward. Shared instructions give that directory to either agent. Files owns one shared
 artifact watcher for open editors and discovery. Sessions refreshes affected active sessions
 through canonical `artifacts_changed` events. Snapshot
@@ -147,7 +147,7 @@ Arbitrary shell edits do not supply per-tool diff statistics.
 Codex conversation rewind targets the start of a native turn; an individual steering
 message cannot be a rewind boundary. Its terminal tools are completed by interrupting
 the turn after the successful result is recorded; the native API has no terminal-tool
-flag. Native approval dialogs and MCP elicitation are not additional Toy Box product
+flag. Native approval dialogs and MCP elicitation are not additional Agent Teams product
 flows: unsupported incoming request methods fail explicitly rather than hanging.
 
 SDK-specific optional presentation, such as Copilot canvases, stays in that provider's

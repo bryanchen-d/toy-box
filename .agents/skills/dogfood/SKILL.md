@@ -1,11 +1,11 @@
 ---
 name: dogfood
-description: Validate Toy Box behavior after significant changes using Playwright CLI across multi-client sessions, streaming flows, and terminal reconnect paths. Use when changes touch session hooks/reducers/adapters/cache/server functions, SSE or streaming transport logic, list/detail data fetching and invalidation behavior, terminal WebSocket/PTY logic, or route lifecycle/page visibility handling.
+description: Validate Agent Teams behavior after significant changes using Playwright CLI across multi-client sessions, streaming flows, and terminal reconnect paths. Use when changes touch session hooks/reducers/adapters/cache/server functions, SSE or streaming transport logic, list/detail data fetching and invalidation behavior, terminal WebSocket/PTY logic, or route lifecycle/page visibility handling.
 ---
 
 # Dogfooding
 
-Run Toy Box dogfooding scenarios after significant changes and report pass/fail with evidence.
+Run Agent Teams dogfooding scenarios after significant changes and report pass/fail with evidence.
 
 ## Execute Workflow
 
@@ -37,7 +37,7 @@ Run Toy Box dogfooding scenarios after significant changes and report pass/fail 
 
 For native apps, automate with the provider's computer-use tools or playwright-cli.
 Find the actual window with list_screens and present it with set_session_preview;
-use a display for the whole desktop. Verify native pixels in Toy Box, not only a
+use a display for the whole desktop. Verify native pixels in Agent Teams, not only a
 URL or Playwright screenshot. Test a second viewer, human control takeover,
 restart reconnect and last-viewer release without quitting the app. Native capture on
 macOS pauses while the host is locked; report that explicitly and resume on unlock.

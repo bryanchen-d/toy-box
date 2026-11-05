@@ -1,7 +1,7 @@
 import type { SvgDocument } from "../../document";
 import type { HistoryEntry } from "../../store";
 
-const SVG_CLIPBOARD_TYPE = "toy-box-svg-elements";
+const SVG_CLIPBOARD_TYPE = "agent-teams-svg-elements";
 const PASTE_OFFSET = 20;
 
 type PastedSelection = {

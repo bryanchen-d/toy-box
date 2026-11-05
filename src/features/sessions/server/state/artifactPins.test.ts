@@ -6,7 +6,7 @@ import { createTestDatabase } from "@/server/database";
 import { SessionArtifactPinsDatabase } from "./artifactPins";
 
 test("session pins persist in pin order, are idempotent and do not invent session identities", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "toy-box-artifact-pins-"));
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-artifact-pins-"));
   const path = join(directory, "state.sqlite");
   let db = await createTestDatabase(path);
   onTestFinished(async () => {

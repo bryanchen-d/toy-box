@@ -11,7 +11,7 @@ import {
 
 async function buildCli(): Promise<void> {
   const projectRoot = resolve(Bun.fileURLToPath(new URL("../../", import.meta.url)));
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "toy-box-build-"));
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "agent-teams-build-"));
   const appTypeLibrary = join(temporaryDirectory, "app-type-library");
   const screenNative = join(temporaryDirectory, SCREEN_NATIVE_DIRECTORY);
 
@@ -25,7 +25,7 @@ async function buildCli(): Promise<void> {
       throw: false,
       compile: {
         target: "bun-darwin-arm64",
-        outfile: join(projectRoot, "toy-box"),
+        outfile: join(projectRoot, "agent-teams"),
         assets: [join(projectRoot, ".output/server/public"), appTypeLibrary, screenNative],
       },
     });

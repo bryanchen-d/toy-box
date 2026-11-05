@@ -27,7 +27,7 @@ export class ClaudeConnection implements SessionConnection {
   #native: Query | undefined;
   #input!: ReadableStreamDefaultController<SDKUserMessage>;
   #listeners = new Set<(event: SessionEvent) => void>();
-  // Sends awaiting their native replay: native message id to Toy Box clientId.
+  // Sends awaiting their native replay: native message id to Agent Teams clientId.
   #pendingInputs = new Map<string, string>();
   #questions = new Map<string, (answer: string | undefined) => void>();
   // Native frames omit effort, so live model changes carry the last one applied.
@@ -75,11 +75,11 @@ export class ClaudeConnection implements SessionConnection {
           ...(configuration.disableMemory ? { autoMemoryEnabled: false } : {}),
         },
         extraArgs: { "replay-user-messages": null },
-        // Pinned so the owner's native default or auto mode can't bypass Toy Box's canUseTool policy.
+        // Pinned so the owner's native default or auto mode can't bypass Agent Teams' canUseTool policy.
         permissionMode: "default",
         canUseTool: this.#canUseTool(configuration.allowUserQuestions),
         mcpServers: {
-          toy_box: createClaudeTools(this.sessionId, configuration.tools),
+          agent_teams: createClaudeTools(this.sessionId, configuration.tools),
         },
       },
       prompt,

@@ -15,7 +15,7 @@ afterEach(async () => {
 
 describe("bundled SDK skills", () => {
   test("overlapping startup installations preserve the latest complete skill tree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "toy-box-skills-"));
+    const root = await mkdtemp(join(tmpdir(), "agent-teams-skills-"));
     temporaryRoots.push(root);
     await Promise.all([
       installBundledSkills(
@@ -32,7 +32,7 @@ describe("bundled SDK skills", () => {
     expect(await Bun.file(join(root, "owned/references/old.md")).exists()).toBe(false);
   });
   test("replaces bundled skill directories without touching user-owned skills", async () => {
-    const root = await mkdtemp(join(tmpdir(), "toy-box-skills-"));
+    const root = await mkdtemp(join(tmpdir(), "agent-teams-skills-"));
     temporaryRoots.push(root);
 
     const staleReference = join(root, "first-skill", "references", "stale.md");
@@ -62,12 +62,16 @@ describe("bundled SDK skills", () => {
 
   test("exposes universal skills to every session and editor authoring only to Hyper", () => {
     const root = "/skills";
-    const universal = ["create-toy-box-app", "create-toy-box-brief", "execute-toy-box-brief"];
+    const universal = [
+      "create-agent-teams-app",
+      "create-agent-teams-brief",
+      "execute-agent-teams-brief",
+    ];
     const expected = {
       standard: universal,
       automation: universal,
       worker: universal,
-      hyper: [...universal, "create-toy-box-editor"],
+      hyper: [...universal, "create-agent-teams-editor"],
     } satisfies Record<SessionType, readonly string[]>;
 
     for (const [sessionType, skillNames] of Object.entries(expected)) {

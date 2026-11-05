@@ -55,7 +55,7 @@ screen browser, `ScreenBrowserDialog`, in both layouts. It searches locally and
 shows each screen as a JPEG thumbnail, 960 pixels at most. Picking one uses the
 route's ordinary `onOpenScreen` path.
 Agents have only `list_screens`. They present a display or window with
-`set_session_preview`, clear it with `null`, or use the channel preview as lead.
+`set_session_preview`, clear it with `null`, or use the team preview as lead.
 Automation belongs to provider computer-use tools or playwright-cli, not Screens.
 Previews retain only IDs; frames, thumbnails and input never enter history or SQLite.
 
@@ -94,7 +94,7 @@ macOS lock suspends capture until the host is unlocked.
 Native code owns capture, geometry, JPEG encoding and OS input. The runtime owns
 captures, delivery and control. The browser paints frames and acknowledges them
 after drawing. The binary embeds the helper as one executable and extracts it once
-per version, by content hash; permissions belong to the app launching Toy Box.
+per version, by content hash; permissions belong to the app launching Agent Teams.
 The server ends the helper by closing its stdin, so it answers what it was sent and
 releases held input before exiting; its open pipes would otherwise keep the server
 running. It ignores a terminal's Ctrl+C, which reaches the server's whole process
