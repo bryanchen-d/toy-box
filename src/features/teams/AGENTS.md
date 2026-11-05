@@ -594,8 +594,8 @@ presents one deleted identity everywhere.
   open Team's visibility and read lifecycle.
 - `components/pane/` holds the pane, composer, thread, artifacts panel, and shared pane context, with `transcript/` and
   `overview/` beneath it. `components/agents/` holds avatars, mention Markdown, the mention
-  source and menu, the member editor, and working agents. `components/sidebar/` holds the Teams panel and its
-  attention priority. The top level holds the create/edit dialog and team menu.
+  source and menu, the member editor, and working agents. `components/sidebar/` holds the Teams panel, the
+  collapsed sidebar's Team tabs, and their shared attention priority. The top level holds the create/edit dialog and team menu.
 - Outside this folder, [Workers](../workers/AGENTS.md) owns agent identity and lifetime.
   [`sessionConfiguration.ts`](../../server/sessionConfiguration.ts) grants ordinary Sessions the
   Team tools and resolves agent configuration, and

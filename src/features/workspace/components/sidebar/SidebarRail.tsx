@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Separator } from "@/shared/ui/separator";
 import {
   ActionSpacer,
@@ -16,7 +17,8 @@ const SEPARATOR = "my-1.5 h-px! w-4! bg-muted-foreground/50!";
 /**
  * The collapsed desktop sidebar: the header and footer rows turned on their side
  * inside a bar one action wide, so the session list gives up its space without
- * taking the sidebar's common actions with it.
+ * taking the sidebar's common actions with it. Between them, `children` holds
+ * what stays reachable while collapsed, scrolling when it outgrows the bar.
  *
  * `Sidebar` pins the collapse toggle and settings actions outside both layouts,
  * so this stack opens and closes with the shapes those actions occupy when
@@ -34,6 +36,7 @@ export function SidebarRail({
   isHyperOpen,
   onToggleTerminal,
   isTerminalOpen,
+  children,
 }: {
   collapsed: boolean;
   className?: string;
@@ -46,6 +49,7 @@ export function SidebarRail({
   isHyperOpen: boolean;
   onToggleTerminal: () => void;
   isTerminalOpen: boolean;
+  children?: ReactNode;
 }) {
   return (
     <div
@@ -74,7 +78,9 @@ export function SidebarRail({
         onCreateTeam={onCreateTeam}
       />
 
-      <div className="min-h-0 flex-1" />
+      <div className="no-scrollbar -my-1.5 flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto">
+        {children}
+      </div>
 
       <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
       <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="right" />

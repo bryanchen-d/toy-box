@@ -28,13 +28,18 @@ export function SidebarStatus({
             className={cn("flex shrink-0 items-center justify-center", className)}
             aria-label={status.ariaLabel}
           >
-            {MARKS[status.kind]}
+            <SidebarStatusMark kind={status.kind} />
           </div>
         }
       />
       <TooltipContent sideOffset={6}>{status.tooltip}</TooltipContent>
     </Tooltip>
   );
+}
+
+/** A status's visual mark alone, for hosts that already name and describe it. */
+export function SidebarStatusMark({ kind }: { kind: SidebarStatus["kind"] }) {
+  return MARKS[kind];
 }
 
 const MARKS: Record<SidebarStatus["kind"], ReactNode> = {

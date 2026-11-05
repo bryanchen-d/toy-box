@@ -22,6 +22,7 @@ import { SidebarSection } from "@/shared/sidebar/SidebarSection";
 import { FileBrowserDialog } from "@files/components/browser/FileBrowserDialog";
 import { ScreenBrowserDialog } from "@screens/client/ScreenBrowserDialog";
 import { TeamsPanel } from "@teams/components/sidebar/TeamsPanel";
+import { TeamTabs } from "@teams/components/sidebar/TeamTabs";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import type { SidebarPanel, SidebarPanels } from "@workspace/model/config/layoutPrefs";
 
@@ -256,7 +257,9 @@ export function Sidebar({
           isHyperOpen={isHyperOpen}
           onToggleTerminal={onToggleTerminal}
           isTerminalOpen={isTerminalOpen}
-        />
+        >
+          <TeamTabs openTeamIds={openTeamIds} onTeamOpen={onTeamOpen} />
+        </SidebarRail>
       )}
 
       {collapsible && (
