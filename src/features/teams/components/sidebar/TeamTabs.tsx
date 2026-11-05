@@ -1,3 +1,4 @@
+import { Pause } from "lucide-react";
 import { useTeams } from "@teams/useTeams";
 import { SidebarStatusMark, type SidebarStatus } from "@/shared/sidebar/SidebarStatus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -39,7 +40,7 @@ export function TeamTabs({
                     aria-current={isOpen ? "true" : undefined}
                     onClick={(event) => onTeamOpen(team.id, event.metaKey || event.ctrlKey)}
                     className={cn(
-                      "relative flex w-7 cursor-pointer justify-center rounded-lg py-2.5 text-xs font-medium text-cyan-700 transition-colors dark:text-cyan-300",
+                      "relative flex w-7 cursor-pointer flex-col items-center gap-1.5 rounded-lg py-2.5 text-xs font-medium text-cyan-700 transition-colors dark:text-cyan-300",
                       isOpen
                         ? "bg-cyan-500/30 ring-2 ring-cyan-500/60"
                         : "bg-cyan-500/15 hover:bg-cyan-500/25",
@@ -48,6 +49,9 @@ export function TeamTabs({
                     <span className="max-h-56 truncate [writing-mode:vertical-rl]">
                       {team.name}
                     </span>
+                    {team.paused && (
+                      <Pause aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                    )}
                     {mark && (
                       <span
                         aria-hidden
