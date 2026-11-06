@@ -302,6 +302,14 @@ export function connectorAuthor({ id, name }: { id: string; name: string }): Tea
   return { id, name, role: "Connector", avatar: CONNECTOR_AVATAR };
 }
 
+/** Who and where a connector relayed content from, such as "Bryan Chen (you) in Slack". */
+export function connectorOriginLabel(origin: ConnectorOrigin, owner = "you"): string {
+  const where = origin.kind === "slack" ? "Slack" : origin.kind;
+  const requester = origin.requester;
+  if (!requester) return where;
+  return `${requester.name ?? requester.id}${requester.isOwner ? ` (${owner})` : ""} in ${where}`;
+}
+
 /** A titled, recurring prompt that privately wakes the lead. Only the lead adds or changes one. */
 export const teamRoutineInputSchema = z
   .object({

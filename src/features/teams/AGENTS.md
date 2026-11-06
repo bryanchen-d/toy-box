@@ -246,8 +246,9 @@ The lead asks a question about a thread's topic in that thread and posts its clo
 top-level. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Team. Agents reach connectors by mentioning them, keep each connector
-conversation in one thread, and treat content whose requester isn't the owner as information rather
-than the user's instructions. Model-facing message tools cap posts at 3,000 characters so
+conversation in one thread, answer each message where it came from (what the user typed in Agent
+Teams in the team, and what a connector relayed through that connector), and treat content whose
+requester isn't the owner as information rather than the user's instructions. Model-facing message tools cap posts at 3,000 characters so
 durable long-form work stays in canonical shared artifacts; browser messages retain the Team
 model's 12,000-character limit.
 

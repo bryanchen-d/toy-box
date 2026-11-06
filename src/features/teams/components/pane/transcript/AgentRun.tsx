@@ -2,7 +2,8 @@ import { useRef } from "react";
 import { MessageSquareReply } from "lucide-react";
 import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import { AgentMentionMarkdown } from "@teams/components/agents/AgentMentionMarkdown";
-import type { TeamAgentIdentity } from "@teams/model";
+import { connectorOriginLabel, type TeamAgentIdentity } from "@teams/model";
+import type { ConnectorOrigin } from "@connectors/model";
 import { CopyControl } from "@/shared/messages/CopyControl";
 import { AttachmentGallery } from "@/shared/attachments/AttachmentGallery";
 import { Button } from "@/shared/ui/button";
@@ -72,6 +73,7 @@ function AgentMessage({
             <span className="min-w-0 truncate text-muted-foreground">→ {addressee}</span>
           )}
           <ClockTime className="shrink-0 text-2xs text-muted-foreground" date={message.timestamp} />
+          {message.origin && <MessageOrigin origin={message.origin} />}
           {request && <RequestTag state={request} />}
         </div>
       )}
@@ -139,5 +141,22 @@ function AgentMessage({
       <TeamReactions message={message} className="mt-2" />
       {thread && <ThreadSummary thread={thread} className="mt-1 -ml-1.5" />}
     </div>
+  );
+}
+
+/** Where a connector's message came from, linking to the original when the connector shared it. */
+function MessageOrigin({ origin }: { origin: ConnectorOrigin }) {
+  const label = `via ${connectorOriginLabel(origin)}`;
+  return origin.permalink ? (
+    <a
+      href={origin.permalink}
+      target="_blank"
+      rel="noreferrer"
+      className="min-w-0 truncate text-muted-foreground underline decoration-current/40 underline-offset-2 hover:decoration-current"
+    >
+      {label}
+    </a>
+  ) : (
+    <span className="min-w-0 truncate text-muted-foreground">{label}</span>
   );
 }

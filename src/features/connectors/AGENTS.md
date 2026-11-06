@@ -87,9 +87,12 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   user is never throttled, and a throttled message is noted in the team.
 - `connector_undelivered` is the typed system message for a message that expired, was rejected, or
   was throttled.
-- `read_team` lists connectors with their mention handles, and the collaboration protocol tells
-  agents that a requester who isn't the owner speaks only as context, never as the user's
-  instructions.
+- `read_team` lists connectors with their mention handles and gives each user and connector
+  message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via BryanBot". The
+  collaboration protocol tells agents to answer each message where it came from, and that a
+  requester who isn't the owner speaks only as context, never as the user's instructions.
+- The transcript labels a relayed message with its origin, such as "via Bryan Chen (you) in Slack",
+  linking to the original, and repeats the header whenever a run relays a different person.
 
 ## Client synchronization
 

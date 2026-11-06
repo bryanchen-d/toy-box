@@ -2,6 +2,7 @@ import { defineTool, type ToolResult } from "@sessions/server/tools/definition";
 import { z } from "zod";
 import {
   agentHandleFromName,
+  connectorOriginLabel,
   teamIdentitySchema,
   teamMessageContentSchema,
   teamReactionKindSchema,
@@ -445,6 +446,11 @@ async function toTeamReadToolResult(
       };
     }
     const { id: _id, attachments, ...rest } = message;
+    const { sender } = message;
+    const connector =
+      sender.type === "connector"
+        ? connectors.find(({ connectorId }) => connectorId === sender.connectorId)
+        : undefined;
     return {
       ...rest,
       uri: teamUri({
@@ -452,6 +458,14 @@ async function toTeamReadToolResult(
         teamId: result.team.id,
         sequence: message.sequence,
       }),
+      ...(sender.type === "user" ? { from: "the user, in Agent Teams" } : {}),
+      ...(sender.type === "connector"
+        ? {
+            from: message.origin
+              ? `${connectorOriginLabel(message.origin, "the user")}, via ${connector?.name ?? "a removed connector"}`
+              : (connector?.name ?? "a removed connector"),
+          }
+        : {}),
       ...(attachments?.length
         ? {
             attachments: attachments.map((attachment) => {

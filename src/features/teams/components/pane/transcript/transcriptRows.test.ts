@@ -280,6 +280,20 @@ describe("your messages view", () => {
     expect(rows).toMatchObject([{ type: "agent", agentId: "bryanbot" }]);
     expect(rowIds(rows)).toEqual([["1", "2"]]);
   });
+
+  test("a connector's run names each new person it relays", () => {
+    const relay = (sequence: number, requester: string): TeamMessage => ({
+      id: `${sequence}`,
+      sequence,
+      timestamp: at(26, 10, sequence),
+      sender: { type: "connector", connectorId: "bryanbot" },
+      content: `Slack update ${sequence}`,
+      origin: { kind: "slack", requester: { id: requester, isOwner: requester === "owner" } },
+    });
+    const [row] = yours([relay(1, "owner"), relay(2, "owner"), relay(3, "alex")]);
+    if (row?.type !== "agent") throw new Error("Expected a connector run.");
+    expect(row.entries.map(({ showHeader }) => showHeader)).toEqual([true, false, true]);
+  });
 });
 
 describe("threads", () => {

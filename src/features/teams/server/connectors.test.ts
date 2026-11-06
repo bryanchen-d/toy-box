@@ -3,6 +3,7 @@ import { createStoredTeam } from "@teams/server/testFixtures";
 import { createTestDatabase } from "@/server/database";
 import * as sessionRuntime from "@sessions/server/runtime";
 import * as workspaceEvents from "@workspace/server/events";
+import { normalizeToolResult, type Tool } from "@sessions/server/tools/definition";
 import { CONNECTOR_PROTOCOL_VERSION, type ConnectorEvent } from "@connectors/model";
 
 let currentDb: Bun.SQL | undefined;
@@ -19,6 +20,23 @@ const { ConnectorDatabase } = await import("@connectors/server/database");
 const { postTeamMessage, sendTeamMessageFromAgent } = await import("./index");
 const { applyConnectorEvent, noteUndeliveredConnectorMessage, listConnectorDirectory } =
   await import("./connectors");
+const { teamTools } = await import("./tools");
+
+/** What an ordinary session reads from read_team. */
+async function readTeam(teamId: string) {
+  const tool = teamTools.find(({ name }) => name === "read_team") as Tool;
+  const result = normalizeToolResult(
+    await tool.handler(tool.parameters!.parse({ teamId }), {
+      sessionId: "reader",
+      toolCallId: "read",
+      toolName: "read_team",
+      arguments: { teamId },
+    }),
+  );
+  const [content] = result.content;
+  if (content?.type !== "text") throw new Error("Expected a text tool result.");
+  return JSON.parse(content.text) as { messages: { content: unknown; from?: string }[] };
+}
 
 async function open() {
   const db = await createTestDatabase();
@@ -218,5 +236,37 @@ test("the directory lists every team a connector may address", async () => {
   await open();
   expect(await listConnectorDirectory()).toEqual([
     { id: expect.any(String), name: "Docs", purpose: "Ship the release notes." },
+  ]);
+});
+
+test("agents read where each user and connector message came from", async () => {
+  const { team, connector } = await open();
+  await postTeamMessage({ id: "typed", teamId: team.id, content: "@bryanbot status?" });
+  await applyConnectorEvent(
+    connector,
+    event("Owner said ship it", {
+      to: { teamId: team.id },
+      origin: { kind: "slack", requester: { id: "U1", name: "Bryan", isOwner: true } },
+    }),
+  );
+  await applyConnectorEvent(
+    connector,
+    event("Alex asked about Friday", {
+      conversationId: "conversation-2",
+      to: { teamId: team.id },
+      origin: { kind: "slack", requester: { id: "U2", name: "Alex", isOwner: false } },
+    }),
+  );
+  await applyConnectorEvent(
+    connector,
+    event("Posted.", { conversationId: "conversation-3", to: { teamId: team.id } }),
+  );
+
+  const from = (await readTeam(team.id)).messages.map(({ from }) => from).filter(Boolean);
+  expect(from).toEqual([
+    "the user, in Agent Teams",
+    "Bryan (the user) in Slack, via BryanBot",
+    "Alex in Slack, via BryanBot",
+    "BryanBot",
   ]);
 });

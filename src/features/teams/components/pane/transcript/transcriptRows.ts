@@ -63,7 +63,8 @@ export type AgentRunEntry = {
   /** Who the message wakes; absent when it's for the user. */
   addressee?: string;
   request?: TeamRequestState;
-  /** After a run's first message, a header appears only to say something new. */
+  /** After a run's first message, a header appears only to say something new, such as a
+   *  connector relaying a different person. */
   showHeader: boolean;
   /** Coordination between agents recedes; messages for the user and requests stay whole. */
   collapsible: boolean;
@@ -335,7 +336,11 @@ function agentRunEntry(
     addressee,
     request,
     startsRun: !previous,
-    showHeader: !previous || addressee !== previous.addressee || request !== undefined,
+    showHeader:
+      !previous ||
+      addressee !== previous.addressee ||
+      request !== undefined ||
+      originKey(message) !== originKey(previous.message),
     collapsible: !isForUser(message, addressee),
     ...(replies ? { thread: transcriptThread(message.sequence, replies, context) } : {}),
   };
@@ -355,6 +360,11 @@ function addresseeOf(
  *  message, which brings news from outside the team, is for the user. */
 function isForUser(message: TeamConversationMessage, addressee: string | undefined): boolean {
   return addressee === undefined || message.request === true || message.sender.type === "connector";
+}
+
+/** Who a connector relayed a message from, so a run names each new person. */
+function originKey({ origin }: TeamConversationMessage): string | undefined {
+  return origin && `${origin.kind}:${origin.requester?.id ?? ""}`;
 }
 
 /** Membership changes merge, as do one agent's artifact shares; other system messages stand alone. */
