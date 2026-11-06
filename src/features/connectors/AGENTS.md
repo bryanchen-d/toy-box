@@ -1,8 +1,8 @@
 # Connectors
 
 A connector is an app-level link to one outside service, such as a Slack bot, that every team can
-talk to. A team member or the user mentions the connector in a team message to send it that
-message. The connector answers later in the same thread, and it can start a conversation with any
+talk to. A team member or the user starts a team message with the connector's handle to send it
+that message. The connector answers later in the same thread, and it can start a conversation with any
 team on its own, for example to relay a Slack reply. Agent Teams always dials the connector and
 keeps that link open, so only the connector needs to be reachable. Messages in either direction
 survive a restart or an outage on either side for up to five days.
@@ -75,9 +75,13 @@ directory update.
 
 Teams owns everything a connector means to a team, in `../teams/server/connectors.ts`:
 
-- `connectorsMentionedIn` resolves mentions, shared by the server and the composer's recipient
-  indicator. A user or agent message that mentions a connector is queued for it, in the
-  conversation its thread holds. A connector's own messages never forward to connectors.
+- `connectorsAddressedBy` resolves which connectors a message addresses, shared by the server and
+  the composer's recipient indicator. A connector is addressed only by the mentions a message opens
+  with, as in "@bryanbot …" or "@lead @bryanbot …". Elsewhere its handle is just its name, so an
+  agent telling the user what went "through @bryanbot" sends BryanBot nothing, and the audience
+  policy treats that handle as text too. A user or agent message that addresses a connector is
+  queued for it, in the conversation its thread holds. A connector's own messages never forward to
+  connectors.
 - A connector event posts as `{ type: "connector", connectorId }` in its conversation's thread, or
   top-level when it starts one, which then becomes that conversation's thread. Its ID derives from
   the connector and event IDs, so a replay applies once. It routes like any other message: without

@@ -149,12 +149,14 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
   or connector message wakes the lead. An unmentioned lead message wakes nobody. Explicit name-derived mentions
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
+  An agent's handle addresses it anywhere in a message; any other handle, such as a connector's,
+  addresses only among the mentions a message opens with and is otherwise plain text.
   The composer resolves the same policy for its draft, so it shows exactly who a message will wake.
   A thread never routes: its participants wake only as any message would wake them, so agents
   replying to each other can't loop without mentioning each other.
-- Send a user or Agent message to each connector it mentions, in the conversation its thread holds,
-  and post a connector's events back into that thread. The composer shows mentioned connectors as
-  recipients beside the agents a message wakes.
+- Send a user or Agent message to each connector it opens by addressing, in the conversation its
+  thread holds, and post a connector's events back into that thread. The composer shows addressed
+  connectors as recipients beside the agents a message wakes.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, and recordings to messages; generated images are attached by their saved paths.
@@ -245,7 +247,8 @@ topics, milestones, and results; `read_team` with a `threadSequence` reads one t
 The lead asks a question about a thread's topic in that thread and posts its closing result
 top-level. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
-and tool logs never enter the Team. Agents reach connectors by mentioning them, keep each connector
+and tool logs never enter the Team. Agents reach connectors by opening a message with their handle,
+and name them without @ when only talking about them. They keep each connector
 conversation in one thread, answer each message where it came from (what the user typed in Agent
 Teams in the team, and what a connector relayed through that connector), and treat content whose
 requester isn't the owner as information rather than the user's instructions. Model-facing message tools cap posts at 3,000 characters so

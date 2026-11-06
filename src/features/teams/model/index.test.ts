@@ -60,6 +60,19 @@ describe("team delivery policy", () => {
     expect(audience("@everyone please check", critic)).toEqual([lead, members[1]]);
     expect(audience("@builder @builder", critic)).toEqual([members[1]]);
   });
+
+  test("a handle that names no agent addresses only where the message opens", () => {
+    // Addressing only a connector wakes nobody in the team.
+    expect(audience("@bryanbot post this to #dev")).toEqual([]);
+    expect(audience("@lead @bryanbot post this")).toEqual([lead]);
+    // Talking about one is just text, so the message routes as if it had no mentions.
+    expect(audience("Can you ask @bryanbot to DM me?")).toEqual([lead]);
+    expect(audience("That went through @bryanbot", critic)).toEqual([lead]);
+    expect(audience("Posted through @bryanbot", leadSender)).toEqual([]);
+    expect(audience("Thanks, and @critic please check the post from @bryanbot")).toEqual([
+      members[0],
+    ]);
+  });
   test.each<{ acknowledgedRequest: boolean; expected: TeamAgent[] }>([
     { acknowledgedRequest: true, expected: [lead, members[1]!] },
     { acknowledgedRequest: false, expected: [members[1]!] },

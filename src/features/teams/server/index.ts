@@ -513,8 +513,8 @@ export async function postMessage(
         : "the user";
   // Connectors never forward to one another, so two can't relay a loop between them.
   if (sender.type !== "connector") {
-    const { forwardMentionsToConnectors } = await import("./connectors");
-    await forwardMentionsToConnectors(change.team, change.message, senderName).catch((error) => {
+    const { forwardToAddressedConnectors } = await import("./connectors");
+    await forwardToAddressedConnectors(change.team, change.message, senderName).catch((error) => {
       console.error(`Failed to forward Team ${teamId} message to connectors:`, error);
     });
   }

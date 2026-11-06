@@ -18,7 +18,7 @@ import {
   type PostTeamMessageInput,
 } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
-import { connectorsMentionedIn } from "@connectors/model";
+import { connectorsAddressedBy } from "@connectors/model";
 import { connectorQueries } from "@connectors/queries";
 import { workspaceFileId } from "@files/model";
 import { ComposerTray } from "@workspace/components/outputs/ComposerTray";
@@ -103,7 +103,7 @@ export function TeamComposer({
     members,
     acknowledgedRequest: needsReply,
   });
-  const connectorRecipients = connectorsMentionedIn(draft.value, connectors).map(connectorAuthor);
+  const connectorRecipients = connectorsAddressedBy(draft.value, connectors).map(connectorAuthor);
 
   useImperativeHandle(handleRef, () => ({
     reply: (agent) => {
@@ -207,7 +207,7 @@ function TeamAudience({
   agentCount,
 }: {
   audience: readonly TeamAgent[];
-  /** Mentioned connectors, which receive the message rather than wake. */
+  /** Connectors the message opens by addressing, which receive it rather than wake. */
   connectors: readonly TeamAgent[];
   agentCount: number;
 }) {

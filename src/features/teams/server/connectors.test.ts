@@ -81,7 +81,7 @@ async function queued(connectors: InstanceType<typeof ConnectorDatabase>, connec
   );
 }
 
-test("mentioning a connector sends it the message, and its thread is one conversation", async () => {
+test("opening a message with a connector's handle sends it the message, and its thread is one conversation", async () => {
   const { teams, connectors, team, connector, wakes } = await open();
   const root = await postTeamMessage({
     id: "root",
@@ -97,7 +97,7 @@ test("mentioning a connector sends it the message, and its thread is one convers
     origin: { kind: "team", teamId: team.id, teamName: "Docs" },
     content: "@bryanbot post the release notes in #vscode-dev",
   });
-  // The mention names no agent, so it wakes nobody in the team.
+  // Addressing only a connector names no agent, so it wakes nobody in the team.
   expect(wakes).not.toHaveBeenCalled();
   expect(await teams.getConnectorThread(connector.id, sent!.conversationId)).toEqual({
     teamId: team.id,
@@ -114,6 +114,22 @@ test("mentioning a connector sends it the message, and its thread is one convers
     conversationId: sent!.conversationId,
     sender: { kind: "agent", name: "Lead" },
   });
+});
+
+test("talking about a connector sends it nothing, and the message routes as if unmentioned", async () => {
+  const { connectors, team, connector, wakes } = await open();
+  const ask = await postTeamMessage({
+    id: "ask",
+    teamId: team.id,
+    content: "Can you ask @bryanbot to DM me?",
+  });
+  expect(wakes).toHaveBeenCalledTimes(1);
+  await sendTeamMessageFromAgent(team.id, {
+    content: "Done. That post went through @bryanbot.",
+    threadSequence: ask.sequence,
+  });
+  expect(wakes).toHaveBeenCalledTimes(1);
+  expect(await queued(connectors, connector.id)).toEqual([]);
 });
 
 test("a connector's reply lands once in its thread as the connector, and wakes the lead", async () => {

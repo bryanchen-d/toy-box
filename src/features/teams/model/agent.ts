@@ -130,6 +130,17 @@ export function extractAgentMentionHandles(content: string): {
   return { handles: [...handles], mentionAll };
 }
 
+/** The handles a message opens with, which address their owners before anything else is said. */
+export function leadingMentionHandles(content: string): string[] {
+  const handles: string[] = [];
+  let body = content;
+  for (let match = LEADING_MENTION.exec(body); match; match = LEADING_MENTION.exec(body)) {
+    handles.push(match[1]!.toLowerCase());
+    body = body.slice(match[0].length);
+  }
+  return handles;
+}
+
 export function agentMatchesMentionQuery(
   agent: { name: string; role?: string },
   query: string,

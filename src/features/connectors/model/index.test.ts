@@ -4,7 +4,7 @@ import {
   connectorEventSchema,
   connectorHandle,
   connectorOptionsSchema,
-  connectorsMentionedIn,
+  connectorsAddressedBy,
   DELIVERY_BACKOFF,
 } from ".";
 
@@ -36,22 +36,31 @@ describe("connector options", () => {
   });
 });
 
-describe("connector mentions", () => {
+describe("connector addressing", () => {
   const connectors = [{ name: "BryanBot" }, { name: "Build Watcher" }];
 
-  test("use the agent mention grammar", () => {
+  test("a message addresses the connectors it opens with", () => {
     expect(connectorHandle({ name: "Build Watcher" })).toBe("build-watcher");
-    expect(connectorsMentionedIn("@bryanbot post this to #dev", connectors)).toEqual([
+    expect(connectorsAddressedBy("@bryanbot post this to #dev", connectors)).toEqual([
       { name: "BryanBot" },
     ]);
-    expect(connectorsMentionedIn("ping @build-watcher and @BryanBot", connectors)).toEqual(
+    expect(connectorsAddressedBy("@build-watcher, @BryanBot: ping", connectors)).toEqual(
       connectors,
     );
+    expect(connectorsAddressedBy("@lead @bryanbot post this", connectors)).toEqual([
+      { name: "BryanBot" },
+    ]);
+  });
+
+  test("a connector's handle later in the text is only its name", () => {
+    expect(connectorsAddressedBy("This one went through @bryanbot.", connectors)).toEqual([]);
+    expect(connectorsAddressedBy("@lead ask @bryanbot to DM me", connectors)).toEqual([]);
   });
 
   test("never match text that only looks like a mention", () => {
-    expect(connectorsMentionedIn("mail bryan@bryanbot.dev", connectors)).toEqual([]);
-    expect(connectorsMentionedIn("@everyone look", connectors)).toEqual([]);
+    expect(connectorsAddressedBy("mail bryan@bryanbot.dev", connectors)).toEqual([]);
+    expect(connectorsAddressedBy("@bryanbot.dev is down", connectors)).toEqual([]);
+    expect(connectorsAddressedBy("@everyone look", connectors)).toEqual([]);
   });
 });
 

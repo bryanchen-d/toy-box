@@ -19,6 +19,7 @@ import {
   agentRoleSchema,
   TEAM_LEAD_PROFILE,
   extractAgentMentionHandles,
+  leadingMentionHandles,
 } from "./agent";
 
 export * from "./agent";
@@ -613,15 +614,17 @@ export function resolveTeamAudience({
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
   const { handles, mentionAll } = extractAgentMentionHandles(content);
-  const mentionedHandles = new Set(handles);
   const agents = [lead, ...members];
+  const agentHandles = new Set(agents.map(({ name }) => agentHandleFromName(name)));
+  const leading = new Set(leadingMentionHandles(content));
+  // An agent's handle addresses it anywhere. Any other handle, such as a connector's, addresses
+  // only where the message opens; elsewhere it's just a name in the text.
+  const addressed = handles.filter((handle) => agentHandles.has(handle) || leading.has(handle));
   const mentionedIds = new Set(
-    agents
-      .filter(({ name }) => mentionedHandles.has(agentHandleFromName(name)))
-      .map(({ id }) => id),
+    agents.filter(({ name }) => addressed.includes(agentHandleFromName(name))).map(({ id }) => id),
   );
   const senderId = sender.type === "agent" ? sender.agentId : undefined;
-  if (!mentionAll && handles.length === 0) {
+  if (!mentionAll && addressed.length === 0) {
     return lead.id === senderId ? [] : [lead];
   }
   return agents.filter(

@@ -1,8 +1,8 @@
-// Teams' side of connectors. Mentioning a connector sends it the message in its thread's
-// conversation; the connector's events land back in the thread that holds that conversation.
+// Teams' side of connectors. A message that opens by addressing a connector goes to it in its
+// thread's conversation; the connector's events land back in the thread that holds that conversation.
 
 import {
-  connectorsMentionedIn,
+  connectorsAddressedBy,
   CONNECTOR_MESSAGE_MAX_LENGTH,
   CONNECTOR_PROTOCOL_VERSION,
   type Connector,
@@ -23,15 +23,15 @@ const HOUR_MS = 60 * 60_000;
 // A fuse rather than a quota: it resets when the server restarts.
 const agentForwards = sharedMap<number[]>("connector-agent-forwards");
 
-/** Sends a user or Agent message to every connector it mentions. */
-export async function forwardMentionsToConnectors(
+/** Sends a user or Agent message to every connector it opens by addressing. */
+export async function forwardToAddressedConnectors(
   team: Team,
   message: StoredTeamMessage,
   senderName: string,
 ): Promise<void> {
   if (isTeamSystemMessage(message) || message.sender.type === "connector") return;
   const { listConnectors, sendToConnector } = await import("@connectors/server");
-  const mentioned = connectorsMentionedIn(message.content, await listConnectors());
+  const mentioned = connectorsAddressedBy(message.content, await listConnectors());
   if (mentioned.length === 0) return;
 
   const database = new TeamDatabase(await getStateDatabase());

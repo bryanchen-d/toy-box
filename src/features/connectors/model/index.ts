@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentHandleFromName, extractAgentMentionHandles } from "@teams/model/agent";
+import { agentHandleFromName, leadingMentionHandles } from "@teams/model/agent";
 
 /** The wire contract's version. Every request body and event carries it. */
 export const CONNECTOR_PROTOCOL_VERSION = 1;
@@ -62,12 +62,15 @@ export function connectorHandle(connector: Pick<Connector, "name">): string {
   return agentHandleFromName(connector.name);
 }
 
-/** The connectors a message mentions, which each receive it. `@everyone` addresses only agents. */
-export function connectorsMentionedIn<C extends Pick<Connector, "name">>(
+/**
+ * The connectors a message opens by addressing, which each receive it. Elsewhere in the text a
+ * connector's handle is only its name, so talking about one never sends it anything.
+ */
+export function connectorsAddressedBy<C extends Pick<Connector, "name">>(
   content: string,
   connectors: readonly C[],
 ): C[] {
-  const { handles } = extractAgentMentionHandles(content);
+  const handles = leadingMentionHandles(content);
   return connectors.filter((connector) => handles.includes(connectorHandle(connector)));
 }
 
