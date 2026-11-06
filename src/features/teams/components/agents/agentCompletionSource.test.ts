@@ -67,4 +67,16 @@ describe("agentCompletionSource", () => {
     expect(await source.accept!(create)).toBe("@new-agent-2");
     expect(created).toBe("New Agent");
   });
+
+  test("offers connectors after the team, and never offers to create a member by their handle", () => {
+    const source = agentCompletionSource({
+      lead,
+      members,
+      connectors: [{ name: "BryanBot" }],
+      createMember: () => new Promise(() => {}),
+    });
+    expect(source.query("bryanbot")).toEqual([
+      expect.objectContaining({ value: "@bryanbot", label: "BryanBot", group: "Connectors" }),
+    ]);
+  });
 });

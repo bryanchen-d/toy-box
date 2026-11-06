@@ -25,6 +25,7 @@
       "@/*": ["./src/*"],
       "@apps/*": ["./src/features/apps/*"],
       "@automations/*": ["./src/features/automations/*"],
+      "@connectors/*": ["./src/features/connectors/*"],
       "@providers/*": ["./src/features/providers/*"],
       "@files/*": ["./src/features/files/*"],
       "@inbox/*": ["./src/features/inbox/*"],

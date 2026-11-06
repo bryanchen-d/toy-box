@@ -2,6 +2,7 @@ import {
   AGENT_MENTION_TRIGGER,
   agentHandleFromName,
   agentMatchesMentionQuery,
+  CONNECTOR_AVATAR,
   type AgentAvatar,
   type TeamLead,
   type TeamMember,
@@ -21,10 +22,13 @@ export type AgentCompletionItem = CompletionItem & {
 export function agentCompletionSource({
   lead,
   members,
+  connectors = [],
   createMember,
 }: {
   lead: TeamLead;
   members: readonly TeamMember[];
+  /** App-level connectors, which every team can mention. */
+  connectors?: readonly { name: string }[];
   /** Omit while paused; otherwise creates and onboards an unknown handle. */
   createMember?: (name: string) => Promise<{ name: string }>;
 }): CompletionSource<AgentCompletionItem> {
@@ -33,7 +37,7 @@ export function agentCompletionSource({
     trigger: AGENT_MENTION_TRIGGER,
     empty: createMember ? "Type a name to create a member." : "No matching agents.",
     query: (text) =>
-      agentItems(text.toLowerCase(), lead, members).filter(
+      agentItems(text.toLowerCase(), lead, members, connectors).filter(
         (item) => createMember || item.kind !== "create",
       ),
     accept: (item) => {
@@ -44,11 +48,13 @@ export function agentCompletionSource({
   };
 }
 
-/** Everyone, the lead, then matching members; an unknown handle offers to create that member. */
+/** Everyone, the lead, matching members, then connectors; an unknown handle offers to create
+ *  that member. */
 function agentItems(
   query: string,
   lead: TeamLead,
   members: readonly TeamMember[],
+  connectors: readonly { name: string }[],
 ): AgentCompletionItem[] {
   const items: AgentCompletionItem[] = [];
   if ("everyone".includes(query)) {
@@ -79,6 +85,17 @@ function agentItems(
       group: "In this team",
       ...(agent.avatar ? { avatar: agent.avatar } : {}),
       agent,
+    });
+  }
+  for (const connector of connectors
+    .filter((connector) => agentMatchesMentionQuery(connector, query))
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    items.push({
+      value: `@${agentHandleFromName(connector.name)}`,
+      label: connector.name,
+      description: "Send this message to the connector",
+      group: "Connectors",
+      avatar: CONNECTOR_AVATAR,
     });
   }
   const words = query.split("-").filter(Boolean);

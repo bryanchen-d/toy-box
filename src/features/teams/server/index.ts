@@ -6,7 +6,7 @@ import type {
   TeamList,
   TeamMember,
   TeamMessage,
-  TeamMessageSender,
+  TeamMessageActor,
   TeamReaction,
   TeamRoutine,
   CreateTeamMemberInput,
@@ -494,9 +494,10 @@ async function resolveAttachmentPaths(sessionId: string, paths: readonly string[
   );
 }
 
-/** Persist once, then apply the same audience plan for user and Agent senders. */
-async function postMessage(
+/** Persist once, then apply the same audience plan for user, Agent, and connector senders. */
+export async function postMessage(
   input: Parameters<TeamDatabase["appendMessage"]>[0],
+  { connectorName }: { connectorName?: string } = {},
 ): Promise<StoredTeamMessage> {
   const { teamId, sender, content } = input;
   const database = new TeamDatabase(await getStateDatabase());
@@ -504,6 +505,19 @@ async function postMessage(
   const change = await database.appendMessage(input);
   const lead = teamLead(change.team.id);
   publishTeamChange(change);
+  const senderName =
+    sender.type === "agent"
+      ? ([lead, ...members].find(({ id }) => id === sender.agentId)?.name ?? "an agent")
+      : sender.type === "connector"
+        ? (connectorName ?? "a connector")
+        : "the user";
+  // Connectors never forward to one another, so two can't relay a loop between them.
+  if (sender.type !== "connector") {
+    const { forwardMentionsToConnectors } = await import("./connectors");
+    await forwardMentionsToConnectors(change.team, change.message, senderName).catch((error) => {
+      console.error(`Failed to forward Team ${teamId} message to connectors:`, error);
+    });
+  }
   if (change.team.paused) return change.message;
   const audience = resolveTeamAudience({
     content,
@@ -513,10 +527,6 @@ async function postMessage(
     acknowledgedRequest: change.acknowledgedRequest,
   });
 
-  const senderName =
-    sender.type === "agent"
-      ? ([lead, ...members].find(({ id }) => id === sender.agentId)?.name ?? "an agent")
-      : "the user";
   await Promise.all(
     audience.map((member) =>
       wakeTeamAgent(member.id, { type: "team_message", senderName }).catch((error) => {
@@ -558,7 +568,7 @@ async function shareTeamArtifact(
   input: {
     path: string;
     title: string;
-    actor: Exclude<TeamMessageSender, { type: "system" }>;
+    actor: TeamMessageActor;
   },
 ) {
   const team = await database.getTeam(teamId);

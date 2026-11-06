@@ -30,13 +30,18 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       team_id           TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       sequence             INTEGER NOT NULL
         CHECK (typeof(sequence) = 'integer' AND sequence > 0),
-      sender_type          TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'system')),
+      sender_type          TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'connector', 'system')),
       sender_agent_id      TEXT,
+      sender_connector_id  TEXT,
       content              TEXT NOT NULL
         CHECK (sender_type <> 'system' OR json_valid(content)),
       request              INTEGER NOT NULL DEFAULT 0 CHECK (request IN (0, 1)),
       attachments          TEXT CHECK (
         attachments IS NULL OR (sender_type <> 'system' AND json_valid(attachments))
+      ),
+      -- Where a connector's forwarded content came from.
+      origin               TEXT CHECK (
+        origin IS NULL OR (sender_type = 'connector' AND json_valid(origin))
       ),
       -- A reply names the earlier top-level message that starts its thread.
       thread_sequence      INTEGER CHECK (
@@ -48,6 +53,7 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
         (sender_type = 'agent' AND sender_agent_id IS NOT NULL) OR
         (sender_type <> 'agent' AND sender_agent_id IS NULL)
       ),
+      CHECK ((sender_type = 'connector') = (sender_connector_id IS NOT NULL)),
       UNIQUE(team_id, sequence)
     );
 
@@ -57,6 +63,16 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_team_messages_thread
       ON team_messages(team_id, thread_sequence, sequence)
       WHERE thread_sequence IS NOT NULL;
+
+    -- Each connector conversation lives in one team thread; either side may start it.
+    CREATE TABLE IF NOT EXISTS team_connector_threads (
+      connector_id     TEXT NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
+      conversation_id  TEXT NOT NULL,
+      team_id          TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      thread_sequence  INTEGER NOT NULL,
+      PRIMARY KEY(connector_id, conversation_id),
+      UNIQUE(connector_id, team_id, thread_sequence)
+    );
 
     CREATE TABLE IF NOT EXISTS team_message_reactions (
       team_id       TEXT NOT NULL,

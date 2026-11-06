@@ -3,6 +3,7 @@
 - Toy Box is now Agent Teams, and channels are now teams
 - Teams lead the sidebar, followed by a collapsible Sessions section that holds the session filter
 - The browser title names the team in focus
+- Connectors link outside services, like a Slack bot, that every team can @mention, over a URL or a private dev tunnel
 
 ## 📅 v0.3.1 (10/20/26)
 

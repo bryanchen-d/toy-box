@@ -1,6 +1,7 @@
 import {
   teamAudienceLabel,
   isTeamSystemMessage,
+  messageAuthorId,
   resolveTeamAudience,
   withoutLeadingMentions,
   type TeamAgent,
@@ -137,7 +138,7 @@ export function threadParticipants(
 ): TeamConversationMessage["sender"][] {
   const participants = new Map<string, TeamConversationMessage["sender"]>();
   for (const { sender } of [...replies].reverse()) {
-    const key = sender.type === "agent" ? sender.agentId : "user";
+    const key = messageAuthorId(sender) ?? "user";
     if (!participants.has(key)) participants.set(key, sender);
   }
   return [...participants.values()];
@@ -215,8 +216,9 @@ function startRow(message: TeamMessage, context: RowContext): TranscriptRowConte
     };
   }
   const { sender } = message;
-  if (sender.type === "agent") {
-    return { type: "agent", agentId: sender.agentId, entries: [agentRunEntry(message, context)] };
+  const authorId = messageAuthorId(sender);
+  if (authorId) {
+    return { type: "agent", agentId: authorId, entries: [agentRunEntry(message, context)] };
   }
   const replies = context.threads?.get(message.sequence)?.replies;
   return replies
@@ -250,7 +252,7 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
     );
   }
   if (row.type !== "agent") return false;
-  if (message.sender.type !== "agent" || message.sender.agentId !== row.agentId) return false;
+  if (messageAuthorId(message.sender) !== row.agentId) return false;
   const last = row.entries.at(-1)!;
   const gap = Date.parse(message.timestamp) - Date.parse(last.message.timestamp);
   if (gap > RUN_WINDOW_MS) return false;
@@ -349,9 +351,10 @@ function addresseeOf(
   return audience.length > 0 ? teamAudienceLabel(audience, members.length) : undefined;
 }
 
-/** An agent's message that wakes no agent, or asks the user something, is for the user. */
+/** An agent's message that wakes no agent or asks the user something, and every connector's
+ *  message, which brings news from outside the team, is for the user. */
 function isForUser(message: TeamConversationMessage, addressee: string | undefined): boolean {
-  return addressee === undefined || message.request === true;
+  return addressee === undefined || message.request === true || message.sender.type === "connector";
 }
 
 /** Membership changes merge, as do one agent's artifact shares; other system messages stand alone. */

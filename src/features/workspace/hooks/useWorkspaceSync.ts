@@ -7,6 +7,7 @@ import { applyWorkspaceEvent, invalidateWorkspaceStateQuery } from "@workspace/q
 import type { WorkspaceEvent } from "@workspace/model/events";
 import { invalidateTeamListQuery } from "@teams/queryCache";
 import { invalidateAutomationListQuery } from "@automations/queryCache";
+import { invalidateConnectorListQuery } from "@connectors/queryCache";
 import { invalidateInboxListQuery } from "@inbox/queryCache";
 import { invalidateAppListQuery } from "@apps/queryCache";
 import { providerQueries } from "@providers/queries";
@@ -35,6 +36,7 @@ export function useWorkspaceSync(ssrRevision?: string): void {
         queryClient.invalidateQueries({ queryKey: sessionQueries.artifactPinsKey() }),
         invalidateTeamListQuery(queryClient),
         invalidateAutomationListQuery(queryClient),
+        invalidateConnectorListQuery(queryClient),
         invalidateInboxListQuery(queryClient),
         invalidateAppListQuery(queryClient),
         queryClient.invalidateQueries({ queryKey: providerQueries.all() }),

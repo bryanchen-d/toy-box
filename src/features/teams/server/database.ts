@@ -23,6 +23,7 @@ import {
   type TeamMessage as ClientTeamMessage,
   type TeamConversationMessage as ClientConversationMessage,
   type TeamReaction,
+  type TeamMessageAuthor,
   type TeamMessageSender,
   type TeamSystemMessageContent,
   type TeamTask,
@@ -36,6 +37,7 @@ import {
 import { reduceTeam } from "@teams/model/reducer";
 import { applyPatch } from "@teams/model/changes";
 import { previewSchema } from "@/shared/preview";
+import { connectorOriginSchema } from "@connectors/model";
 import { artifactAppPathSchema } from "@apps/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { modelConfigurationSchema } from "@providers/model";
@@ -362,9 +364,18 @@ export class TeamDatabase {
     let before = Number.MAX_SAFE_INTEGER;
     for (;;) {
       const rows = await this.db<
-        Pick<TeamMessageRow, "sequence" | "sender_agent_id" | "content" | "thread_sequence">[]
+        Pick<
+          TeamMessageRow,
+          | "sequence"
+          | "sender_type"
+          | "sender_agent_id"
+          | "sender_connector_id"
+          | "content"
+          | "thread_sequence"
+        >[]
       >`
-        SELECT sequence, sender_agent_id, content, thread_sequence FROM team_messages
+        SELECT sequence, sender_type, sender_agent_id, sender_connector_id, content, thread_sequence
+        FROM team_messages
         WHERE team_id = ${teamId} AND sequence < ${before} AND sender_type <> 'system'
           AND (${thread} IS NULL OR sequence = ${thread} OR thread_sequence = ${thread})
         ORDER BY sequence DESC
@@ -376,10 +387,7 @@ export class TeamDatabase {
         matches.push({
           sequence: row.sequence,
           threadSequence: row.thread_sequence ?? row.sequence,
-          sender:
-            row.sender_agent_id === null
-              ? { type: "user" }
-              : { type: "agent", agentId: row.sender_agent_id },
+          sender: authorFromRow(row),
           ...match,
         });
         if (matches.length === MESSAGE_SEARCH_LIMIT) return matches;
@@ -419,8 +427,8 @@ export class TeamDatabase {
   }
 
   /**
-   * Appends a user or Agent message, in a thread when it replies. The lead can flag its own
-   * message as a request for the user.
+   * Appends a user, Agent, or connector message, in a thread when it replies. The lead can flag
+   * its own message as a request for the user.
    */
   async appendMessage({
     teamId,
@@ -455,6 +463,50 @@ export class TeamDatabase {
         message: change.message,
         acknowledgedRequest,
       };
+    });
+  }
+
+  /** The team thread a connector conversation lives in. */
+  async getConnectorThread(connectorId: string, conversationId: string) {
+    const [row] = await this.db<{ team_id: string; thread_sequence: number }[]>`
+      SELECT team_id, thread_sequence FROM team_connector_threads
+      WHERE connector_id = ${connectorId} AND conversation_id = ${conversationId}
+    `;
+    return row ? { teamId: row.team_id, threadSequence: row.thread_sequence } : null;
+  }
+
+  /**
+   * The conversation a team thread holds with a connector, recording `conversationId` when it has
+   * none yet. Returns whichever conversation the thread holds after the write.
+   */
+  async claimConnectorConversation(input: {
+    connectorId: string;
+    conversationId: string;
+    teamId: string;
+    threadSequence: number;
+  }): Promise<string> {
+    const { connectorId, conversationId, teamId, threadSequence } = input;
+    await this.db`
+      INSERT INTO team_connector_threads (connector_id, conversation_id, team_id, thread_sequence)
+      VALUES (${connectorId}, ${conversationId}, ${teamId}, ${threadSequence})
+      ON CONFLICT DO NOTHING
+    `;
+    const [row] = await this.db<{ conversation_id: string }[]>`
+      SELECT conversation_id FROM team_connector_threads
+      WHERE connector_id = ${connectorId} AND team_id = ${teamId}
+        AND thread_sequence = ${threadSequence}
+    `;
+    return row?.conversation_id ?? conversationId;
+  }
+
+  /** Notes in the transcript that a connector never received a message. */
+  async noteConnectorUndelivered(
+    teamId: string,
+    content: Extract<TeamSystemMessageContent, { type: "connector_undelivered" }>,
+  ) {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireTeam(db, teamId);
+      return recordTeamChange(db, team, [await appendSystemMessage(db, teamId, content)]);
     });
   }
 
@@ -850,9 +902,11 @@ function messageColumns(message: TeamMessage) {
     timestamp: message.timestamp,
     sender_type: message.sender.type,
     sender_agent_id: message.sender.type === "agent" ? message.sender.agentId : null,
+    sender_connector_id: message.sender.type === "connector" ? message.sender.connectorId : null,
     content:
       typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     attachments: message.attachments?.length ? JSON.stringify(message.attachments) : null,
+    origin: !isTeamSystemMessage(message) && message.origin ? JSON.stringify(message.origin) : null,
     request: message.request ? 1 : 0,
     thread_sequence: message.threadSequence ?? null,
   };
@@ -1002,9 +1056,11 @@ type TeamMessageRow = {
   sequence: number;
   sender_type: TeamMessageSender["type"];
   sender_agent_id: string | null;
+  sender_connector_id: string | null;
   content: string;
   request: number;
   attachments: string | null;
+  origin: string | null;
   thread_sequence: number | null;
   timestamp: string;
 };
@@ -1133,19 +1189,29 @@ function messageFromRow(row: TeamMessageRow, reactions: TeamReaction[]): TeamMes
   const attachments = row.attachments
     ? teamAttachmentSchema.array().parse(JSON.parse(row.attachments))
     : undefined;
-  const sender: Exclude<TeamMessageSender, { type: "system" }> =
-    row.sender_type === "user"
-      ? { type: "user" }
-      : { type: "agent", agentId: row.sender_agent_id! };
   return {
     ...common,
-    sender,
+    sender: authorFromRow(row),
     content: row.content,
+    ...(row.origin ? { origin: connectorOriginSchema.parse(JSON.parse(row.origin)) } : {}),
     ...(row.request ? { request: true as const } : {}),
     ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     ...(attachments?.length ? { attachments } : {}),
     ...(reactions.length ? { reactions } : {}),
   };
+}
+
+function authorFromRow(
+  row: Pick<TeamMessageRow, "sender_type" | "sender_agent_id" | "sender_connector_id">,
+): TeamMessageAuthor {
+  switch (row.sender_type) {
+    case "agent":
+      return { type: "agent", agentId: row.sender_agent_id! };
+    case "connector":
+      return { type: "connector", connectorId: row.sender_connector_id! };
+    default:
+      return { type: "user" };
+  }
 }
 
 function reactionsByMessage(rows: TeamReactionRow[]): Map<number, TeamReaction[]> {

@@ -26,6 +26,7 @@ import { teamAgentPresence } from "@teams/model/presence";
 import { getSessionState } from "@workspace/server/state/sessions";
 import { teamUri, parseTeamUri } from "@teams/model/references";
 import type { ModelConfiguration } from "@providers/model";
+import { connectorHandle } from "@connectors/model";
 
 export const TEAM_REFERENCE_INSTRUCTIONS =
   "Use list_teams to discover Agent Teams teams and inspect_team to read a team URI. " +
@@ -415,7 +416,16 @@ const shareTeamArtifactFromAgentTool = defineTool("share_team_artifact", {
   },
 });
 
-function toTeamReadToolResult(result: Awaited<ReturnType<typeof import(".").readTeamForSession>>) {
+async function toTeamReadToolResult(
+  result: Awaited<ReturnType<typeof import(".").readTeamForSession>>,
+) {
+  const { listConnectors } = await import("@connectors/server");
+  const connectors = (await listConnectors()).map(({ id, name, status }) => ({
+    connectorId: id,
+    name,
+    mention: `@${connectorHandle({ name })}`,
+    connected: status.state === "connected",
+  }));
   const images: Attachment[] = [];
   const messages = result.messages.map((message) => {
     if (isTeamSystemMessage(message)) {
@@ -467,6 +477,7 @@ function toTeamReadToolResult(result: Awaited<ReturnType<typeof import(".").read
           ),
           artifacts: result.artifacts.map(artifactForTool),
           routines: result.routines.map(({ id, ...routine }) => ({ routineId: id, ...routine })),
+          connectors,
           messages,
           hasMore: result.hasMore,
         }),

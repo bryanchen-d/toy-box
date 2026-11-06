@@ -7,6 +7,7 @@ import {
   PanelsTopLeft,
   Pause,
   Pencil,
+  Unplug,
   UserMinus,
   UserPlus,
 } from "lucide-react";
@@ -164,6 +165,22 @@ const SYSTEM_MESSAGES: {
   member_left: {
     icon: <UserMinus className="size-3.5 shrink-0" />,
     present: (contents) => membershipContent(contents, "left"),
+  },
+  connector_undelivered: {
+    icon: <Unplug className="size-3.5 shrink-0" />,
+    present: ([{ connectorId, reason, excerpt }], { agent }) => ({
+      content: (
+        <>
+          {agent(connectorId).name} didn't receive <Value text={excerpt} />
+        </>
+      ),
+      tooltip:
+        reason === "rejected"
+          ? "The connector rejected this message."
+          : reason === "throttled"
+            ? "Agents sent this conversation too many messages in the last hour, so this one wasn't sent."
+            : "It couldn't be delivered for 5 days, so it was dropped.",
+    }),
   },
   artifact_shared: {
     icon: <FileUp className="size-3.5 shrink-0" />,

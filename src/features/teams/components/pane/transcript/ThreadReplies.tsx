@@ -1,6 +1,6 @@
 import { CornerDownRight, UserRound } from "lucide-react";
 import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
-import type { TeamConversationMessage } from "@teams/model";
+import { messageAuthorId, type TeamConversationMessage } from "@teams/model";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { cn } from "@/shared/utils";
 import { useTeamPane } from "../TeamPaneContext";
@@ -55,8 +55,9 @@ export function ThreadActivity({
 }) {
   const { agent, openThread } = useTeamPane();
   const latest = thread.replies.at(-1)!;
-  const isUser = latest.sender.type === "user";
-  const author = latest.sender.type === "agent" ? agent(latest.sender.agentId).name : "You";
+  const authorId = messageAuthorId(latest.sender);
+  const isUser = authorId === undefined;
+  const author = authorId ? agent(authorId).name : "You";
 
   return (
     <button
@@ -110,13 +111,10 @@ function ThreadParticipants({ replies }: { replies: readonly TeamConversationMes
 
   return (
     <span className="flex shrink-0 items-center gap-0.5">
-      {participants.slice(0, VISIBLE_PARTICIPANTS).map((sender) =>
-        sender.type === "agent" ? (
-          <AgentAvatar
-            key={sender.agentId}
-            agent={agent(sender.agentId)}
-            className="size-4.5 rounded-sm"
-          />
+      {participants.slice(0, VISIBLE_PARTICIPANTS).map((sender) => {
+        const authorId = messageAuthorId(sender);
+        return authorId ? (
+          <AgentAvatar key={authorId} agent={agent(authorId)} className="size-4.5 rounded-sm" />
         ) : (
           <span
             key="user"
@@ -125,8 +123,8 @@ function ThreadParticipants({ replies }: { replies: readonly TeamConversationMes
           >
             <UserRound className="size-3" />
           </span>
-        ),
-      )}
+        );
+      })}
       {participants.length > VISIBLE_PARTICIPANTS && (
         <span className="pl-0.5 text-2xs text-muted-foreground tabular-nums">
           +{participants.length - VISIBLE_PARTICIPANTS}

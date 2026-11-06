@@ -68,14 +68,17 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
 - `TeamMember` is the current public projection of one Team-owned Worker. The Worker ID is also
   its private Session ID and public Agent ID. The projection contains its name, optional role,
   model, avatar, and collaboration status. Its read position stays private in Worker metadata.
-- `TeamMessage` has a durable ID and transactionally allocated sequence. User and Agent messages
-  contain Markdown and optional image or video attachments. Typed system messages record name, purpose,
-  directory, preview, membership, and artifact changes. Agent senders retain only their stable Worker ID, so deleting
-  a member preserves prior content while the UI presents a deleted identity.
+- `TeamMessage` has a durable ID and transactionally allocated sequence. User, Agent, and
+  connector messages contain Markdown and optional image or video attachments. Typed system
+  messages record name, purpose, directory, preview, membership, artifact, and undelivered
+  connector-message changes. Agent senders retain only their stable Worker ID, so deleting
+  a member preserves prior content while the UI presents a deleted identity. A connector sender
+  retains its connector ID, and its message may carry `origin`: where the content came from and
+  whether its requester is the owner. See [Connectors](../connectors/AGENTS.md).
   `tasks_completed` records the task list becoming complete. The lead flags an ordinary message with
   `request: true`; `requestSequence` points to that question until a user replies.
-  A user or Agent message may reply in a thread: its `threadSequence` is the sequence of the
-  earlier top-level user or Agent message that starts the thread. Threads are one level deep, so
+  A user, Agent, or connector message may reply in a thread: its `threadSequence` is the sequence of the
+  earlier top-level conversation message that starts the thread. Threads are one level deep, so
   replying to a reply joins the same thread, and system messages neither start nor join one. A
   reply is an ordinary message in the same sequence, so reading, paging, reactions, requests,
   status targets, and replay need nothing thread-specific.
@@ -143,12 +146,15 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - Reply in a thread by naming any message in it. The append transaction resolves the thread's
   top-level message, rejecting system messages and messages outside the Team. Read one thread
   whole, without changing read state.
-- Route every message through one pure `resolveTeamAudience` policy. An unmentioned user or member
-  message wakes the lead. An unmentioned lead message wakes nobody. Explicit name-derived mentions
+- Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
+  or connector message wakes the lead. An unmentioned lead message wakes nobody. Explicit name-derived mentions
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
   The composer resolves the same policy for its draft, so it shows exactly who a message will wake.
   A thread never routes: its participants wake only as any message would wake them, so agents
   replying to each other can't loop without mentioning each other.
+- Send a user or Agent message to each connector it mentions, in the conversation its thread holds,
+  and post a connector's events back into that thread. The composer shows mentioned connectors as
+  recipients beside the agents a message wakes.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, and recordings to messages; generated images are attached by their saved paths.
@@ -239,7 +245,9 @@ topics, milestones, and results; `read_team` with a `threadSequence` reads one t
 The lead asks a question about a thread's topic in that thread and posts its closing result
 top-level. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
-and tool logs never enter the Team. Model-facing message tools cap posts at 3,000 characters so
+and tool logs never enter the Team. Agents reach connectors by mentioning them, keep each connector
+conversation in one thread, and treat content whose requester isn't the owner as information rather
+than the user's instructions. Model-facing message tools cap posts at 3,000 characters so
 durable long-form work stays in canonical shared artifacts; browser messages retain the Team
 model's 12,000-character limit.
 

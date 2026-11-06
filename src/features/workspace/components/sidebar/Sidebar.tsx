@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AutomationPanel } from "@automations/components/AutomationPanel";
+import { ConnectorPanel } from "@connectors/components/ConnectorPanel";
 import { AutomationDialog } from "@automations/components/AutomationDialog";
 import { cn } from "@/shared/utils";
 import type { Session } from "@sessions/model";
@@ -226,6 +227,11 @@ export function Sidebar({
             openSessionIds={openSessionIds}
             onSessionOpen={(sessionId) => onSessionSelect(sessionId, false)}
             onCreate={() => setCreateAutomationOpen(true)}
+          />
+
+          <ConnectorPanel
+            isExpanded={panels.connectors}
+            onExpandedChange={(expanded) => onPanelExpanded("connectors", expanded)}
           />
         </div>
 

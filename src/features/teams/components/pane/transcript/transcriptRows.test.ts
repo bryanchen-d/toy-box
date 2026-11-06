@@ -267,6 +267,19 @@ describe("your messages view", () => {
     );
     expect(rows.map(({ divider }) => divider?.unread ?? false)).toEqual([false, true]);
   });
+
+  test("a connector's messages run under its own identity and always reach the user", () => {
+    const relay = (sequence: number): TeamMessage => ({
+      id: `${sequence}`,
+      sequence,
+      timestamp: at(26, 10, sequence),
+      sender: { type: "connector", connectorId: "bryanbot" },
+      content: `Slack update ${sequence}`,
+    });
+    const rows = yours([relay(1), relay(2), agentPost(3, "engine", undefined, "@lead noted")]);
+    expect(rows).toMatchObject([{ type: "agent", agentId: "bryanbot" }]);
+    expect(rowIds(rows)).toEqual([["1", "2"]]);
+  });
 });
 
 describe("threads", () => {

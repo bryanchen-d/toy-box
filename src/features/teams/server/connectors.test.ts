@@ -1,0 +1,222 @@
+import { expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import { createStoredTeam } from "@teams/server/testFixtures";
+import { createTestDatabase } from "@/server/database";
+import * as sessionRuntime from "@sessions/server/runtime";
+import * as workspaceEvents from "@workspace/server/events";
+import { CONNECTOR_PROTOCOL_VERSION, type ConnectorEvent } from "@connectors/model";
+
+let currentDb: Bun.SQL | undefined;
+
+mock.module("@/server/database", () => ({
+  getStateDatabase: async () => {
+    if (!currentDb) throw new Error("Test database has not been opened");
+    return currentDb;
+  },
+}));
+
+const { TeamDatabase } = await import("./database");
+const { ConnectorDatabase } = await import("@connectors/server/database");
+const { postTeamMessage, sendTeamMessageFromAgent } = await import("./index");
+const { applyConnectorEvent, noteUndeliveredConnectorMessage, listConnectorDirectory } =
+  await import("./connectors");
+
+async function open() {
+  const db = await createTestDatabase();
+  currentDb = db;
+  onTestFinished(async () => {
+    await db.close();
+    currentDb = undefined;
+  });
+  const teams = new TeamDatabase(db);
+  const connectors = new ConnectorDatabase(db);
+  const team = await createStoredTeam(teams, {
+    name: "Docs",
+    purpose: "Ship the release notes.",
+    model: { provider: "copilot", name: "gpt-5.5" },
+  });
+  const connector = await connectors.create({
+    name: "BryanBot",
+    transport: { type: "http", url: "http://127.0.0.1:4243" },
+  });
+  spyOn(workspaceEvents, "broadcast").mockImplementation(() => {});
+  const wakes = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "started",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => mock.restore());
+  return { teams, connectors, team, connector, wakes };
+}
+
+function event(content: string, extra: Partial<ConnectorEvent> = {}): ConnectorEvent {
+  return {
+    version: CONNECTOR_PROTOCOL_VERSION,
+    id: crypto.randomUUID(),
+    conversationId: "conversation-1",
+    content,
+    ...extra,
+  };
+}
+
+async function queued(connectors: InstanceType<typeof ConnectorDatabase>, connectorId: string) {
+  return (await connectors.dueMessages(connectorId, new Date(Date.now() + 60_000))).map(
+    ({ message }) => message,
+  );
+}
+
+test("mentioning a connector sends it the message, and its thread is one conversation", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  const root = await postTeamMessage({
+    id: "root",
+    teamId: team.id,
+    content: "@bryanbot post the release notes in #vscode-dev",
+  });
+  const [sent] = await queued(connectors, connector.id);
+  expect(sent).toEqual({
+    version: 1,
+    id: "root",
+    conversationId: expect.any(String),
+    sender: { kind: "user", name: "Owner" },
+    origin: { kind: "team", teamId: team.id, teamName: "Docs" },
+    content: "@bryanbot post the release notes in #vscode-dev",
+  });
+  // The mention names no agent, so it wakes nobody in the team.
+  expect(wakes).not.toHaveBeenCalled();
+  expect(await teams.getConnectorThread(connector.id, sent!.conversationId)).toEqual({
+    teamId: team.id,
+    threadSequence: root.sequence,
+  });
+
+  await connectors.remove(connector.id, "root");
+  await sendTeamMessageFromAgent(team.id, {
+    content: "@bryanbot also mention the known issue",
+    threadSequence: root.sequence,
+  });
+  const [followUp] = await queued(connectors, connector.id);
+  expect(followUp).toMatchObject({
+    conversationId: sent!.conversationId,
+    sender: { kind: "agent", name: "Lead" },
+  });
+});
+
+test("a connector's reply lands once in its thread as the connector, and wakes the lead", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  const root = await postTeamMessage({ id: "root", teamId: team.id, content: "@bryanbot hi" });
+  const [sent] = await queued(connectors, connector.id);
+  const reply = event("Posted. I'll pass along replies.", {
+    conversationId: sent!.conversationId,
+    origin: { kind: "slack", requester: { id: "U2", name: "alex", isOwner: false } },
+  });
+
+  await applyConnectorEvent(connector, reply);
+  await applyConnectorEvent(connector, reply);
+
+  const messages = await teams.listThread(team.id, root.sequence);
+  expect(messages.slice(1)).toEqual([
+    expect.objectContaining({
+      id: `${connector.id}:${reply.id}`,
+      sender: { type: "connector", connectorId: connector.id },
+      content: "Posted. I'll pass along replies.",
+      origin: { kind: "slack", requester: { id: "U2", name: "alex", isOwner: false } },
+      threadSequence: root.sequence,
+    }),
+  ]);
+  expect(wakes.mock.calls).toEqual([
+    [team.id, { systemMessage: { type: "team_message", senderName: "BryanBot" }, immediate: true }],
+  ]);
+});
+
+test("a connector can start a conversation with a team, and continue it in that thread", async () => {
+  const { teams, team, connector } = await open();
+  await applyConnectorEvent(
+    connector,
+    event("Alex asked about the release", { to: { teamId: team.id } }),
+  );
+  await applyConnectorEvent(connector, event("Alex added: ship Friday"));
+
+  const [first, second] = (await teams.listMessagesAfter(team.id)).filter(
+    ({ sender }) => sender.type === "connector",
+  );
+  expect(first).toMatchObject({ content: "Alex asked about the release" });
+  expect(first?.threadSequence).toBeUndefined();
+  expect(second).toMatchObject({
+    content: "Alex added: ship Friday",
+    threadSequence: first!.sequence,
+  });
+});
+
+test("events for no current team are dropped, and connectors never forward to connectors", async () => {
+  const { teams, connectors, team, connector } = await open();
+  await applyConnectorEvent(connector, event("lost", { conversationId: "unknown" }));
+  await applyConnectorEvent(connector, event("gone", { to: { teamId: "deleted-team" } }));
+  await applyConnectorEvent(connector, event("@bryanbot echo", { to: { teamId: team.id } }));
+
+  const fromConnector = (await teams.listMessagesAfter(team.id)).filter(
+    ({ sender }) => sender.type === "connector",
+  );
+  expect(fromConnector.map(({ content }) => content)).toEqual(["@bryanbot echo"]);
+  expect(await connectors.countPending(connector.id)).toBe(0);
+});
+
+test("a connector message never answers the lead's pending question", async () => {
+  const { teams, team, connector } = await open();
+  await sendTeamMessageFromAgent(team.id, { content: "Which channel?", request: true });
+  const asked = (await teams.getTeam(team.id))!.requestSequence;
+  expect(asked).not.toBeNull();
+
+  await applyConnectorEvent(connector, event("Slack says hi", { to: { teamId: team.id } }));
+  expect((await teams.getTeam(team.id))!.requestSequence).toBe(asked);
+});
+
+test("agents can't flood one conversation, but the user always gets through", async () => {
+  const { teams, connectors, team, connector } = await open();
+  const root = await postTeamMessage({ id: "root", teamId: team.id, content: "@bryanbot hi" });
+  for (let index = 0; index < 21; index++) {
+    await sendTeamMessageFromAgent(team.id, {
+      content: `@bryanbot update ${index}`,
+      threadSequence: root.sequence,
+    });
+  }
+  await postTeamMessage({
+    id: "user-again",
+    teamId: team.id,
+    content: "@bryanbot one more from me",
+    threadSequence: root.sequence,
+  });
+
+  // One message is offered per conversation at a time, so count the whole outbox.
+  expect(await connectors.countPending(connector.id)).toBe(1 + 20 + 1);
+  expect((await teams.listMessagesAfter(team.id)).at(-2)).toMatchObject({
+    content: {
+      type: "connector_undelivered",
+      reason: "throttled",
+      threadSequence: root.sequence,
+      excerpt: "@bryanbot update 20",
+    },
+  });
+});
+
+test("an undelivered message is noted in its team with the thread it belonged to", async () => {
+  const { teams, connectors, team, connector } = await open();
+  const root = await postTeamMessage({ id: "root", teamId: team.id, content: "@bryanbot hi" });
+  const [sent] = await queued(connectors, connector.id);
+
+  await noteUndeliveredConnectorMessage(connector, sent!, "expired");
+  const note = (await teams.listMessagesAfter(team.id)).at(-1);
+  expect(note).toMatchObject({
+    sender: { type: "system" },
+    content: {
+      type: "connector_undelivered",
+      connectorId: connector.id,
+      threadSequence: root.sequence,
+      reason: "expired",
+      excerpt: "@bryanbot hi",
+    },
+  });
+});
+
+test("the directory lists every team a connector may address", async () => {
+  await open();
+  expect(await listConnectorDirectory()).toEqual([
+    { id: expect.any(String), name: "Docs", purpose: "Ship the release notes." },
+  ]);
+});

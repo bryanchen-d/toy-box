@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { initializeAppSchema } from "@apps/server/schema";
 import { initializeAutomationSchema } from "@automations/server/schema";
+import { initializeConnectorSchema } from "@connectors/server/schema";
 import { initializeTeamSchema } from "@teams/server/schema";
 import { initializeSessionSchema } from "@sessions/server/schema";
 import { initializeWorkerSchema } from "@workers/server/schema";
@@ -78,6 +79,8 @@ async function initializeSchema(db: Bun.SQL, path: string): Promise<void> {
   // and transaction behavior without owning each feature's persistence model.
   await initializeSessionSchema(db);
   await initializeWorkerSchema(db);
+  // Teams map connector conversations to their threads.
+  await initializeConnectorSchema(db);
   await initializeTeamSchema(db);
   await initializeAutomationSchema(db);
   await initializeAppSchema(db);

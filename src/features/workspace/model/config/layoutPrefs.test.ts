@@ -11,7 +11,7 @@ const defaultLayout = {
   terminalSize: 30,
   sidebarCollapsed: false,
   terminalOpen: false,
-  panels: { teams: true, sessions: true, apps: false, automations: false },
+  panels: { teams: true, sessions: true, apps: false, automations: false, connectors: false },
   hyperOpen: false,
   hyperPosition: { x: 24, y: 24 },
   teamAsideSizes: {},
@@ -39,7 +39,7 @@ describe("workspace layout", () => {
       terminalSize: 42,
       sidebarCollapsed: true,
       terminalOpen: true,
-      panels: { teams: true, sessions: false, apps: true, automations: false },
+      panels: { teams: true, sessions: false, apps: true, automations: false, connectors: false },
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
       teamPanel: "tasks",
@@ -62,7 +62,7 @@ describe("workspace layout", () => {
       terminalSize: 42,
       sidebarCollapsed: true,
       terminalOpen: true,
-      panels: { teams: true, sessions: false, apps: true, automations: false },
+      panels: { teams: true, sessions: false, apps: true, automations: false, connectors: false },
       hyperOpen: true,
       hyperPosition: { x: 120, y: 80 },
       teamPanel: "tasks",
@@ -89,7 +89,7 @@ describe("workspace layout", () => {
 });
 
 describe("sidebar panels", () => {
-  const panels = { teams: true, sessions: true, apps: false, automations: true };
+  const panels = { teams: true, sessions: true, apps: false, automations: true, connectors: false };
 
   test("open and close independently on desktop", () => {
     expect(setSidebarPanelExpanded(panels, "apps", true, false)).toEqual({ ...panels, apps: true });
@@ -105,12 +105,14 @@ describe("sidebar panels", () => {
       sessions: false,
       apps: true,
       automations: false,
+      connectors: false,
     });
     expect(setSidebarPanelExpanded(panels, "teams", false, true)).toEqual({
       teams: false,
       sessions: false,
       apps: false,
       automations: false,
+      connectors: false,
     });
   });
 
@@ -120,10 +122,23 @@ describe("sidebar panels", () => {
       sessions: false,
       apps: false,
       automations: false,
+      connectors: false,
     });
     expect(compactSidebarPanels({ ...panels, teams: false })).toMatchObject({ sessions: true });
     expect(
-      compactSidebarPanels({ teams: false, sessions: false, apps: false, automations: false }),
-    ).toEqual({ teams: false, sessions: false, apps: false, automations: false });
+      compactSidebarPanels({
+        teams: false,
+        sessions: false,
+        apps: false,
+        automations: false,
+        connectors: false,
+      }),
+    ).toEqual({
+      teams: false,
+      sessions: false,
+      apps: false,
+      automations: false,
+      connectors: false,
+    });
   });
 });

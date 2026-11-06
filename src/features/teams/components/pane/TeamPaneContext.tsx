@@ -19,7 +19,7 @@ type TeamPane = {
   members: readonly TeamMember[];
   /** The lead, then the members. */
   agents: readonly TeamAgent[];
-  /** The agent with this ID, or a deleted identity once it has left. */
+  /** The agent or connector with this ID, or a deleted identity once it has left. */
   agent: (id: string) => TeamAgentIdentity;
   presence: Record<string, TeamAgentPresence>;
   /** Shows a thread by its top-level message's sequence. */

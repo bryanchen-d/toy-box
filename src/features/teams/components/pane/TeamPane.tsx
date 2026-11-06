@@ -4,7 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { teamQueries } from "@teams/queries";
 import { parseTeamReferenceHash } from "@teams/model/references";
 import { AlertCircle } from "lucide-react";
-import { teamAgentIdentity, teamLead, type TeamConversationMessage } from "@teams/model";
+import {
+  connectorAuthor,
+  messageAuthorId,
+  teamAgentIdentity,
+  teamLead,
+  type TeamConversationMessage,
+} from "@teams/model";
+import { connectorQueries } from "@connectors/queries";
 import { useTeam } from "@teams/useTeam";
 import type { WorkspaceFile } from "@files/model";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
@@ -138,6 +145,9 @@ function TeamContent({
   const lead = state?.lead ?? teamLead(teamId);
   const members = state?.members ?? [];
   const agents = [lead, ...members];
+  const { data: connectors = [] } = useQuery(connectorQueries.list());
+  // Connectors write messages where agents do, so one lookup names every author.
+  const authors = [...agents, ...connectors.map(connectorAuthor)];
 
   function setPanel(next: TeamPanel | undefined) {
     if (remembersPanel) setTeamPanel?.(next);
@@ -176,13 +186,11 @@ function TeamContent({
     if (rounded !== asideSize) setTeamAsideSize?.(asideKind, rounded);
   }
 
-  /** Opens the message's thread with the draft addressed to its agent, as a reply wakes them. */
+  /** Opens the message's thread with the draft addressed to its author, as a reply wakes them. */
   function replyInThread(message: TeamConversationMessage) {
     const sequence = message.threadSequence ?? message.sequence;
-    const author =
-      message.sender.type === "agent"
-        ? teamAgentIdentity(agents, message.sender.agentId)
-        : undefined;
+    const authorId = messageAuthorId(message.sender);
+    const author = authorId ? teamAgentIdentity(authors, authorId) : undefined;
     const addressee = author && !author.deleted ? author : undefined;
     if (thread === sequence) {
       if (addressee) threadComposerRef.current?.reply(addressee);
@@ -203,7 +211,7 @@ function TeamContent({
         lead,
         members,
         agents,
-        agent: (id) => teamAgentIdentity(agents, id),
+        agent: (id) => teamAgentIdentity(authors, id),
         presence: state?.presence ?? {},
         openThread,
         replyInThread,

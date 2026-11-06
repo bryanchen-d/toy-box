@@ -8,6 +8,7 @@ import {
 } from "@/shared/attachments/model";
 import { cronSchema } from "@/shared/cron";
 import { previewSchema, type Preview } from "@/shared/preview";
+import type { ConnectorOrigin } from "@connectors/model";
 import type { TeamAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
 import { teamTasksSchema, type TeamTask } from "./tasks";
@@ -172,7 +173,7 @@ export function teamLead(id: string, status?: TeamAgentStatus): TeamLead {
   };
 }
 
-export type TeamMessageSender = TeamMessageActor | { type: "system" };
+export type TeamMessageSender = TeamMessageAuthor | { type: "system" };
 
 export type TeamReaction = z.output<typeof teamReactionSchema>;
 
@@ -279,6 +280,28 @@ const teamMessageActorSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("agent"), agentId: durableIdSchema }).strict(),
 ]);
 
+/** Who wrote a conversation message: the user, an agent, or a connector relaying its service. */
+export type TeamMessageAuthor = TeamMessageActor | { type: "connector"; connectorId: string };
+
+/** The agent or connector that wrote a message; the user has no author ID. */
+export function messageAuthorId(sender: TeamMessageAuthor): string | undefined {
+  return sender.type === "agent"
+    ? sender.agentId
+    : sender.type === "connector"
+      ? sender.connectorId
+      : undefined;
+}
+
+export const CONNECTOR_AVATAR = {
+  mark: "M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z",
+  color: "#7c3aed",
+} as const;
+
+/** A connector speaks in a transcript where an agent would, under its own name and mark. */
+export function connectorAuthor({ id, name }: { id: string; name: string }): TeamAgent {
+  return { id, name, role: "Connector", avatar: CONNECTOR_AVATAR };
+}
+
 /** A titled, recurring prompt that privately wakes the lead. Only the lead adds or changes one. */
 export const teamRoutineInputSchema = z
   .object({
@@ -316,6 +339,16 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("tasks_completed") }).strict(),
   z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
   z.object({ type: z.literal("member_left"), member: teamMemberSchema }).strict(),
+  z
+    .object({
+      type: z.literal("connector_undelivered"),
+      connectorId: durableIdSchema,
+      /** The thread whose message the connector never received. */
+      threadSequence: z.number().int().positive().optional(),
+      reason: z.enum(["expired", "rejected", "throttled"]),
+      excerpt: z.string(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("team_renamed"),
@@ -375,8 +408,10 @@ type TeamMessageBase = {
 };
 
 export type TeamConversationMessage<A = TeamAttachment> = TeamMessageBase & {
-  sender: TeamMessageActor;
+  sender: TeamMessageAuthor;
   content: string;
+  /** Where a connector's forwarded content came from. */
+  origin?: ConnectorOrigin;
   /** The lead asks for the user's response; a later user message acknowledges it. */
   request?: true;
   /** A reply's thread: the sequence of the top-level message that starts it. */
@@ -554,7 +589,7 @@ export function teamUnreadAfter(team: TeamReadPosition): number | null {
   return teamHasUnread(team) ? team.seenThrough : null;
 }
 
-/** Complete delivery policy for user, lead, and member messages. */
+/** Complete delivery policy for user, lead, member, and connector messages. */
 export function resolveTeamAudience({
   content,
   sender,
@@ -563,7 +598,7 @@ export function resolveTeamAudience({
   acknowledgedRequest = false,
 }: {
   content: string;
-  sender: TeamMessageActor;
+  sender: TeamMessageAuthor;
   lead: TeamAgent;
   members: readonly TeamAgent[];
   /** Persistence established that this user reply acknowledged a pending request. */

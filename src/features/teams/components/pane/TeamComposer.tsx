@@ -2,12 +2,13 @@ import { AgentMentionMarkdown } from "@teams/components/agents/AgentMentionMarkd
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@/shared/ui/preview-card";
 import { RunningIndicator } from "@/shared/ui/running-indicator";
 import { useImperativeHandle, type RefObject } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import { AgentCompletionMenu } from "@teams/components/agents/AgentCompletionMenu";
 import { agentCompletionSource } from "@teams/components/agents/agentCompletionSource";
 import {
   agentHandleFromName,
+  connectorAuthor,
   teamAudienceLabel,
   teamHasPendingRequest,
   teamTasksDiff,
@@ -17,6 +18,8 @@ import {
   type PostTeamMessageInput,
 } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
+import { connectorsMentionedIn } from "@connectors/model";
+import { connectorQueries } from "@connectors/queries";
 import { workspaceFileId } from "@files/model";
 import { ComposerTray } from "@workspace/components/outputs/ComposerTray";
 import { useSavedDraft } from "@workspace/hooks/useSavedDraft";
@@ -91,6 +94,7 @@ export function TeamComposer({
     disabled: !state,
   });
   const createMember = useMutation(teamMutations.createMember());
+  const { data: connectors = [] } = useQuery(connectorQueries.list());
   // Delivery resolves the same audience, so this is exactly who the message will wake.
   const audience = resolveTeamAudience({
     content: draft.value,
@@ -99,6 +103,7 @@ export function TeamComposer({
     members,
     acknowledgedRequest: needsReply,
   });
+  const connectorRecipients = connectorsMentionedIn(draft.value, connectors).map(connectorAuthor);
 
   useImperativeHandle(handleRef, () => ({
     reply: (agent) => {
@@ -154,6 +159,7 @@ export function TeamComposer({
           agentCompletionSource({
             lead,
             members,
+            connectors,
             createMember: team?.paused
               ? undefined
               : (name) => createMember.mutateAsync({ teamId, name }),
@@ -168,7 +174,11 @@ export function TeamComposer({
               Team paused - Messages won't wake agents
             </span>
           ) : (
-            <TeamAudience audience={audience} agentCount={agents.length} />
+            <TeamAudience
+              audience={audience}
+              connectors={connectorRecipients}
+              agentCount={agents.length}
+            />
           )}
           {request && onShowRequest && (
             <InputNeeded request={request.content} onShow={onShowRequest} />
@@ -190,18 +200,31 @@ export function TeamComposer({
   );
 }
 
-/** Who the draft will wake. Mentions that match no agent leave a posted message unheard. */
+/** Who the draft will wake or reach. Mentions that match no one leave a posted message unheard. */
 function TeamAudience({
   audience,
+  connectors,
   agentCount,
 }: {
   audience: readonly TeamAgent[];
+  /** Mentioned connectors, which receive the message rather than wake. */
+  connectors: readonly TeamAgent[];
   agentCount: number;
 }) {
+  const recipients = [...audience, ...connectors];
   const summary =
-    audience.length === 0
-      ? "No agent matches these mentions"
-      : `Wakes ${audience.map(({ name }) => name).join(", ")}`;
+    recipients.length === 0
+      ? "No agent or connector matches these mentions"
+      : [
+          audience.length > 0 && `Wakes ${audience.map(({ name }) => name).join(", ")}`,
+          connectors.length > 0 && `Sends to ${connectors.map(({ name }) => name).join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join(". ");
+  const label = [
+    ...(audience.length > 0 ? [teamAudienceLabel(audience, agentCount)] : []),
+    ...connectors.map(({ name }) => name),
+  ].join(", ");
 
   return (
     <Tooltip>
@@ -212,24 +235,22 @@ function TeamAudience({
             aria-label={summary}
             className={cn(
               "inline-flex h-6 min-w-0 items-center gap-1.5 rounded-full bg-muted px-2 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              audience.length === 0 && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+              recipients.length === 0 && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
             )}
           />
         }
       >
-        {audience.length === 0 ? (
+        {recipients.length === 0 ? (
           "No one will be notified"
         ) : (
           <>
             To
             <span className="flex shrink-0 gap-0.5">
-              {audience.map((agent) => (
+              {recipients.map((agent) => (
                 <AgentAvatar key={agent.id} agent={agent} className="size-4" />
               ))}
             </span>
-            <span className="truncate font-medium text-foreground">
-              {teamAudienceLabel(audience, agentCount)}
-            </span>
+            <span className="truncate font-medium text-foreground">{label}</span>
           </>
         )}
       </TooltipTrigger>

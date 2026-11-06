@@ -35,18 +35,25 @@ function clampTeamAsideSize(value: number): number {
 }
 
 /** The sidebar's collapsible panels, in the order they stack. */
-const SIDEBAR_PANELS = ["teams", "sessions", "apps", "automations"] as const;
+const SIDEBAR_PANELS = ["teams", "sessions", "apps", "automations", "connectors"] as const;
 
 export type SidebarPanel = (typeof SIDEBAR_PANELS)[number];
 
 // Teams and Sessions lead the sidebar, so they start open; the rest start closed.
-const DEFAULT_SIDEBAR_PANELS = { teams: true, sessions: true, apps: false, automations: false };
+const DEFAULT_SIDEBAR_PANELS = {
+  teams: true,
+  sessions: true,
+  apps: false,
+  automations: false,
+  connectors: false,
+};
 
 const sidebarPanelsSchema = z.object({
   teams: z.boolean().default(DEFAULT_SIDEBAR_PANELS.teams),
   sessions: z.boolean().default(DEFAULT_SIDEBAR_PANELS.sessions),
   apps: z.boolean().default(DEFAULT_SIDEBAR_PANELS.apps),
   automations: z.boolean().default(DEFAULT_SIDEBAR_PANELS.automations),
+  connectors: z.boolean().default(DEFAULT_SIDEBAR_PANELS.connectors),
 });
 
 export type SidebarPanels = z.output<typeof sidebarPanelsSchema>;
@@ -77,6 +84,7 @@ function sidebarPanelsWhere(isExpanded: (panel: SidebarPanel) => boolean): Sideb
     sessions: isExpanded("sessions"),
     apps: isExpanded("apps"),
     automations: isExpanded("automations"),
+    connectors: isExpanded("connectors"),
   };
 }
 
