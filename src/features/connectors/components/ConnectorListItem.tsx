@@ -19,7 +19,8 @@ export function ConnectorListItem({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { status, pending } = connector;
   const connected = status.state === "connected";
-  const error = status.state === "connecting" ? status.error : undefined;
+  const unreachable = status.state === "unreachable";
+  const error = status.state === "connected" ? undefined : status.error;
 
   return (
     <>
@@ -30,13 +31,19 @@ export function ConnectorListItem({
             aria-hidden
             className={cn(
               "size-2 shrink-0 rounded-full",
-              connected ? "bg-green-500" : "bg-amber-500",
+              connected ? "bg-green-500" : unreachable ? "bg-destructive" : "bg-amber-500",
             )}
           />
         }
         time={
-          <span title={error}>
-            {connected ? "Connected" : error ? "Offline" : "Connecting"}{" "}
+          <span title={error} className={cn(unreachable && "text-destructive")}>
+            {connected
+              ? "Connected"
+              : unreachable
+                ? "Unreachable"
+                : error
+                  ? "Offline"
+                  : "Connecting"}{" "}
             <RelativeTime date={status.since} />
           </span>
         }

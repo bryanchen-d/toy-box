@@ -43,10 +43,14 @@ export type Connector = ConnectorOptions & {
   updatedAt: string;
 };
 
-/** Live connection state. It is never persisted: every server start begins connecting. */
+/**
+ * Live connection state. It is never persisted: every server start begins connecting. A link that
+ * stays out of reach for 15 minutes is unreachable, since the moment it lost the connector, until
+ * it reconnects.
+ */
 export type ConnectorStatus =
   | { state: "connected"; since: string }
-  | { state: "connecting"; since: string; error?: string };
+  | { state: "connecting" | "unreachable"; since: string; error?: string };
 
 /** A connector with its live status and the count of messages waiting to be delivered to it. */
 export type ConnectorEntry = Connector & { status: ConnectorStatus; pending: number };

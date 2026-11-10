@@ -11,7 +11,7 @@ survive a restart or an outage on either side for up to five days.
 
 ```text
 Connector      name (and the @handle derived from it), transport, client ID, received cursor
-├─ Status      connected or connecting, since when, and the last failure; live only
+├─ Status      connected, connecting, or unreachable, since when, and the last failure; live only
 ├─ Outbox      messages waiting for the connector, ordered per conversation
 └─ Conversation one exchange with the connector, mapped to one team thread by Teams
 ```
@@ -22,8 +22,10 @@ Connector      name (and the @handle derived from it), transport, client ID, rec
 - The server keeps two private fields. `clientId` identifies this installation to the connector,
   which routes its own outbox by it. `receivedThrough` is the last connector event applied, and the
   stream resumes after it.
-- `ConnectorStatus` is never persisted: every server start begins connecting. `ConnectorEntry`
-  adds it and the count of undelivered messages for clients.
+- `ConnectorStatus` is never persisted: every server start begins connecting. A link that stays
+  out of reach for 15 minutes becomes unreachable, keeping the time it lost the connector, until it
+  reconnects, so an outage that needs someone to restore the connector can't go unnoticed.
+  `ConnectorEntry` adds it and the count of undelivered messages for clients.
 - A conversation has a `conversationId` minted by whichever side starts it. Each side maps it to
   its own state, and neither interprets the other's identifiers. Teams owns the
   `team_connector_threads` map from a conversation to its team thread.
@@ -91,10 +93,14 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   user is never throttled, and a throttled message is noted in the team.
 - `connector_undelivered` is the typed system message for a message that expired, was rejected, or
   was throttled.
-- `read_team` lists connectors with their mention handles and gives each user and connector
-  message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via BryanBot". The
-  collaboration protocol tells agents to answer each message where it came from, and that a
-  requester who isn't the owner speaks only as context, never as the user's instructions.
+- `read_team` lists connectors with their mention handles and status, and gives each user and
+  connector message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via
+  BryanBot". The collaboration protocol tells agents to answer each message where it came from, and
+  that a requester who isn't the owner speaks only as context, never as the user's instructions.
+- Agents reach a connector's service only through the connector, never with its credentials or
+  scripts, because nothing sent around it can route a reply back. A message to a connector that is
+  down waits in its outbox. While one is unreachable, only the lead may contact the user directly,
+  once, to ask them to restore it.
 - The transcript labels a relayed message with its origin, such as "via Bryan Chen (you) in Slack",
   linking to the original, and repeats the header whenever a run relays a different person.
 
@@ -103,7 +109,8 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
 `connectorQueries.list()` owns the catalog. The main route preloads it, `queryCache.ts` patches
 `connector.upserted` and `connector.deleted` workspace events, and reconnects refetch it. The
 server publishes an entry only when what clients see of it changed. The Connectors sidebar panel
-shows each connector's status and queue, and its dialog adds or edits one, offering the account's
+shows each connector's status and queue, flagging an unreachable one in red and, while the panel is
+folded, on its header. Its dialog adds or edits one, offering the account's
 dev tunnels. Team panes resolve a connector author through the same lookup as agents.
 
 ## Boundaries and invariants

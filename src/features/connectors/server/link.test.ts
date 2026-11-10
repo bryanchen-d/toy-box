@@ -192,6 +192,36 @@ describe("following a connector's stream", () => {
     expect(applied.map(({ content }) => content)).toEqual(["first", "missed while away"]);
   });
 
+  test("a connector out of reach for too long is unreachable since it was lost, until it reconnects", async () => {
+    const connector = fakeConnector();
+    let reachable = false;
+    const { start } = await openLink(connector, {
+      openEndpoint: async () => {
+        if (!reachable) throw new Error("connect ECONNREFUSED");
+        return { baseUrl: connector.baseUrl, dispose: () => {} };
+      },
+      timing: { unreachableAfterMs: 100 },
+    });
+    const link = start();
+    const startedAt = link.status.since;
+    await until(() => link.status.state === "unreachable");
+    // Later failed attempts leave it unreachable, still dated from when it was lost.
+    await Bun.sleep(60);
+    expect(link.status).toEqual({
+      state: "unreachable",
+      since: startedAt,
+      error: "connect ECONNREFUSED",
+    });
+
+    reachable = true;
+    await until(() => link.status.state === "connected");
+    reachable = false;
+    connector.dropStreams();
+    await until(() => link.status.state === "connecting");
+    expect(link.status.since).not.toBe(startedAt);
+    await until(() => link.status.state === "unreachable");
+  });
+
   test("reconnects when the connector stops sending heartbeats", async () => {
     const connector = fakeConnector();
     const errors = new Set<string>();

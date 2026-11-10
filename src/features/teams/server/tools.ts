@@ -425,7 +425,8 @@ async function toTeamReadToolResult(
     connectorId: id,
     name,
     mention: `@${connectorHandle({ name })}`,
-    connected: status.state === "connected",
+    status: status.state,
+    ...(status.state === "unreachable" ? { unreachableSince: status.since } : {}),
   }));
   const images: Attachment[] = [];
   const messages = result.messages.map((message) => {

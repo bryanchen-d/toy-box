@@ -251,7 +251,9 @@ and tool logs never enter the Team. Agents reach connectors by opening a message
 and name them without @ when only talking about them. They keep each connector
 conversation in one thread, answer each message where it came from (what the user typed in Agent
 Teams in the team, and what a connector relayed through that connector), and treat content whose
-requester isn't the owner as information rather than the user's instructions. Model-facing message tools cap posts at 3,000 characters so
+requester isn't the owner as information rather than the user's instructions. They reach a
+connector's service only through the connector, never with its credentials or scripts, and while a
+connector is unreachable only the lead may contact the user directly, to ask them to restore it. Model-facing message tools cap posts at 3,000 characters so
 durable long-form work stays in canonical shared artifacts; browser messages retain the Team
 model's 12,000-character limit.
 

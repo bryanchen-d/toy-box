@@ -50,6 +50,8 @@ const DEFAULT_TIMING = {
   expirySweepMs: 60 * 60_000,
   /** Even with nothing due, re-check the outbox so a lost timer can't strand a message. */
   maxDeliveryWaitMs: 5 * 60_000,
+  /** Out of reach this long, a connector needs someone to restore it rather than another retry. */
+  unreachableAfterMs: 15 * 60_000,
   reconnectBackoff: RECONNECT_BACKOFF,
   deliveryBackoff: DELIVERY_BACKOFF,
 };
@@ -69,6 +71,7 @@ export class ConnectorLink {
   #deliveryTimer: ReturnType<typeof setTimeout> | undefined;
   #expiryTimer: ReturnType<typeof setInterval> | undefined;
   #ackTimer: ReturnType<typeof setTimeout> | undefined;
+  #unreachableTimer: ReturnType<typeof setTimeout> | undefined;
   #directory: string | undefined;
 
   constructor(connector: ConnectorRecord, dependencies: ConnectorLinkDependencies) {
@@ -87,6 +90,7 @@ export class ConnectorLink {
     this.#running ??= this.#follow();
     this.#expiryTimer = setInterval(() => void this.deliver(), this.#timing.expirySweepMs);
     this.#expiryTimer.unref?.();
+    this.#watchReachability();
     void this.deliver();
   }
 
@@ -95,6 +99,7 @@ export class ConnectorLink {
     clearTimeout(this.#deliveryTimer);
     clearInterval(this.#expiryTimer);
     clearTimeout(this.#ackTimer);
+    clearTimeout(this.#unreachableTimer);
     await this.#running;
   }
 
@@ -230,6 +235,7 @@ export class ConnectorLink {
     this.#baseUrl = baseUrl;
     this.#failures = 0;
     this.#directory = undefined;
+    clearTimeout(this.#unreachableTimer);
     this.#setStatus({ state: "connected", since: this.#deps.now().toISOString() });
     void this.syncDirectory();
     void this.deliver();
@@ -238,9 +244,27 @@ export class ConnectorLink {
 
   #disconnected(error: unknown): void {
     this.#failures++;
-    const since =
-      this.#status.state === "connecting" ? this.#status.since : this.#deps.now().toISOString();
-    this.#setStatus({ state: "connecting", since, error: errorMessage(error) });
+    const status = this.#status;
+    if (status.state !== "connected") {
+      this.#setStatus({ ...status, error: errorMessage(error) });
+      return;
+    }
+    this.#setStatus({
+      state: "connecting",
+      since: this.#deps.now().toISOString(),
+      error: errorMessage(error),
+    });
+    this.#watchReachability();
+  }
+
+  /** Reports the connector unreachable if this attempt to reach it outlasts the threshold. */
+  #watchReachability(): void {
+    clearTimeout(this.#unreachableTimer);
+    this.#unreachableTimer = setTimeout(() => {
+      const status = this.#status;
+      if (status.state === "connecting") this.#setStatus({ ...status, state: "unreachable" });
+    }, this.#timing.unreachableAfterMs);
+    this.#unreachableTimer.unref?.();
   }
 
   #setStatus(status: ConnectorStatus): void {
