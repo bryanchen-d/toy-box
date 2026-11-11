@@ -34,7 +34,7 @@ function streamingConnector() {
   return { url: `http://127.0.0.1:${server.port}`, open: () => open };
 }
 
-test("rerunning startup, as a dev reload does, keeps one link per connector", async () => {
+test("rerunning startup, even overlapping runs as dev reloads make, keeps one link per connector", async () => {
   const db = await createTestDatabase();
   currentDb = db;
   onTestFinished(async () => {
@@ -50,8 +50,8 @@ test("rerunning startup, as a dev reload does, keeps one link per connector", as
   });
 
   await startConnectors();
-  const stop = await startConnectors();
-  onTestFinished(stop);
+  const stops = await Promise.all([startConnectors(), startConnectors()]);
+  onTestFinished(() => stops.forEach((stop) => stop()));
   await Bun.sleep(300);
   expect(connector.open()).toBe(1);
 });

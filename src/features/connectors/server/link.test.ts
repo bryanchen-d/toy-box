@@ -19,6 +19,7 @@ function fakeConnector() {
   const acks: number[] = [];
   const directories: unknown[] = [];
   const streamRequests: (string | null)[] = [];
+  const authorizations: { path: string; authorization: string | null }[] = [];
   const responses: number[] = [];
   const encoder = new TextEncoder();
   const frame = ({ seq, data }: (typeof events)[number]) =>
@@ -28,6 +29,10 @@ function fakeConnector() {
     port: 0,
     async fetch(request) {
       const { pathname } = new URL(request.url);
+      authorizations.push({
+        path: pathname,
+        authorization: request.headers.get("x-tunnel-authorization"),
+      });
       if (pathname === "/connector/v1/stream") {
         const after = Number(request.headers.get("last-event-id") ?? 0);
         streamRequests.push(request.headers.get("last-event-id"));
@@ -74,6 +79,7 @@ function fakeConnector() {
     acks,
     directories,
     streamRequests,
+    authorizations,
     /** Statuses for the next message deliveries, in order; afterwards 202. */
     respondWith: (...statuses: number[]) => responses.push(...statuses),
     publish(content: string, extra: Partial<ConnectorEvent> = {}) {
@@ -116,7 +122,6 @@ async function openLink(
       database,
       openEndpoint: async (transport) => ({
         baseUrl: transport.type === "http" ? transport.url : "",
-        dispose: () => {},
       }),
       applyEvent: async (_connector, event) => {
         applied.push(event);
@@ -198,7 +203,7 @@ describe("following a connector's stream", () => {
     const { start } = await openLink(connector, {
       openEndpoint: async () => {
         if (!reachable) throw new Error("connect ECONNREFUSED");
-        return { baseUrl: connector.baseUrl, dispose: () => {} };
+        return { baseUrl: connector.baseUrl };
       },
       timing: { unreachableAfterMs: 100 },
     });
@@ -220,6 +225,50 @@ describe("following a connector's stream", () => {
     await until(() => link.status.state === "connecting");
     expect(link.status.since).not.toBe(startedAt);
     await until(() => link.status.state === "unreachable");
+  });
+
+  test("sends the transport's headers, fetched for each request, with every request", async () => {
+    const connector = fakeConnector();
+    connector.publish("first");
+    let issued = 0;
+    const { database, record, start } = await openLink(connector, {
+      openEndpoint: async () => ({
+        baseUrl: connector.baseUrl,
+        headers: async () => ({ "X-Tunnel-Authorization": `tunnel token-${++issued}` }),
+      }),
+    });
+    await database.enqueue(record.id, message("m1"));
+    start();
+    await until(
+      () =>
+        connector.received.length === 1 &&
+        connector.acks.length > 0 &&
+        connector.directories.length === 1,
+    );
+
+    expect(new Set(connector.authorizations.map(({ path }) => path))).toEqual(
+      new Set(["stream", "messages", "ack", "directory"].map((path) => `/connector/v1/${path}`)),
+    );
+    expect(new Set(connector.authorizations.map(({ authorization }) => authorization)).size).toBe(
+      connector.authorizations.length,
+    );
+  });
+
+  test("an event that never finishes applying holds neither a reconnect nor a stop", async () => {
+    const connector = fakeConnector();
+    connector.publish("stuck");
+    const { start } = await openLink(connector, {
+      applyEvent: () => new Promise(() => {}),
+      timing: { heartbeatTimeoutMs: 100 },
+    });
+    const link = start();
+
+    await until(() => connector.streamRequests.length >= 2);
+    const stopped = await Promise.race([
+      link.stop().then(() => true),
+      Bun.sleep(1_000).then(() => false),
+    ]);
+    expect(stopped).toBe(true);
   });
 
   test("reconnects when the connector stops sending heartbeats", async () => {

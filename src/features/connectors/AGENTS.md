@@ -59,17 +59,21 @@ where its team message attaches them by path.
 
 `server/link.ts` owns one live link per connector:
 
-1. **Reach.** `server/devtunnel.ts` turns the transport into a base URL. A dev tunnel runs
-   `devtunnel connect` with the owner's cached CLI login and holds the forwarded port while the link
-   uses it, so Agent Teams stores no tunnel tokens. `listConnectorTunnels` reads the account's
-   tunnels and ports from the CLI's JSON output when adding one, hosted tunnels first, leaving out
-   VS Code's own Remote Tunnels. `devtunnel connect` binds the host's port number locally and
-   can't choose another, so a tunnel can't reach a connector on the same machine.
+1. **Reach.** `server/devtunnel.ts` turns the transport into an endpoint: a base URL and the
+   headers each request carries. A dev tunnel is reached at its port's HTTPS address with a
+   one-day connect token from the owner's `devtunnel` CLI login, renewed within an hour of expiry,
+   so Agent Teams stores no tokens and runs no forwarding process. An expired login renews once
+   with `devtunnel user login --entra --use-integrated-windows-auth`, which succeeds silently for
+   a Microsoft account on an Entra-joined machine; any other login needs its owner to sign in
+   again, and the link's status says so. `listConnectorTunnels` reads the account's tunnels and
+   ports from the CLI's JSON output when adding one, hosted tunnels first, leaving out VS Code's
+   own Remote Tunnels.
 2. **Follow.** The link reads the stream from its cursor. Any bytes, including heartbeat comments,
    prove the connection is alive; 60 seconds of silence reconnect it. Each event is applied durably,
    then the cursor advances and an acknowledgement follows. A failure while applying reconnects and
    replays from the cursor, so an event is never skipped, and one that can never apply (unreadable,
-   or addressing no current team) is dropped rather than replayed forever.
+   or addressing no current team) is dropped rather than replayed forever. An apply that never
+   settles holds neither a reconnect nor a stop; its event replays, and applying it again is harmless.
 3. **Deliver.** While connected, the link posts the oldest undelivered message of each
    conversation, so a retry never reorders one. Failures back off from 5 seconds to 5 minutes with
    jitter. Reconnecting resumes delivery.
@@ -77,7 +81,9 @@ where its team message attaches them by path.
    sent it gets a note. Reconnects back off from 1 second to 1 minute.
 
 `server/index.ts` owns the registry of links, CRUD, and publication. Startup links every connector
-and returns cleanup that stops them. A changed transport restarts its link. Deleting a connector
+and returns cleanup that stops them. Starting a link replaces the registered one in a single step
+and stops the old one without waiting, so startup reruns on a dev reload, even overlapping ones,
+leave one link per connector. A changed transport restarts its link. Deleting a connector
 drops its outbox and conversations. Team catalog changes reach connected connectors as a debounced
 directory update.
 

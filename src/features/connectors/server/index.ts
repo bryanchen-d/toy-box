@@ -37,7 +37,6 @@ export async function updateConnector(
   const database = new ConnectorDatabase(await getStateDatabase());
   const record = await database.update(connectorId, options);
   if (!record) throw new Error("Connector not found.");
-  await stopLink(connectorId);
   startLink(database, record);
   return publish(database, record);
 }
@@ -73,11 +72,8 @@ export async function startConnectors(): Promise<VoidFunction> {
   const db = await getStateDatabase({ createIfMissing: false });
   if (db) {
     const database = new ConnectorDatabase(db);
-    for (const record of await database.list()) {
-      // A dev reload reruns startup over the same registry, so each link replaces the last one.
-      await stopLink(record.id);
-      startLink(database, record);
-    }
+    // A dev reload reruns startup over the same registry, so each link replaces the last one.
+    for (const record of await database.list()) startLink(database, record);
   }
   return () => {
     unsubscribe();
@@ -101,8 +97,12 @@ function startLink(database: ConnectorDatabase, record: ConnectorRecord): void {
     readDirectory: async () => (await import("@teams/server/connectors")).listConnectorDirectory(),
     onChange: (connectorId) => void publishConnector(connectorId),
   });
+  // Replacing is one synchronous step, so overlapping startups can't orphan a link, and nothing
+  // waits on the old one to stop.
+  const replaced = links.get(record.id);
   links.set(record.id, link);
   link.start();
+  void replaced?.stop();
 }
 
 async function stopLink(connectorId: string): Promise<void> {

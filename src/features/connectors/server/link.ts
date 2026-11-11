@@ -18,15 +18,18 @@ import {
 } from "../model";
 import type { ConnectorDatabase, ConnectorRecord, PendingConnectorMessage } from "./database";
 
-/** A reachable base URL for a connector, and how to release whatever made it reachable. */
-export type ConnectorEndpoint = { baseUrl: string; dispose: () => void };
+/** A reachable base URL for a connector, and any headers its transport adds to each request. */
+export type ConnectorEndpoint = {
+  baseUrl: string;
+  headers?: () => Promise<Record<string, string>>;
+};
 
 /** A team the connector may start a conversation with. */
 export type ConnectorDirectoryTeam = { id: string; name: string; purpose?: string };
 
 export type ConnectorLinkDependencies = {
   database: ConnectorDatabase;
-  openEndpoint: (transport: ConnectorTransport, signal: AbortSignal) => Promise<ConnectorEndpoint>;
+  openEndpoint: (transport: ConnectorTransport) => Promise<ConnectorEndpoint>;
   /** Applies one event durably. Throwing reconnects and replays it; returning drops nothing. */
   applyEvent: (connector: Connector, event: ConnectorEvent) => Promise<void>;
   noteUndelivered: (
@@ -63,7 +66,8 @@ export class ConnectorLink {
   #connector: ConnectorRecord;
   #receivedThrough: number;
   #status: ConnectorStatus;
-  #baseUrl: string | undefined;
+  /** The endpoint of the stream currently followed, which deliveries and acknowledgements use. */
+  #endpoint: ConnectorEndpoint | undefined;
   #failures = 0;
   #running: Promise<void> | undefined;
   #delivering = false;
@@ -127,15 +131,15 @@ export class ConnectorLink {
 
   /** Tells the connector which teams it can address, when that list changed. */
   async syncDirectory(): Promise<void> {
-    const baseUrl = this.#baseUrl;
-    if (!baseUrl) return;
+    const endpoint = this.#endpoint;
+    if (!endpoint) return;
     const body = JSON.stringify({
       version: CONNECTOR_PROTOCOL_VERSION,
       teams: await this.#deps.readDirectory(),
     });
     if (body === this.#directory) return;
     try {
-      const response = await this.#request(baseUrl, "directory", { method: "PUT", body });
+      const response = await this.#request(endpoint, "directory", { method: "PUT", body });
       if (response.ok) this.#directory = body;
     } catch {
       // The next connection sends the directory again.
@@ -145,25 +149,21 @@ export class ConnectorLink {
   async #follow(): Promise<void> {
     const signal = this.#abort.signal;
     while (!signal.aborted) {
-      let endpoint: ConnectorEndpoint | undefined;
       try {
-        endpoint = await this.#deps.openEndpoint(this.#connector.transport, signal);
-        await this.#observe(endpoint.baseUrl);
+        await this.#observe(await this.#deps.openEndpoint(this.#connector.transport));
       } catch (error) {
         if (signal.aborted) break;
         this.#disconnected(error);
-      } finally {
-        endpoint?.dispose();
       }
       await sleep(backoffDelay(this.#failures, this.#timing.reconnectBackoff), signal);
     }
   }
 
   /** Follows one stream until it fails or the link stops. */
-  async #observe(baseUrl: string): Promise<void> {
+  async #observe(endpoint: ConnectorEndpoint): Promise<void> {
     const attempt = new AbortController();
-    const stopAttempt = () => attempt.abort(this.#abort.signal.reason);
-    this.#abort.signal.addEventListener("abort", stopAttempt, { once: true });
+    // Derived rather than listened for, so a link stopped before this attempt began stops it too.
+    const signal = AbortSignal.any([this.#abort.signal, attempt.signal]);
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     const expectHeartbeat = () => {
       clearTimeout(watchdog);
@@ -175,20 +175,21 @@ export class ConnectorLink {
 
     try {
       expectHeartbeat();
-      const response = await this.#deps.fetch(connectorUrl(baseUrl, "stream"), {
+      const response = await this.#deps.fetch(connectorUrl(endpoint.baseUrl, "stream"), {
         headers: {
           ...this.#headers(),
+          ...(await endpoint.headers?.()),
           Accept: "text/event-stream",
           "Last-Event-ID": String(this.#receivedThrough),
         },
-        signal: attempt.signal,
+        signal,
       });
       if (!response.ok || !response.body) {
         await response.body?.cancel();
         throw new Error(`The connector refused the stream (HTTP ${response.status}).`);
       }
 
-      this.#connected(baseUrl);
+      this.#connected(endpoint);
       const events = response.body
         .pipeThrough(
           new TransformStream<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>({
@@ -201,15 +202,18 @@ export class ConnectorLink {
         )
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream());
-      for await (const message of events) await this.#receive(message);
+      // Applying an event that never settles must not hold the link: a stop or a missed heartbeat
+      // moves on, and the event replays on the next connection, where applying it again is harmless.
+      for await (const message of events) {
+        await untilAborted(this.#receive(message), signal);
+      }
       throw new Error("The connector closed its stream.");
     } catch (error) {
-      throw attempt.signal.reason instanceof Error ? attempt.signal.reason : error;
+      throw signal.reason instanceof Error ? signal.reason : error;
     } finally {
       clearTimeout(watchdog);
-      this.#abort.signal.removeEventListener("abort", stopAttempt);
       attempt.abort();
-      this.#baseUrl = undefined;
+      this.#endpoint = undefined;
     }
   }
 
@@ -227,12 +231,13 @@ export class ConnectorLink {
     else
       console.error(`Dropping invalid event ${sequence} from connector ${this.#connector.name}.`);
     await this.#deps.database.advanceReceivedThrough(this.#connector.id, sequence);
-    this.#receivedThrough = sequence;
+    // An apply abandoned by an earlier connection may finish after a newer one.
+    this.#receivedThrough = Math.max(this.#receivedThrough, sequence);
     this.#scheduleAck();
   }
 
-  #connected(baseUrl: string): void {
-    this.#baseUrl = baseUrl;
+  #connected(endpoint: ConnectorEndpoint): void {
+    this.#endpoint = endpoint;
     this.#failures = 0;
     this.#directory = undefined;
     clearTimeout(this.#unreachableTimer);
@@ -289,10 +294,10 @@ export class ConnectorLink {
   }
 
   async #acknowledge(): Promise<void> {
-    const baseUrl = this.#baseUrl;
-    if (!baseUrl) return;
+    const endpoint = this.#endpoint;
+    if (!endpoint) return;
     try {
-      await this.#request(baseUrl, "ack", {
+      await this.#request(endpoint, "ack", {
         method: "POST",
         body: JSON.stringify({
           version: CONNECTOR_PROTOCOL_VERSION,
@@ -306,24 +311,24 @@ export class ConnectorLink {
 
   async #deliverDue(): Promise<void> {
     for (;;) {
-      const baseUrl = this.#baseUrl;
-      if (!baseUrl || this.#abort.signal.aborted) return;
+      const endpoint = this.#endpoint;
+      if (!endpoint || this.#abort.signal.aborted) return;
       const due = await this.#deps.database.dueMessages(this.#connector.id, this.#deps.now());
       if (due.length === 0) return;
       let progressed = false;
       for (const pending of due) {
-        if (this.#baseUrl !== baseUrl) return;
-        if (await this.#post(baseUrl, pending)) progressed = true;
+        if (this.#endpoint !== endpoint) return;
+        if (await this.#post(endpoint, pending)) progressed = true;
       }
       if (!progressed) return;
     }
   }
 
   /** Returns whether the message left the outbox. */
-  async #post(baseUrl: string, pending: PendingConnectorMessage): Promise<boolean> {
+  async #post(endpoint: ConnectorEndpoint, pending: PendingConnectorMessage): Promise<boolean> {
     const { database } = this.#deps;
     try {
-      const response = await this.#request(baseUrl, "messages", {
+      const response = await this.#request(endpoint, "messages", {
         method: "POST",
         body: JSON.stringify(pending.message),
       });
@@ -363,7 +368,7 @@ export class ConnectorLink {
   async #scheduleDelivery(): Promise<void> {
     clearTimeout(this.#deliveryTimer);
     this.#deliveryTimer = undefined;
-    if (this.#abort.signal.aborted || !this.#baseUrl) return;
+    if (this.#abort.signal.aborted || !this.#endpoint) return;
     const next = await this.#deps.database.nextAttemptAt(this.#connector.id);
     if (!next) return;
     const wait = Math.min(
@@ -374,10 +379,14 @@ export class ConnectorLink {
     this.#deliveryTimer.unref?.();
   }
 
-  #request(baseUrl: string, path: string, init: RequestInit): Promise<Response> {
-    return this.#deps.fetch(connectorUrl(baseUrl, path), {
+  async #request(endpoint: ConnectorEndpoint, path: string, init: RequestInit): Promise<Response> {
+    return this.#deps.fetch(connectorUrl(endpoint.baseUrl, path), {
       ...init,
-      headers: { ...this.#headers(), "Content-Type": "application/json" },
+      headers: {
+        ...this.#headers(),
+        ...(await endpoint.headers?.()),
+        "Content-Type": "application/json",
+      },
       signal: AbortSignal.any([
         this.#abort.signal,
         AbortSignal.timeout(this.#timing.requestTimeoutMs),
@@ -408,6 +417,16 @@ function parseEvent(data: string): ConnectorEvent | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Settles with the work, or rejects once the signal aborts and leaves the work to finish alone. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

@@ -226,8 +226,9 @@ function DevTunnelFields({
         </Field>
       </div>
       <p className="text-xs text-muted-foreground">
-        Agent Teams runs devtunnel connect with your devtunnel login, so this machine needs the
-        devtunnel CLI signed in to the account that owns the tunnel.
+        Agent Teams reaches the tunnel with tokens from your devtunnel login, so this machine needs
+        the devtunnel CLI signed in to the account that owns the tunnel. A Microsoft account renews
+        itself; a GitHub account needs signing in again every few days.
       </p>
     </div>
   );
