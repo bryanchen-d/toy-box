@@ -73,7 +73,11 @@ export async function startConnectors(): Promise<VoidFunction> {
   const db = await getStateDatabase({ createIfMissing: false });
   if (db) {
     const database = new ConnectorDatabase(db);
-    for (const record of await database.list()) startLink(database, record);
+    for (const record of await database.list()) {
+      // A dev reload reruns startup over the same registry, so each link replaces the last one.
+      await stopLink(record.id);
+      startLink(database, record);
+    }
   }
   return () => {
     unsubscribe();
