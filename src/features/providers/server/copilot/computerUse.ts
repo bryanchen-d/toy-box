@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { copilotDirectory } from "@/server/storage";
 import type { CopilotClient, SessionConfig } from "@github/copilot-sdk";
 
 // Workaround seen through CLI 1.0.100-1: headless SDK servers load no built-in plugins.
@@ -9,7 +10,7 @@ export async function computerUseServers(
   client: Pick<CopilotClient, "getStatus">,
   home = homedir(),
 ): Promise<SessionConfig["mcpServers"]> {
-  const file = Bun.file(join(home, ".copilot", "settings.json"));
+  const file = Bun.file(copilotDirectory("settings.json"));
   if (!(await file.exists())) return undefined;
   const settings = z
     .object({ enabledMcpServers: z.array(z.string()).optional() })

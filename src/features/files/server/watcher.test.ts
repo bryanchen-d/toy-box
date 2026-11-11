@@ -23,6 +23,25 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   expect(predicate()).toBe(true);
 }
 
+test("the default watcher discovers artifacts in the configured data directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agent-teams-relocated-watcher-"));
+  const previous = process.env.AGENT_TEAMS_HOME;
+  process.env.AGENT_TEAMS_HOME = directory;
+  const watcher = new FileWatcher();
+  onTestFinished(async () => {
+    watcher.dispose();
+    if (previous === undefined) delete process.env.AGENT_TEAMS_HOME;
+    else process.env.AGENT_TEAMS_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const changed = new Set<string>();
+  watcher.observeArtifacts(async (id) => {
+    changed.add(id);
+  });
+  await Bun.write(join(directory, "sessions", "relocated", "artifacts", "report.md"), "Report");
+  await waitFor(() => changed.has("relocated"));
+});
+
 test("one artifact watcher serves discovery and multiple editors across sessions", async () => {
   const { root, watcher } = await setup();
   const path = join(root, "first", "artifacts", "report.md");

@@ -1,8 +1,8 @@
 // Agent Teams-owned skills embedded in the binary and materialized for providers.
 
 import { rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentTeamsDirectory } from "@/server/storage";
 import type { SessionType } from "@sessions/model";
 import { SerialTaskQueue } from "@/shared/serialTaskQueue";
 import { sharedMap } from "@/shared/server/processState";
@@ -10,7 +10,7 @@ import { sharedMap } from "@/shared/server/processState";
 const installations = sharedMap<SerialTaskQueue>("bundled-skill-installations");
 
 const SKILL_PATH_MARKER = "/skills/";
-const DEFAULT_SKILLS_ROOT = join(homedir(), ".agent-teams", "skills");
+const DEFAULT_SKILLS_ROOT = agentTeamsDirectory("skills");
 const UNIVERSAL_SKILLS = [
   "create-agent-teams-app",
   "create-agent-teams-brief",

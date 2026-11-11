@@ -118,7 +118,7 @@ export const artifactAppBundleInputSchema = z
 
 export const appDefinitionInputSchema = z
   .object({
-    id: appDefinitionIdSchema.describe("Definition folder under ~/.agent-teams/apps."),
+    id: appDefinitionIdSchema.describe("Definition folder in the configured apps directory."),
   })
   .strict();
 

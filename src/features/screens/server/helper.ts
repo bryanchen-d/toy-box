@@ -1,6 +1,6 @@
 import { chmod, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { agentTeamsDirectory } from "@/server/storage";
 import type { ScreenFrame, ScreenInput, ScreenList, ScreenStatus } from "../model";
 import { ScreenPacketReader } from "../model/protocol";
 import {
@@ -168,13 +168,7 @@ async function helperExecutable(): Promise<string> {
     join(import.meta.dir, SCREEN_NATIVE_DIRECTORY, SCREEN_HELPER_EXECUTABLE),
   ).bytes();
   const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-  const executable = join(
-    homedir(),
-    ".agent-teams",
-    "native",
-    "screen",
-    `${SCREEN_HELPER_EXECUTABLE}-${hash}`,
-  );
+  const executable = agentTeamsDirectory("native", "screen", `${SCREEN_HELPER_EXECUTABLE}-${hash}`);
   if (!(await Bun.file(executable).exists())) {
     await mkdir(dirname(executable), { recursive: true });
     await Bun.write(executable, bytes);

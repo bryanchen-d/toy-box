@@ -6,6 +6,8 @@ import { computerUseServers } from "./computerUse";
 
 test("computer use is opt-in and uses the running CLI's version, not the npm loader's version", async () => {
   const home = await mkdtemp(join(tmpdir(), "agent-teams-computer-"));
+  const previous = process.env.COPILOT_HOME;
+  process.env.COPILOT_HOME = join(home, ".copilot");
   const getStatus = mock(async () => ({ version: "1.0.96-2", protocolVersion: 2 }));
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   const settings = join(home, ".copilot/settings.json");
@@ -30,6 +32,8 @@ test("computer use is opt-in and uses the running CLI's version, not the npm loa
     await Bun.write(settings, "{");
     await expect(computerUseServers({ getStatus }, home)).rejects.toThrow();
   } finally {
+    if (previous === undefined) delete process.env.COPILOT_HOME;
+    else process.env.COPILOT_HOME = previous;
     warn.mockRestore();
     await rm(home, { recursive: true, force: true });
   }

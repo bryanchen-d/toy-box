@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionEvent as SdkSessionEvent } from "@github/copilot-sdk";
-import { homedir } from "node:os";
 import type { JSONType } from "zod";
+import { agentTeamsDirectory } from "@/server/storage";
 import { encodeSystemMessage } from "@sessions/model/systemMessages";
 import { replaySessionHistory } from "@sessions/model/reducer";
 import { createSdkEventProjector } from "@providers/server/copilot/projector";
@@ -51,13 +51,14 @@ const PATCH_DIFF = `diff --git a/Users/lostintangent/Desktop/agent-teams/docs/no
 @@ -1 +1 @@
 -old
 +new`;
-const ARTIFACT_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/plan.md`;
-const ARTIFACT_HTML_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/plan.html`;
+const SESSIONS_ROOT = agentTeamsDirectory("sessions");
+const ARTIFACT_PATCH_PATH = `${SESSIONS_ROOT}/agent-teams-session/artifacts/plan.md`;
+const ARTIFACT_HTML_PATCH_PATH = `${SESSIONS_ROOT}/agent-teams-session/artifacts/plan.html`;
 const HOME_RELATIVE_ARTIFACT_PATCH_PATH =
   ".agent-teams/sessions/agent-teams-session/artifacts/plan.html";
-const SESSION_STATE_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/plan.md`;
-const OTHER_SESSION_ARTIFACT_PATH = `${homedir()}/.agent-teams/sessions/other-session/artifacts/plan.md`;
-const NON_ARTIFACT_PATCH_PATH = `${homedir()}/.agent-teams/sessions/agent-teams-session/artifacts/run-tests.sh`;
+const SESSION_STATE_PATCH_PATH = `${SESSIONS_ROOT}/agent-teams-session/plan.md`;
+const OTHER_SESSION_ARTIFACT_PATH = `${SESSIONS_ROOT}/other-session/artifacts/plan.md`;
+const NON_ARTIFACT_PATCH_PATH = `${SESSIONS_ROOT}/agent-teams-session/artifacts/run-tests.sh`;
 const ARTIFACT_PATCH_TEXT = `*** Begin Patch
 *** Add File: ${ARTIFACT_PATCH_PATH}
 +# Plan

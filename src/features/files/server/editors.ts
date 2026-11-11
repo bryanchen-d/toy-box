@@ -8,8 +8,8 @@
 // `register_editor` tool is the sole writer.
 
 import { readdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentTeamsDirectory } from "@/server/storage";
 import { broadcast } from "@workspace/server/events";
 import { customEditorNameSchema, type CustomEditorKind } from "../model";
 
@@ -108,7 +108,7 @@ function parseCustomEditor(
 }
 
 function editorsRoot(): string {
-  return join(homedir(), ".agent-teams", "editors");
+  return agentTeamsDirectory("editors");
 }
 
 function editorDirectory(name: string): string {

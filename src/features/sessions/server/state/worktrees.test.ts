@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import * as childProcess from "node:child_process";
 import { access, mkdtemp, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTestDatabase } from "@/server/database";
+import { agentTeamsDirectory } from "@/server/storage";
 import type { SessionWorktree } from "@sessions/model";
 
 let currentDb: Bun.SQL | undefined;
@@ -91,7 +92,7 @@ describe("session worktrees", () => {
     };
 
     const sessionId = "11111111-1111-4111-8111-111111111111";
-    const path = join(homedir(), ".agent-teams", "worktrees", "11111111-111");
+    const path = agentTeamsDirectory("worktrees", "11111111-111");
     await expect(createSessionWorktree(sessionId, "/source/subdirectory")).resolves.toEqual({
       path,
       branch: "agent-teams/11111111-111",

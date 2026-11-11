@@ -4,9 +4,9 @@
 // record must move together. This module owns that complete lifecycle so
 // session callers never coordinate Git and persistence independently.
 
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { getStateDatabase } from "@/server/database";
+import { agentTeamsDirectory } from "@/server/storage";
 import type { SessionWorktree } from "@sessions/model";
 import { detectGitRoot, git } from "../git";
 
@@ -152,7 +152,7 @@ async function deleteSessionWorktreeRecord(sessionId: string): Promise<void> {
 async function createGitWorktree(gitRoot: string, sessionId: string): Promise<SessionWorktree> {
   const shortId = sessionId.slice(0, 12);
   const branch = `agent-teams/${shortId}`;
-  const path = join(homedir(), ".agent-teams", "worktrees", shortId);
+  const path = agentTeamsDirectory("worktrees", shortId);
   const baseBranch = await git(gitRoot, "rev-parse", "--abbrev-ref", "HEAD");
 
   await git(gitRoot, "worktree", "add", "-b", branch, path, "HEAD");

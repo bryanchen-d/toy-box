@@ -5,8 +5,8 @@
 // lifecycle; this module owns the connection, pragmas, and schema ordering.
 
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { agentTeamsDirectory } from "./storage";
 import { initializeAppSchema } from "@apps/server/schema";
 import { initializeAutomationSchema } from "@automations/server/schema";
 import { initializeConnectorSchema } from "@connectors/server/schema";
@@ -58,9 +58,7 @@ export async function inStateTransaction<Result>(
 }
 
 function resolveDefaultPath(): string {
-  const home = homedir().trim();
-  if (home.length > 0) return join(home, ".agent-teams", "agent-teams.sqlite");
-  return join(process.cwd(), ".agent-teams", "agent-teams.sqlite");
+  return agentTeamsDirectory("agent-teams.sqlite");
 }
 
 function createRuntimeDatabase(path: string): Bun.SQL {

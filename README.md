@@ -33,6 +33,19 @@ Beyond simple session management, Agent Teams provides several helpful workflows
 
 Restart Agent Teams and reload the page after installing, removing, or updating a provider to refresh the model catalog.
 
+### Storage location
+
+Set `AGENT_TEAMS_HOME` to an absolute directory before starting the server to relocate
+its database, session artifacts, worktrees, apps, editors, skills, and native helpers.
+The default is `~/.agent-teams`. Copilot configuration, history, and generated images
+use `COPILOT_HOME`, defaulting to `~/.copilot`.
+
+To move existing data, stop the server and other processes writing that data, copy
+each complete storage directory, set the corresponding environment variables, and
+restart. Moving repositories also requires repairing Git worktrees and updating
+stored team/automation directories, machine-file paths, and provider session working
+directories. Changing a storage root does not rewrite these references or history.
+
 ### Appearance
 
 Choose **Settings > Appearance > System, Light, or Dark**. System follows your device's

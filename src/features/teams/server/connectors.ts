@@ -2,8 +2,8 @@
 // thread's conversation; the connector's events land back in the thread that holds that conversation.
 
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { agentTeamsDirectory } from "@/server/storage";
 import {
   base64ByteLength,
   connectorAttachmentType,
@@ -249,7 +249,7 @@ async function saveEventFiles(
   eventId: string,
   attachments: readonly ConnectorAttachment[],
 ): Promise<string[]> {
-  const directory = join(homedir(), ".agent-teams", "connectors", connectorId, fileName(eventId));
+  const directory = agentTeamsDirectory("connectors", connectorId, fileName(eventId));
   await mkdir(directory, { recursive: true });
   const used = new Set<string>();
   return Promise.all(

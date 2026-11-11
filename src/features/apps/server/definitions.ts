@@ -6,8 +6,8 @@
 
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentTeamsDirectory } from "@/server/storage";
 import {
   appComponentSourceSchema,
   appDefinitionIdSchema,
@@ -213,7 +213,7 @@ function definitionFromSource(source: AppDefinitionSource): AppDefinition {
 }
 
 function defaultAppsRoot(): string {
-  return join(homedir(), ".agent-teams", "apps");
+  return agentTeamsDirectory("apps");
 }
 
 function parseDefinitionId(value: string): string {

@@ -220,12 +220,13 @@ test("a message carries its files to a connector, and names the ones it can't", 
 
 test("a connector's files are saved once and attached to its team message by path", async () => {
   const { teams, team, connector } = await open();
-  const home = await mkdtemp(join(tmpdir(), "connector-home-"));
-  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-  process.env.HOME = process.env.USERPROFILE = home;
+  const root = await mkdtemp(join(tmpdir(), "connector-storage-"));
+  const previous = process.env.AGENT_TEAMS_HOME;
+  process.env.AGENT_TEAMS_HOME = root;
   onTestFinished(async () => {
-    Object.assign(process.env, previous);
-    await rm(home, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.AGENT_TEAMS_HOME;
+    else process.env.AGENT_TEAMS_HOME = previous;
+    await rm(root, { recursive: true, force: true });
   });
   const shared = event("Dana shared the trace", {
     to: { teamId: team.id },
@@ -245,7 +246,7 @@ test("a connector's files are saved once and attached to its team message by pat
   const [message] = (await teams.listMessagesAfter(team.id)).filter(
     ({ sender }) => sender.type === "connector",
   );
-  const directory = join(home, ".agent-teams", "connectors", connector.id, shared.id);
+  const directory = join(root, "connectors", connector.id, shared.id);
   expect(message).toMatchObject({
     content: "Dana shared the trace",
     attachments: [join(directory, "trace.md"), join(directory, "2-trace.md")],

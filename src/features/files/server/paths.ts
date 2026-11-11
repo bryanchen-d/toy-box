@@ -5,6 +5,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { SESSION_STORAGE_PATH } from "@sessions/model/constants";
+import { agentTeamsDirectory } from "@/server/storage";
 import { machineFile, sessionFile, type WorkspaceFile } from "../model";
 
 const SESSION_ARTIFACTS_DIRECTORY = "artifacts";
@@ -39,7 +40,7 @@ export function resolveWorkspaceFile(file: WorkspaceFile): string | null {
 /** Preserve Session ownership when turning an absolute host path into a file address. */
 export function workspaceFileFromAbsolutePath(path: string): WorkspaceFile {
   const absolutePath = resolve(path);
-  const sessionStateRoot = resolve(homedir(), SESSION_STORAGE_PATH);
+  const sessionStateRoot = agentTeamsDirectory("sessions");
   if (isPathInsideRoot(sessionStateRoot, absolutePath)) {
     const [sessionId, directory, ...artifactPath] = relative(sessionStateRoot, absolutePath).split(
       sep,
@@ -77,7 +78,7 @@ export function sessionArtifactDirectory(sessionId: string): string | null {
     sessionId === ".."
   )
     return null;
-  return resolve(homedir(), SESSION_STORAGE_PATH, sessionId, SESSION_ARTIFACTS_DIRECTORY);
+  return agentTeamsDirectory("sessions", sessionId, SESSION_ARTIFACTS_DIRECTORY);
 }
 
 function resolveSdkSessionStatePath(path: string | undefined): string | null {
@@ -85,16 +86,18 @@ function resolveSdkSessionStatePath(path: string | undefined): string | null {
   if (!trimmed) return null;
 
   let absolutePath = trimmed;
-  if (isSessionStateRelativePath(trimmed)) {
-    absolutePath = resolve(homedir(), trimmed);
+  const statePath = trimmed.startsWith("~/") ? trimmed.slice(2) : trimmed;
+  if (isSessionStateRelativePath(statePath)) {
+    absolutePath = resolve(
+      agentTeamsDirectory("sessions"),
+      statePath.slice(SESSION_STORAGE_PATH.length + 1),
+    );
   } else if (trimmed.startsWith("~/")) {
     absolutePath = resolve(homedir(), trimmed.slice(2));
   }
   if (!isAbsolute(absolutePath)) return null;
 
-  return isPathInsideRoot(resolve(homedir(), SESSION_STORAGE_PATH), absolutePath)
-    ? absolutePath
-    : null;
+  return isPathInsideRoot(agentTeamsDirectory("sessions"), absolutePath) ? absolutePath : null;
 }
 
 function isSessionStateRelativePath(path: string): boolean {

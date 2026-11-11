@@ -2,9 +2,8 @@
 // The artifact tree stays watched for the server lifetime; machine files are
 // watched only while they have subscribers.
 import { mkdirSync, watch, type FSWatcher } from "node:fs";
-import { homedir } from "node:os";
 import { basename, dirname, relative, resolve, sep } from "node:path";
-import { SESSION_STORAGE_PATH } from "@sessions/model/constants";
+import { agentTeamsDirectory } from "@/server/storage";
 import { sharedMap } from "@/shared/server/processState";
 import type { FileWatchEvent } from "../model";
 
@@ -20,7 +19,7 @@ export class FileWatcher {
   #pendingSessions = new Set<string>();
   #timer?: ReturnType<typeof setTimeout>;
 
-  constructor(readonly root = resolve(homedir(), SESSION_STORAGE_PATH)) {}
+  constructor(readonly root = agentTeamsDirectory("sessions")) {}
 
   observeArtifacts(onChange: ArtifactObserver): () => void {
     this.#watchArtifacts();

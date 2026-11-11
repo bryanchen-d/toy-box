@@ -54,7 +54,7 @@ const getAppTool = defineTool("get_app", {
 
 const registerAppTool = defineTool("register_app", {
   description:
-    "Validates the manifest state contract, typechecks and compiles TSX, then activates ~/.agent-teams/apps/<id>/.",
+    "Validates the manifest state contract, typechecks and compiles TSX, then activates the definition in the configured apps directory.",
   parameters: appDefinitionInputSchema,
   handler: async (input) => {
     try {

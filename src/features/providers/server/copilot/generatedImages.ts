@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { copilotDirectory } from "@/server/storage";
 import type { SessionHooks } from "@github/copilot-sdk";
 
 type PostToolUse = NonNullable<SessionHooks["onPostToolUse"]>;
@@ -10,7 +10,7 @@ type PostToolUse = NonNullable<SessionHooks["onPostToolUse"]>;
 export async function saveGeneratedImages(
   { toolName, toolResult }: Parameters<PostToolUse>[0],
   { sessionId }: Parameters<PostToolUse>[1],
-  home = homedir(),
+  root = copilotDirectory(),
 ) {
   if (toolName !== "image_generation") return;
   const paths = await Promise.all(
@@ -20,13 +20,7 @@ export async function saveGeneratedImages(
         const bytes = Buffer.from(data, "base64");
         // The content hash matches the image_id Copilot reports to the model.
         const name = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-        const path = join(
-          home,
-          ".copilot",
-          "generated_images",
-          sessionId,
-          `${name}.${mimeType.split("/")[1]}`,
-        );
+        const path = join(root, "generated_images", sessionId, `${name}.${mimeType.split("/")[1]}`);
         await Bun.write(path, bytes);
         return path;
       }),
