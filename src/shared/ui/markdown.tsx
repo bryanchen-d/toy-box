@@ -1,13 +1,22 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { code } from "@streamdown/code";
+import { ExternalLink } from "lucide-react";
 import { Lexer, type Token } from "marked";
 import { parseEntities } from "parse-entities";
-import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from "streamdown";
+import {
+  defaultRemarkPlugins,
+  Streamdown,
+  type Components,
+  type ExtraProps,
+  type StreamdownProps,
+} from "streamdown";
 import { cn } from "@/shared/utils";
 
 /** Highlights fenced code. Streamdown shares plugins through context, so one module-level
  *  object keeps streamed updates from re-rendering every code element in unchanged blocks. */
 export const codePlugins = { code } satisfies StreamdownProps["plugins"];
+
+const markdownComponents = { a: MarkdownLink } satisfies Components;
 
 type MarkdownProps = StreamdownProps & {
   /** Preserve authored newlines inside text blocks, not whitespace between Markdown blocks. */
@@ -24,12 +33,14 @@ export function Markdown({
   mode = "static",
   preserveLineBreaks = false,
   remarkPlugins,
+  components,
   ...streamdownProps
 }: MarkdownProps) {
   return (
     <Streamdown
       {...streamdownProps}
       mode={mode}
+      components={components ? { ...markdownComponents, ...components } : markdownComponents}
       remarkPlugins={
         preserveLineBreaks
           ? [...(remarkPlugins ?? Object.values(defaultRemarkPlugins)), remarkPreserveLineBreaks]
@@ -37,6 +48,31 @@ export function Markdown({
       }
       className={cn("space-y-3 [&_blockquote]:space-y-2", className)}
     />
+  );
+}
+
+export function MarkdownLink({
+  node: _node,
+  href,
+  children,
+  className,
+  ...props
+}: ComponentProps<"a"> & ExtraProps) {
+  const destination = href && safeHref(href);
+  if (!destination) return <span>{children}</span>;
+  const external = /^(?:https?:|\/\/)/i.test(destination);
+  return (
+    <a
+      {...props}
+      href={destination}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
+      data-streamdown="link"
+      className={cn("wrap-anywhere font-medium text-primary underline", className)}
+    >
+      {children}
+      {external && <ExternalLink aria-hidden className="ml-0.5 inline size-3 align-text-top" />}
+    </a>
   );
 }
 
@@ -98,18 +134,15 @@ function renderInline(tokens: Token[], allowLinks: boolean): ReactNode[] {
         return <br key={key} />;
       case "link": {
         const label = renderInline(token.tokens ?? [], allowLinks);
-        const href = safeHref(token.href);
+        const href = safeHref(parseEntities(token.href));
         return allowLinks && href !== undefined ? (
-          <a
+          <MarkdownLink
             key={key}
             href={href}
             title={token.title ? parseEntities(token.title) : undefined}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="wrap-anywhere font-medium text-primary underline"
           >
             {label}
-          </a>
+          </MarkdownLink>
         ) : (
           label
         );
@@ -121,7 +154,7 @@ function renderInline(tokens: Token[], allowLinks: boolean): ReactNode[] {
 }
 
 function safeHref(raw: string): string | undefined {
-  const href = parseEntities(raw);
+  const href = raw.trim();
   try {
     const protocol = new URL(href, "https://localhost").protocol;
     if (["http:", "https:", "mailto:", "tel:"].includes(protocol)) return href;

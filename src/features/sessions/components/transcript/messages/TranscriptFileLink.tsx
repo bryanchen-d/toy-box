@@ -3,6 +3,7 @@ import { defaultRehypePlugins, type Components, type ExtraProps } from "streamdo
 import { sessionFile } from "@files/model";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { createEditorPaneId } from "@workspace/model/panes";
+import { MarkdownLink } from "@/shared/ui/markdown";
 import { useCurrentSession } from "../../CurrentSessionContext";
 
 type TranscriptLinkProps = ComponentProps<"a"> & ExtraProps;
@@ -56,17 +57,10 @@ function TranscriptLink({ node: _node, href, children, ...linkProps }: Transcrip
   if (!href) return <span>{children}</span>;
 
   if (!artifactLink) {
-    const external = /^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith("//");
     return (
-      <a
-        {...linkProps}
-        href={href}
-        target={external ? "_blank" : undefined}
-        rel={external ? "noopener noreferrer" : undefined}
-        className="wrap-anywhere font-medium text-primary underline"
-      >
+      <MarkdownLink {...linkProps} href={href}>
         {children}
-      </a>
+      </MarkdownLink>
     );
   }
 

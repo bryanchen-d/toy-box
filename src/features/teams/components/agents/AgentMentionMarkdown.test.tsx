@@ -9,5 +9,6 @@ describe("AgentMentionMarkdown", () => {
     );
 
     expect(markup.match(/data-agent-mention="[^"]+"/g)).toEqual(['data-agent-mention="critic"']);
+    expect(markup).toContain('target="_blank" rel="noopener noreferrer"');
   });
 });

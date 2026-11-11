@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { MessageSquareReply, UserRound, UsersRound } from "lucide-react";
 import type { Components } from "streamdown";
 import { parseTeamUri } from "@teams/model/references";
 import { decodeReference } from "@/shared/references";
@@ -15,10 +16,21 @@ type MarkdownNode = {
 
 const TAG = "team-reference";
 
-function referenceNode(uri: string, label: string): MarkdownNode {
+function referenceNode(uri: string, label?: string): MarkdownNode {
+  const target = parseTeamUri(uri);
+  const fallback =
+    target?.type === "message"
+      ? `Message #${target.sequence}`
+      : target?.type === "members"
+        ? "Team members"
+        : target?.type === "agent"
+          ? `Agent ${target.agentId}`
+          : target
+            ? `Team ${target.teamId}`
+            : uri;
   return {
     type: "text",
-    value: label,
+    value: label || fallback,
     data: { hName: TAG, hProperties: { uri } },
   };
 }
@@ -56,7 +68,7 @@ export function remarkTeamReferences() {
           if (!parseTeamUri(uri)) continue;
           if (match.index > offset)
             parts.push({ type: "text", value: child.value.slice(offset, match.index) });
-          parts.push(referenceNode(uri, uri));
+          parts.push(referenceNode(uri));
           offset = match.index + uri.length;
         }
         if (!offset) return [child];
@@ -79,15 +91,23 @@ function TeamReferenceLink({
 }) {
   const target = uri && parseTeamUri(uri);
   if (!target) return <span>{children}</span>;
+  const Icon =
+    target.type === "message"
+      ? MessageSquareReply
+      : target.type === "agent"
+        ? UserRound
+        : UsersRound;
   return (
     <Link
       to="/"
       search={{ teams: [target.teamId] }}
       hash={encodeURIComponent(uri!)}
       title={uri}
-      className="wrap-anywhere font-medium text-primary underline"
+      data-streamdown="link"
+      className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline font-medium text-primary ring-1 ring-inset ring-primary/20 hover:bg-primary/20"
     >
-      {children}
+      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </Link>
   );
 }

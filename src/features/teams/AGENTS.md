@@ -232,7 +232,10 @@ selects the Team's roster, not a second entity. Team menus, Members menus, Agent
 the lead), and conversation message actions copy raw URIs with clipboard success/failure feedback.
 Message text copying remains separate; uncommitted optimistic messages cannot copy a URI.
 `components/TeamReferences.tsx` renders bare URIs and Markdown references in Team and Session
-messages while leaving code literal. Links use the existing workspace team selection plus a
+messages as inline icon pills while leaving code literal. Authored labels are preserved; bare
+URIs display readable target labels such as "Message #42". External website links use the shared
+Markdown link renderer, show an external-link indicator, and open directly in a new browser tab.
+Internal links use the existing workspace team selection plus a
 URI hash: members and Agent targets open the roster, and message targets resolve their thread and
 reveal the exact message with a highlight, loading older history through its root. Removed Agents
 and missing messages show an explicit unavailable result. These are in-app references, not

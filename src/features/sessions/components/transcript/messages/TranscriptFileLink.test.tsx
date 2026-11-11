@@ -1,16 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Streamdown, type Components, type ExtraProps } from "streamdown";
+import { Streamdown } from "streamdown";
+import { MarkdownLink } from "@/shared/ui/markdown";
 import { transcriptRehypePlugins } from "./TranscriptFileLink";
 
-type TestLinkProps = ComponentProps<"a"> & ExtraProps;
-
-function TestLink({ node: _node, ...props }: TestLinkProps) {
-  return <a {...props} />;
-}
-
-const testLinkComponents = { a: TestLink } satisfies Components;
+const testLinkComponents = { a: MarkdownLink };
 
 describe("transcript artifact links", () => {
   test("preserves relative links while sanitizing unsafe URLs", () => {
@@ -28,6 +22,8 @@ describe("transcript artifact links", () => {
 
     expect(markup).toContain('href="nested/report.brief"');
     expect(markup).toContain('href="https://example.com"');
+    expect(markup.match(/target="_blank"/g)).toHaveLength(1);
+    expect(markup).toContain('rel="noopener noreferrer"');
     expect(markup).not.toContain("[blocked]");
     expect(markup).not.toContain("javascript:");
   });
