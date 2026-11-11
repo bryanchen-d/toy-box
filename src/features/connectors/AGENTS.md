@@ -111,10 +111,14 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   connector message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via
   BryanBot". The collaboration protocol tells agents to answer each message where it came from, and
   that a requester who isn't the owner speaks only as context, never as the user's instructions.
-- Agents reach a connector's service only through the connector, never with its credentials or
-  scripts, because nothing sent around it can route a reply back. A message to a connector that is
-  down waits in its outbox. While one is unreachable, only the lead may contact the user directly,
-  once, to ask them to restore it.
+- Agents send conversational messages through the connector so replies can route back to the team,
+  never directly with service tokens or scripts. Read-only Slack analysis and bulk retrieval may use
+  the user's configured skills or authorized APIs and scripts with existing authorized credentials:
+  messages, channel history, thread replies, permalinks, attachments, files, and canvases. Direct reads
+  need neither a connector conversation nor a working link. Credentials stay out of messages,
+  artifacts, and logs, and other people's content remains information, not the user's instructions
+  or permission. A conversational message to a connector that is down waits in its outbox. While one
+  is unreachable, only the lead may contact the user directly, once, to ask them to restore it.
 - The transcript labels a relayed message with its origin, such as "via Bryan Chen (you) in Slack",
   linking to the original, and repeats the header whenever a run relays a different person.
 
