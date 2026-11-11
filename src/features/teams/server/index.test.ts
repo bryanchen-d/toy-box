@@ -287,7 +287,7 @@ test("an addressed post settles after its Agent wake is ready and a duplicate ne
   expect((await teams.getTeam(team.id))?.latestSequence).toBe(2);
 });
 
-test("an Agent can attach image and video files to a durable Team message", async () => {
+test("an Agent can attach media and documents to a durable Team message, but not other files", async () => {
   const teams = await openTeams();
   const directory = await mkdtemp(join(tmpdir(), "agent-teams-team-message-"));
   onTestFinished(async () => {
@@ -300,21 +300,30 @@ test("an Agent can attach image and video files to a durable Team message", asyn
   });
   const screenshot = join(directory, "screenshot.png");
   const recording = join(directory, "flow.webm");
+  const notes = join(directory, "notes.md");
+  const report = join(directory, "report.pdf");
+  const archive = join(directory, "logs.zip");
   await Bun.write(screenshot, Buffer.from(PNG_BASE64, "base64"));
   await Bun.write(recording, "webm");
+  await Bun.write(notes, "# Notes");
+  await Bun.write(report, "%PDF-1.7");
+  await Bun.write(archive, "zip");
 
   const message = await sendTeamMessageFromAgent(team.id, {
     content: "The layout is ready for review.",
-    attachmentPaths: [screenshot, recording],
+    attachmentPaths: [screenshot, recording, notes, report],
   });
 
   expect(message).toMatchObject({
     sequence: 1,
     sender: { type: "agent", agentId: team.id },
     content: "The layout is ready for review.",
-    attachments: [screenshot, recording],
+    attachments: [screenshot, recording, notes, report],
   });
   expect((await teams.listMessagesAfter(team.id)).at(-1)).toEqual(message);
+  await expect(
+    sendTeamMessageFromAgent(team.id, { content: "Logs", attachmentPaths: [archive] }),
+  ).rejects.toThrow("not an image, video, Markdown, text, or PDF file");
 });
 
 test("agents reply within a thread and read it whole without moving their read position", async () => {

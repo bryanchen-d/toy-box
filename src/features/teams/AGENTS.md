@@ -69,7 +69,8 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   its private Session ID and public Agent ID. The projection contains its name, optional role,
   model, avatar, and collaboration status. Its read position stays private in Worker metadata.
 - `TeamMessage` has a durable ID and transactionally allocated sequence. User, Agent, and
-  connector messages contain Markdown and optional image or video attachments. Typed system
+  connector messages contain Markdown and optional attachments: images and videos to look at, and
+  Markdown, text, and PDF documents to read or pass on. Typed system
   messages record name, purpose, directory, preview, membership, artifact, and undelivered
   connector-message changes. Agent senders retain only their stable Worker ID, so deleting
   a member preserves prior content while the UI presents a deleted identity. A connector sender
@@ -159,7 +160,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   connectors as recipients beside the agents a message wakes.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
-  other images, and recordings to messages; generated images are attached by their saved paths.
+  other images, recordings, and Markdown, text, or PDF documents to messages; generated images are
+  attached by their saved paths. The transcript shows media in its viewer and opens a document on
+  its own.
 - Let the user arrange artifacts with `arrangeTeamArtifacts`: move a set before another
   artifact (or last), together in the given order, pin or unpin it, and archive or restore it. Moving one artifact,
   moving a selection to the top, and sorting the whole list are all this one verb. One pure

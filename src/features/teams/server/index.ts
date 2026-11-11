@@ -475,6 +475,9 @@ function wakeLead(leadId: string, systemMessage: SessionSystemMessage): Promise<
   });
 }
 
+/** What agents can attach: media to look at, and documents to read or pass on. */
+const TEAM_ATTACHMENT_TYPE = /^(image\/|video\/|text\/(markdown|plain)\b|application\/pdf\b)/;
+
 async function resolveAttachmentPaths(sessionId: string, paths: readonly string[] | undefined) {
   if (!paths?.length) return undefined;
   const directory = paths.some((path) => !isAbsolute(path))
@@ -486,8 +489,10 @@ async function resolveAttachmentPaths(sessionId: string, paths: readonly string[
         throw new Error("Use an absolute attachment path when this Session has no workspace.");
       const absolutePath = resolve(directory ?? "", path);
       const file = Bun.file(absolutePath);
-      if (!(await file.exists()) || !/^(image|video)\//.test(file.type)) {
-        throw new Error(`Team attachment is not an image or video file: ${path}`);
+      if (!(await file.exists()) || !TEAM_ATTACHMENT_TYPE.test(file.type)) {
+        throw new Error(
+          `Team attachment is not an image, video, Markdown, text, or PDF file: ${path}`,
+        );
       }
       return absolutePath;
     }),

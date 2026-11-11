@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { ChevronLeft, ChevronRight, ImageIcon, Play, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, ImageIcon, Play, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Carousel, useCarousel } from "motion-plus/react";
@@ -12,6 +12,8 @@ import type { Attachment, AttachmentReference } from "./model";
 const attachmentPillClassName =
   "inline-flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-md border bg-background px-1 text-xs text-muted-foreground";
 const VIDEO_FILE = /\.(mov|mp4|webm)$/i;
+// Documents, such as Markdown or a PDF, open on their own rather than in the media viewer.
+const DOCUMENT_FILE = /\.(md|markdown|txt|log|pdf)$/i;
 
 /** Presents an attachment collection and opens any image or video in the shared viewer. */
 export function AttachmentGallery({
@@ -34,9 +36,10 @@ export function AttachmentGallery({
       src:
         "url" in attachment ? `${attachment.url}${video ? "#t=0.1" : ""}` : toDataUrl(attachment),
       video,
+      document: "url" in attachment && DOCUMENT_FILE.test(attachment.name),
     };
   });
-  const media = previews.filter((preview) => preview.src !== undefined);
+  const media = previews.filter((preview) => preview.src !== undefined && !preview.document);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [pillKey] = useState(() => {
     const keys = new WeakMap<object, number>();
@@ -55,6 +58,21 @@ export function AttachmentGallery({
 
   const trigger = (index: number, className: string, children: ReactNode) => {
     const preview = previews[index]!;
+    if (preview.document) {
+      return (
+        <a
+          key={index}
+          href={preview.src}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open ${preview.label}`}
+          className={cn(attachmentPillClassName, "self-start hover:text-foreground")}
+        >
+          <FileText className="size-4 shrink-0" />
+          <span className="truncate">{preview.label}</span>
+        </a>
+      );
+    }
     return (
       <DialogTrigger
         key={index}

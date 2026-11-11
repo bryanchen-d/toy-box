@@ -5,6 +5,7 @@ import {
   connectorHandle,
   connectorOptionsSchema,
   connectorsAddressedBy,
+  CONNECTOR_ATTACHMENT_MAX_BYTES,
   DELIVERY_BACKOFF,
 } from ".";
 
@@ -100,6 +101,28 @@ describe("connector events", () => {
   test("reject another protocol version and empty content", () => {
     expect(connectorEventSchema.safeParse({ ...event, version: 2 }).success).toBe(false);
     expect(connectorEventSchema.safeParse({ ...event, content: "  " }).success).toBe(false);
+  });
+
+  test("carry up to four supported files of at most 10 MB, each named but never a path", () => {
+    const file = {
+      name: "trace.md",
+      mimeType: "text/markdown; charset=utf-8",
+      base64: "IyBUcmFjZQ==",
+    };
+    expect(connectorEventSchema.parse({ ...event, attachments: [file] }).attachments).toEqual([
+      { ...file, mimeType: "text/markdown" },
+    ]);
+    const tooBig = "A".repeat(Math.ceil((CONNECTOR_ATTACHMENT_MAX_BYTES + 1) / 3) * 4);
+    for (const attachments of [
+      [{ ...file, mimeType: "video/quicktime" }],
+      [{ ...file, name: "../trace.md" }],
+      [{ ...file, name: "logs\\trace.md" }],
+      [{ ...file, base64: "not base64!" }],
+      [{ ...file, base64: tooBig }],
+      Array.from({ length: 5 }, () => file),
+    ]) {
+      expect(connectorEventSchema.safeParse({ ...event, attachments }).success).toBe(false);
+    }
   });
 });
 

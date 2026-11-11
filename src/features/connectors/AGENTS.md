@@ -47,6 +47,14 @@ classify events with `kind`, but Agent Teams presents every kind alike and ignor
 doesn't use. An event that starts a conversation names its team with `to`. Forwarded content
 carries `origin`: where it came from and whether its requester is the owner.
 
+Messages and events may carry `attachments`: up to 4 files of `{ name, mimeType, base64 }`, each a
+PNG, JPEG, GIF, or WebP image, Markdown, plain text, or PDF of at most 10 MB, named without a
+path. The sender keeps within these limits and names what it left out at the end of the content,
+such as `(Not forwarded: clip.webm, not a supported type)`; a receiver rejects anything else.
+Agent Teams reads a message's files when it queues the message, so the queue keeps them however
+the files change, and saves an event's files under `~/.agent-teams/connectors/<id>/<event>/`,
+where its team message attaches them by path.
+
 ## Link lifecycle
 
 `server/link.ts` owns one live link per connector:

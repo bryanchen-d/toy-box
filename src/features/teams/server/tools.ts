@@ -93,7 +93,7 @@ const createCurrentTeamMembersTool = defineTool("create_team_members", {
 
 const postTeamMessageTool = defineTool("post_team_message", {
   description:
-    "Posts a user-attributed Markdown message with optional image or video paths to a team, or replies in a thread with threadSequence. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents, in a thread or not. A message without mentions wakes the lead. Read the team for exact mentions.",
+    "Posts a user-attributed Markdown message with optional image, video, Markdown, text, or PDF paths to a team, or replies in a thread with threadSequence. Relative paths use this session's workspace. Name-derived @mentions wake the addressed agents, in a thread or not. A message without mentions wakes the lead. Read the team for exact mentions.",
   parameters: teamIdentitySchema.extend({
     content: conciseTeamMessageSchema,
     attachments: z.array(filePathSchema).optional(),
@@ -235,7 +235,7 @@ const sendLeadMessageParameters = sendTeamMessageParameters.extend({
 const sendTeamMessageTool = defineTool("send_team_message", {
   alwaysAvailable: true,
   description:
-    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, and video paths in attachments. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
+    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, video, Markdown, text, and PDF paths in attachments; a message to a connector carries its images, Markdown, text, and PDF files, up to 4 files of 10 MB each. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
   parameters: sendTeamMessageParameters,
   handler: async (args: z.output<typeof sendLeadMessageParameters>, invocation) => {
     const { sendTeamMessageFromAgent } = await import("@teams/server");

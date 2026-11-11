@@ -1,18 +1,26 @@
 // Teams' side of connectors. A message that opens by addressing a connector goes to it in its
 // thread's conversation; the connector's events land back in the thread that holds that conversation.
 
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 import {
+  base64ByteLength,
+  connectorAttachmentType,
   connectorsAddressedBy,
+  CONNECTOR_ATTACHMENT_MAX_BYTES,
+  CONNECTOR_ATTACHMENTS_MAX,
   CONNECTOR_MESSAGE_MAX_LENGTH,
   CONNECTOR_PROTOCOL_VERSION,
   type Connector,
+  type ConnectorAttachment,
   type ConnectorEvent,
   type ConnectorMessage,
 } from "@connectors/model";
 import { isTeamSystemMessage, type Team } from "@teams/model";
 import { getStateDatabase } from "@/server/database";
 import { sharedMap } from "@/shared/server/processState";
-import { TeamDatabase, type StoredTeamMessage } from "./database";
+import { TeamDatabase, type StoredAttachment, type StoredTeamMessage } from "./database";
 
 const TEAM_MESSAGE_MAX_LENGTH = 12_000;
 const EXCERPT_LENGTH = 200;
@@ -41,8 +49,8 @@ export async function forwardToAddressedConnectors(
     message.sender.type === "agent"
       ? { kind: "agent", name: senderName }
       : { kind: "user", name: "Owner" };
-  const omitted = message.attachments?.length ?? 0;
-  const content = `${message.content}${omitted ? `\n\n(${omitted} attachment${omitted === 1 ? "" : "s"} not forwarded)` : ""}`;
+  const { attachments, skipped } = await connectorAttachments(message.attachments ?? []);
+  const content = `${message.content}${skipped.length ? `\n\n(Not forwarded: ${skipped.join("; ")})` : ""}`;
 
   await Promise.all(
     mentioned.map(async (connector) => {
@@ -68,9 +76,55 @@ export async function forwardToAddressedConnectors(
         sender,
         origin: { kind: "team", teamId: team.id, teamName: team.name },
         content: content.slice(0, CONNECTOR_MESSAGE_MAX_LENGTH),
+        ...(attachments.length ? { attachments } : {}),
       });
     }),
   );
+}
+
+/**
+ * A message's files as a connector carries them: the supported types, up to the size and count
+ * limits, read now so the queued message keeps them even if the files change. The rest are named
+ * with the reason they stayed behind.
+ */
+async function connectorAttachments(stored: readonly StoredAttachment[]) {
+  const attachments: ConnectorAttachment[] = [];
+  const skipped: string[] = [];
+  for (const [index, attachment] of stored.entries()) {
+    const { name, mimeType, size, read } = await describeAttachment(attachment, index);
+    const reason = !mimeType
+      ? "not a supported type"
+      : size === undefined
+        ? "missing"
+        : size > CONNECTOR_ATTACHMENT_MAX_BYTES
+          ? "over 10 MB"
+          : attachments.length >= CONNECTOR_ATTACHMENTS_MAX
+            ? `over the ${CONNECTOR_ATTACHMENTS_MAX}-file limit`
+            : undefined;
+    if (reason || !mimeType) skipped.push(`${name}, ${reason}`);
+    else attachments.push({ name, mimeType, base64: await read() });
+  }
+  return { attachments, skipped };
+}
+
+/** A team attachment's file name, supported type, and size, which is unknown for a missing file. */
+async function describeAttachment(attachment: StoredAttachment, index: number) {
+  if (typeof attachment !== "string") {
+    return {
+      // Uploaded images have no name of their own.
+      name: `image-${index + 1}.${attachment.mimeType.split("/")[1]}`,
+      mimeType: connectorAttachmentType(attachment.mimeType),
+      size: base64ByteLength(attachment.base64),
+      read: async () => attachment.base64,
+    };
+  }
+  const file = Bun.file(attachment);
+  return {
+    name: basename(attachment),
+    mimeType: connectorAttachmentType(file.type),
+    size: (await file.exists()) ? file.size : undefined,
+    read: async () => Buffer.from(await file.arrayBuffer()).toString("base64"),
+  };
 }
 
 function allowAgentForward(key: string, now = Date.now()): boolean {
@@ -100,6 +154,9 @@ export async function applyConnectorEvent(
   }
 
   const { postMessage } = await import("./index");
+  const attachments = event.attachments?.length
+    ? await saveEventFiles(connector.id, event.id, event.attachments)
+    : undefined;
   const post = (threadSequence?: number) =>
     postMessage(
       {
@@ -107,6 +164,7 @@ export async function applyConnectorEvent(
         teamId,
         sender: { type: "connector", connectorId: connector.id },
         content: fitTeamMessage(event.content),
+        ...(attachments ? { attachments } : {}),
         ...(event.origin ? { origin: event.origin } : {}),
         ...(threadSequence === undefined ? {} : { threadSequence }),
       },
@@ -180,6 +238,36 @@ async function noteUndelivered(
 export async function listConnectorDirectory() {
   const { teams } = await new TeamDatabase(await getStateDatabase()).listTeams();
   return teams.map(({ id, name, purpose }) => ({ id, name, ...(purpose ? { purpose } : {}) }));
+}
+
+/**
+ * Saves an event's files where its team message can attach them by path, one folder per event so
+ * a replay rewrites the same files.
+ */
+async function saveEventFiles(
+  connectorId: string,
+  eventId: string,
+  attachments: readonly ConnectorAttachment[],
+): Promise<string[]> {
+  const directory = join(homedir(), ".agent-teams", "connectors", connectorId, fileName(eventId));
+  await mkdir(directory, { recursive: true });
+  const used = new Set<string>();
+  return Promise.all(
+    attachments.map(async ({ name, base64 }, index) => {
+      const safe = fileName(name);
+      const path = join(directory, used.has(safe) ? `${index + 1}-${safe}` : safe);
+      used.add(safe);
+      await Bun.write(path, Buffer.from(base64, "base64"));
+      return path;
+    }),
+  );
+}
+
+/** A name every platform accepts as one file name. */
+function fileName(name: string): string {
+  // eslint-disable-next-line no-control-regex -- control characters are invalid in file names
+  const safe = name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/^\.+/, "_");
+  return safe.slice(0, 200) || "file";
 }
 
 function fitTeamMessage(content: string): string {

@@ -1,4 +1,7 @@
 import { expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createStoredTeam } from "@teams/server/testFixtures";
 import { createTestDatabase } from "@/server/database";
 import * as sessionRuntime from "@sessions/server/runtime";
@@ -176,6 +179,79 @@ test("a connector can start a conversation with a team, and continue it in that 
     content: "Alex added: ship Friday",
     threadSequence: first!.sequence,
   });
+});
+
+test("a message carries its files to a connector, and names the ones it can't", async () => {
+  const { connectors, team, connector } = await open();
+  const directory = await mkdtemp(join(tmpdir(), "connector-files-"));
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const notes = join(directory, "notes.md");
+  const clip = join(directory, "clip.webm");
+  await Bun.write(notes, "# Notes");
+  await Bun.write(clip, "webm");
+
+  const fromAgent = await sendTeamMessageFromAgent(team.id, {
+    content: "@bryanbot post these",
+    attachmentPaths: [notes, clip],
+  });
+  await postTeamMessage({
+    id: "upload",
+    teamId: team.id,
+    content: "@bryanbot and this screenshot",
+    attachments: [{ mimeType: "image/png", base64: "iVBORw0KGgo=" }],
+  });
+
+  const sent = await queued(connectors, connector.id);
+  expect(sent.find(({ id }) => id === fromAgent.id)).toMatchObject({
+    content: "@bryanbot post these\n\n(Not forwarded: clip.webm, not a supported type)",
+    attachments: [
+      {
+        name: "notes.md",
+        mimeType: "text/markdown",
+        base64: Buffer.from("# Notes").toString("base64"),
+      },
+    ],
+  });
+  expect(sent.find(({ id }) => id === "upload")).toMatchObject({
+    content: "@bryanbot and this screenshot",
+    attachments: [{ name: "image-1.png", mimeType: "image/png", base64: "iVBORw0KGgo=" }],
+  });
+});
+
+test("a connector's files are saved once and attached to its team message by path", async () => {
+  const { teams, team, connector } = await open();
+  const home = await mkdtemp(join(tmpdir(), "connector-home-"));
+  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = process.env.USERPROFILE = home;
+  onTestFinished(async () => {
+    Object.assign(process.env, previous);
+    await rm(home, { recursive: true, force: true });
+  });
+  const shared = event("Dana shared the trace", {
+    to: { teamId: team.id },
+    attachments: [
+      {
+        name: "trace.md",
+        mimeType: "text/markdown",
+        base64: Buffer.from("# Trace").toString("base64"),
+      },
+      { name: "trace.md", mimeType: "text/plain", base64: Buffer.from("raw").toString("base64") },
+    ],
+  });
+
+  await applyConnectorEvent(connector, shared);
+  await applyConnectorEvent(connector, shared);
+
+  const [message] = (await teams.listMessagesAfter(team.id)).filter(
+    ({ sender }) => sender.type === "connector",
+  );
+  const directory = join(home, ".agent-teams", "connectors", connector.id, shared.id);
+  expect(message).toMatchObject({
+    content: "Dana shared the trace",
+    attachments: [join(directory, "trace.md"), join(directory, "2-trace.md")],
+  });
+  expect(await Bun.file(join(directory, "trace.md")).text()).toBe("# Trace");
+  expect(await Bun.file(join(directory, "2-trace.md")).text()).toBe("raw");
 });
 
 test("events for no current team are dropped, and connectors never forward to connectors", async () => {

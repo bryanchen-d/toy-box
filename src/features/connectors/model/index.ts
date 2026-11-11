@@ -93,6 +93,56 @@ export const connectorOriginSchema = z.object({
 });
 export type ConnectorOrigin = z.output<typeof connectorOriginSchema>;
 
+/** The file types either side can show or read; anything else stays behind with a note. */
+export const CONNECTOR_ATTACHMENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "text/markdown",
+  "text/plain",
+  "application/pdf",
+] as const;
+export const CONNECTOR_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const CONNECTOR_ATTACHMENTS_MAX = 4;
+
+/** The supported file type a MIME type names, ignoring parameters such as a charset. */
+export function connectorAttachmentType(
+  mimeType: string,
+): (typeof CONNECTOR_ATTACHMENT_TYPES)[number] | undefined {
+  const type = mimeType.split(";")[0]!.trim().toLowerCase();
+  return CONNECTOR_ATTACHMENT_TYPES.find((supported) => supported === type);
+}
+
+/** The decoded size of base64 data, without decoding it. */
+export function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/** A file carried inline with a message or event. Its name is a file name, never a path. */
+export const connectorAttachmentSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .refine((name) => !/[\\/]/.test(name) && name !== "." && name !== "..", "Not a file name"),
+  mimeType: z.string().transform((type, context) => {
+    const supported = connectorAttachmentType(type);
+    if (!supported) context.addIssue({ code: "custom", message: `Unsupported file type ${type}` });
+    return supported ?? z.NEVER;
+  }),
+  base64: z
+    .base64()
+    .refine((data) => base64ByteLength(data) <= CONNECTOR_ATTACHMENT_MAX_BYTES, "Over 10 MB"),
+});
+export type ConnectorAttachment = z.output<typeof connectorAttachmentSchema>;
+
+const connectorAttachmentsSchema = z
+  .array(connectorAttachmentSchema)
+  .max(CONNECTOR_ATTACHMENTS_MAX);
+
 /** One event a connector streams to Agent Teams. Every kind presents the same way here. */
 export const connectorEventSchema = z.object({
   version: z.literal(CONNECTOR_PROTOCOL_VERSION),
@@ -101,6 +151,7 @@ export const connectorEventSchema = z.object({
   content: z.string().trim().min(1),
   origin: connectorOriginSchema.nullish(),
   to: z.object({ teamId: connectorIdSchema }).nullish(),
+  attachments: connectorAttachmentsSchema.optional(),
 });
 export type ConnectorEvent = z.output<typeof connectorEventSchema>;
 
@@ -112,6 +163,7 @@ export type ConnectorMessage = {
   sender: { kind: "user" | "agent"; name: string };
   origin: { kind: "team"; teamId: string; teamName: string };
   content: string;
+  attachments?: ConnectorAttachment[];
 };
 
 /** Exponential backoff with ±20% jitter, so reconnecting clients don't arrive in lockstep. */
