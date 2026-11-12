@@ -364,7 +364,7 @@ const finishLeadTurnTool = { ...finishTeamAgentTurnTool, parameters: finishLeadT
 
 const setRoutineTool = defineTool("set_routine", {
   description:
-    "Adds a routine that privately wakes you with its prompt on its schedule, or changes one by routineId. Posts a system message to the team.",
+    "Adds a routine that privately wakes you with its prompt on its schedule, or changes one by routineId. Use a 5-field local-time cron with one fixed minute (at most hourly), and a prompt of at most 2,000 characters. Posts a system message to the team.",
   parameters: setTeamRoutineInputSchema,
   handler: async (input, invocation) => {
     const { setTeamRoutineFromLead } = await import("@teams/server");

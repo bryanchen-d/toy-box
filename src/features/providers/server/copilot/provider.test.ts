@@ -1,6 +1,7 @@
 import { beforeEach, expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import type { CopilotClient, SessionConfig } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
+import { setTeamRoutineInputSchema } from "@teams/model";
 import * as client from "./client";
 import { copilotProvider, toSubscription } from "./provider";
 import * as computerUse from "./computerUse";
@@ -210,6 +211,107 @@ test("resume requests the configured model and computer use from the native sess
       ],
     }),
   );
+});
+
+test("tool validation failures identify the field and allow a corrected retry", async () => {
+  const createSession = mock(async (configuration: SessionConfig) => ({
+    sessionId: configuration.sessionId!,
+    on: () => () => {},
+  }));
+  const start = spyOn(client, "startCopilotClient").mockResolvedValue({
+    createSession,
+  } as unknown as CopilotClient);
+  onTestFinished(() => start.mockRestore());
+  const handler = mock(() => ({ routineId: "routine" }));
+  await copilotProvider.create("public", {
+    directory: "/repo",
+    allowUserQuestions: false,
+    tools: [{ name: "set_routine", parameters: setTeamRoutineInputSchema, handler }],
+    instructions: "",
+    skillDirectories: [],
+    toolGuard,
+  });
+  const tool = createSession.mock.calls[0]![0].tools![0]!;
+  const invoke = async (args: unknown) =>
+    tool.handler!(args, {
+      sessionId: "public",
+      toolCallId: "call",
+      toolName: tool.name,
+      arguments: args,
+    });
+  const input = { title: "Watch", schedule: "5 * * * *", prompt: "Check progress." };
+  expect(await invoke({ ...input, schedule: "25,55 * * * *" })).toEqual(
+    expect.objectContaining({
+      resultType: "failure",
+      textResultForLlm: expect.stringMatching(/schedule:.*at most hourly/),
+      error: expect.stringMatching(/schedule:.*at most hourly/),
+    }),
+  );
+  expect(await invoke({ ...input, prompt: "x".repeat(2_001) })).toEqual(
+    expect.objectContaining({
+      resultType: "failure",
+      textResultForLlm: expect.stringMatching(/prompt:.*2,000 characters/),
+      error: expect.stringMatching(/prompt:.*2,000 characters/),
+    }),
+  );
+  expect(handler).not.toHaveBeenCalled();
+  expect(await invoke(input)).toEqual(
+    expect.objectContaining({
+      resultType: "success",
+      textResultForLlm: '{"routineId":"routine"}',
+    }),
+  );
+  expect(handler).toHaveBeenCalledTimes(1);
+});
+
+test("tool handler exceptions return their message as a failure and are logged", async () => {
+  const createSession = mock(async (configuration: SessionConfig) => ({
+    sessionId: configuration.sessionId!,
+    on: () => () => {},
+  }));
+  const start = spyOn(client, "startCopilotClient").mockResolvedValue({
+    createSession,
+  } as unknown as CopilotClient);
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  onTestFinished(() => {
+    start.mockRestore();
+    log.mockRestore();
+  });
+  const error = new Error('Task "t22a" must reference an artifact shared in this team.');
+  await copilotProvider.create("public", {
+    directory: "/repo",
+    allowUserQuestions: false,
+    tools: [
+      {
+        name: "edit_team_tasks",
+        handler: () => {
+          throw error;
+        },
+      },
+    ],
+    instructions: "",
+    skillDirectories: [],
+    toolGuard,
+  });
+  const tool = createSession.mock.calls[0]![0].tools![0]!;
+  expect(
+    await tool.handler!(
+      {},
+      {
+        sessionId: "public",
+        toolCallId: "call",
+        toolName: tool.name,
+        arguments: {},
+      },
+    ),
+  ).toEqual(
+    expect.objectContaining({
+      resultType: "failure",
+      textResultForLlm: error.message,
+      error: error.message,
+    }),
+  );
+  expect(log).toHaveBeenCalledWith("Copilot tool edit_team_tasks failed in session public:", error);
 });
 
 test("read-only history preserves attachments and projector state across native pages", async () => {

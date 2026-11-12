@@ -290,7 +290,7 @@ export class TeamDatabase {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireLeadTeam(db, leadId);
       const tasks = applyTeamTaskEdits(team.tasks, operations);
-      await assertTaskReferences(db, team.id, tasks);
+      await assertTaskReferences(db, team.id, tasks, team.tasks);
       return updateTeamFields(db, team, { tasks }, { type: "agent", agentId: leadId });
     });
   }
@@ -1228,6 +1228,7 @@ async function assertTaskReferences(
   db: Bun.SQL,
   teamId: string,
   tasks: readonly TeamTask[],
+  previousTasks: readonly TeamTask[] = [],
 ): Promise<void> {
   const [agents, artifacts] = await Promise.all([
     new WorkerDatabase(db).list({ type: "team", teamId }),
@@ -1235,12 +1236,25 @@ async function assertTaskReferences(
   ]);
   const agentIds = new Set(agents.map(({ sessionId }) => sessionId));
   const artifactIds = new Set(artifacts.map(({ id }) => id));
+  const previous = new Map<string, TeamTask>();
+  const indexPrevious = (tasks: readonly TeamTask[]) => {
+    for (const task of tasks) {
+      previous.set(task.id, task);
+      if (task.children) indexPrevious(task.children);
+    }
+  };
+  indexPrevious(previousTasks);
   const visit = (tasks: readonly TeamTask[]) => {
     for (const task of tasks) {
-      if (task.ownerId && !agentIds.has(task.ownerId)) {
+      const before = previous.get(task.id);
+      if (task.ownerId && task.ownerId !== before?.ownerId && !agentIds.has(task.ownerId)) {
         throw new Error("Task owners must be the team lead or a current member.");
       }
-      if (task.artifactId && !artifactIds.has(task.artifactId)) {
+      if (
+        task.artifactId &&
+        task.artifactId !== before?.artifactId &&
+        !artifactIds.has(task.artifactId)
+      ) {
         throw new Error(`Task "${task.id}" must reference an artifact shared in this team.`);
       }
       if (task.children) visit(task.children);

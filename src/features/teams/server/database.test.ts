@@ -348,7 +348,9 @@ describe("team threads", () => {
 
 describe("team task edits", () => {
   async function setup() {
-    const teams = await openTeams();
+    const database = await createTestDatabase();
+    onTestFinished(() => database.close());
+    const teams = new TeamDatabase(database);
     const team = await createStoredTeam(teams, { name: "Outcomes", ...TEAM_DEFAULTS });
     const task = { id: "t1", title: "Review", status: "pending" } as const;
     const file = machineFile("/workspace/review.md");
@@ -359,7 +361,7 @@ describe("team task edits", () => {
       actor: { type: "agent", agentId: team.id },
     });
     await teams.updateTeam(team.id, { tasks: [task] });
-    return { teams, team, task, artifactId: workspaceFileId(file) };
+    return { database, teams, team, task, artifactId: workspaceFileId(file) };
   }
 
   test("only the final batch state can advance revision or complete the list", async () => {
@@ -409,6 +411,82 @@ describe("team task edits", () => {
       ).rejects.toThrow();
       expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
     }
+  });
+
+  test("stale references do not block progress or moves, but cannot be introduced or replaced wholesale", async () => {
+    const { database, teams, team, task, artifactId } = await setup();
+    const child = { ...task, id: "output", artifactId, ownerId: "former-member" };
+    // Simulate references left behind by an external relocation or repair.
+    await database`
+      UPDATE teams SET tasks = ${JSON.stringify([{ ...task, children: [child] }])}
+      WHERE id = ${team.id}
+    `;
+    await teams.editTasks(team.id, {
+      operations: [
+        { type: "update", taskId: task.id, patch: { status: "in_progress" } },
+        { type: "move", taskId: child.id },
+      ],
+    });
+    const tasks: TeamTask[] = [{ ...task, status: "in_progress", children: [] }, child];
+    expect((await teams.getTeam(team.id))?.tasks).toEqual(tasks);
+    await expect(teams.updateTeam(team.id, { tasks })).rejects.toThrow(
+      "Task owners must be the team lead or a current member.",
+    );
+    const before = await teams.getSnapshot(team.id, 100);
+    await expect(
+      teams.editTasks(team.id, {
+        operations: [
+          { type: "update", taskId: task.id, patch: { status: "done" } },
+          {
+            type: "add",
+            task: { ...task, id: "new-group", children: [{ ...child, id: "copy" }] },
+          },
+        ],
+      }),
+    ).rejects.toThrow("Task owners must be the team lead or a current member.");
+    expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
+    await teams.editTasks(team.id, {
+      operations: [{ type: "update", taskId: child.id, patch: { ownerId: null } }],
+    });
+    expect((await teams.getTeam(team.id))?.tasks[1]).toEqual({
+      ...task,
+      id: child.id,
+      artifactId,
+    });
+  });
+
+  test("a relocated artifact blocks new links, not unrelated additions, and can be explicitly repaired", async () => {
+    const { database, teams, team, task, artifactId } = await setup();
+    await teams.updateTeam(team.id, { tasks: [{ ...task, artifactId }] });
+    const relocated = machineFile("/relocated/review.md");
+    const relocatedId = workspaceFileId(relocated);
+    await database`UPDATE team_artifacts SET path = ${relocated.path} WHERE team_id = ${team.id}`;
+    const added = { ...task, id: "next", artifactId: relocatedId };
+    await teams.editTasks(team.id, { operations: [{ type: "add", task: added }] });
+    const before = await teams.getSnapshot(team.id, 100);
+    for (const patch of [{ artifactId }, { ownerId: "missing-member" }]) {
+      await expect(
+        teams.editTasks(team.id, {
+          operations: [
+            { type: "update", taskId: task.id, patch: { status: "done" } },
+            { type: "update", taskId: added.id, patch },
+          ],
+        }),
+      ).rejects.toThrow();
+      expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
+    }
+    await expect(
+      teams.updateTeam(team.id, { tasks: [{ ...task, artifactId }, added] }),
+    ).rejects.toThrow('Task "t1" must reference an artifact shared in this team.');
+    await teams.editTasks(team.id, {
+      operations: [
+        { type: "update", taskId: task.id, patch: { artifactId: relocatedId, status: "done" } },
+      ],
+    });
+    expect((await teams.getTeam(team.id))?.tasks).toEqual([
+      { ...task, artifactId: relocatedId, status: "done" },
+      added,
+    ]);
   });
 });
 

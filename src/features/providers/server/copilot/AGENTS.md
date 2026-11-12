@@ -44,6 +44,11 @@ events project those selections into historical replay.
 Explicit/automatic names and conversation-only rewind use native SDK RPCs.
 Skills include native discovery and the role-scoped bundled directories supplied by
 Sessions. Native permissions follow Agent Teams' existing trusted-owner policy.
+Tool validation and handler errors return explicit failed results with actionable text rather
+than escaping to the SDK's generic failure. Validation errors include their input field paths;
+handler exceptions are also logged server-side. A failed call does not prevent a corrected retry.
+Set both `textResultForLlm` and `error` on a failed native result: Copilot records the latter in
+failed tool events, so text alone does not preserve the error in the transcript.
 `computerUse.ts` respects the user's `enabledMcpServers` computer-use opt-in.
 Headless SDK servers load no built-in plugins, so create and resume register
 the matching CLI version's cached computer-use binary as a stdio MCP server.

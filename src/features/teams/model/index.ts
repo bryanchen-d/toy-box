@@ -326,8 +326,8 @@ export const teamRoutineInputSchema = z
       .string()
       .trim()
       .min(1)
-      .max(2_000)
-      .describe("What to check or do each time the routine wakes you."),
+      .max(2_000, "Routine prompts must be at most 2,000 characters.")
+      .describe("What to check or do each time the routine wakes you, at most 2,000 characters."),
   })
   .strict();
 

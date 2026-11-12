@@ -130,6 +130,11 @@ projections for persistence and runtime configuration; private read positions st
   fields. Removal deletes a subtree; moving appends it intact at the root or under a parent outside
   that subtree. Reserve `update_team`'s whole-tree replacement for initial
   planning or restructuring, preserving retained IDs and outcomes.
+  Incremental edits validate new or changed owner and artifact references, so an unchanged stale
+  reference cannot block unrelated progress or moves. Whole-tree replacement validates every
+  reference. Stale artifact links remain unavailable until explicitly corrected or cleared.
+  When relocating machine artifacts, update their registered paths and dependent task artifact IDs
+  in the same transaction, then verify every reference; never infer a replacement from a basename.
 - Create, edit, start, finish, and remove Team members through their owned Workers.
 - Let ordinary Sessions create and staff Teams, then read, post, share, and wait for the lead or
   members on the user's behalf. Let the lead create peers within its own Team.

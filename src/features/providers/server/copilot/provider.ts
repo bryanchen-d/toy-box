@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { approveAll } from "@github/copilot-sdk";
+import { ZodError } from "zod";
 import type {
   CopilotSession,
   CopilotClient,
@@ -10,7 +11,7 @@ import type {
 import type { SessionEvent } from "@sessions/model";
 import type { ProviderSubscription } from "@providers/model";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
-import { normalizeToolResult } from "@sessions/server/tools/definition";
+import { normalizeToolResult, type ToolResult } from "@sessions/server/tools/definition";
 import { startCopilotClient, stopCopilotClient } from "./client";
 import { connectCopilotSession } from "./connection";
 import { toModelInfo } from "./models";
@@ -167,20 +168,44 @@ async function nativeConfiguration(
     defer: tool.alwaysAvailable ? "never" : undefined,
     skipPermission: true,
     handler: async (args, invocation) => {
-      const result = normalizeToolResult(
-        await tool.handler(tool.parameters ? tool.parameters.parse(args) : args, {
-          ...invocation,
-          sessionId,
-        }),
-      );
+      let result: ToolResult;
+      try {
+        result = normalizeToolResult(
+          await tool.handler(tool.parameters ? tool.parameters.parse(args) : args, {
+            ...invocation,
+            sessionId,
+          }),
+        );
+      } catch (error) {
+        if (!(error instanceof ZodError))
+          console.error(`Copilot tool ${tool.name} failed in session ${sessionId}:`, error);
+        result = {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text:
+                error instanceof ZodError
+                  ? error.issues
+                      .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+                      .join("\n")
+                  : error instanceof Error
+                    ? error.message
+                    : String(error),
+            },
+          ],
+        };
+      }
+      const text = result.content
+        .flatMap((item) => (item.type === "text" ? [item.text] : []))
+        .join("\n");
       return {
-        textResultForLlm: result.content
-          .flatMap((item) => (item.type === "text" ? [item.text] : []))
-          .join("\n"),
+        textResultForLlm: text,
         binaryResultsForLlm: result.content.flatMap((item) =>
           item.type === "image" ? [{ ...item, type: "image" as const }] : [],
         ),
         resultType: result.isError ? ("failure" as const) : ("success" as const),
+        ...(result.isError ? { error: text } : {}),
       };
     },
   }));
