@@ -20,6 +20,7 @@ import { CodexTransport, type RpcNotification, type RpcRequest } from "./protoco
 import { createCodexProjector, itemTimestamp } from "./projector";
 import { encodeInput } from "./messages";
 import { readThreadHistory } from "./history";
+import { codexObservedResult } from "./guard";
 
 /** One question in a native batch; Codex receives every answer in one response. */
 type PendingQuestion = {
@@ -198,6 +199,13 @@ export class CodexConnection implements SessionConnection {
       }
     }
     for (const event of this.#project(notification)) this.#emit(event);
+    if (method === "item/completed" && params.threadId === this.provider.sessionId) {
+      const observed = codexObservedResult((params as ItemCompletedNotification).item);
+      if (observed)
+        void this.configuration.toolGuard
+          .screen(observed.action, observed.text)
+          .catch((error) => console.error("Codex result screening failed:", error));
+    }
     if (method === "item/completed") {
       const { item, turnId } = params as ItemCompletedNotification;
       const terminal = this.#terminal;

@@ -131,12 +131,13 @@ const readTeamForSessionTool = defineTool("read_team", {
         beforeSequence === undefined || threadSequence === undefined,
       "Pass either beforeSequence or threadSequence.",
     ),
-  handler: async ({ teamId, beforeSequence, threadSequence }) => {
+  handler: async ({ teamId, beforeSequence, threadSequence }, invocation) => {
     const { readTeamForSession, readTeamThread } = await import("@teams/server");
     return toTeamReadToolResult(
       threadSequence === undefined
         ? await readTeamForSession(teamId, beforeSequence)
         : await readTeamThread(teamId, threadSequence),
+      invocation.sessionId,
     );
   },
 });
@@ -158,7 +159,7 @@ const inspectTeamTool = defineTool("inspect_team", {
           (beforeSequence === undefined && threadSequence === undefined)),
       "Only team URIs accept paging or a thread; pass either beforeSequence or threadSequence.",
     ),
-  handler: async ({ uri, beforeSequence, threadSequence }) => {
+  handler: async ({ uri, beforeSequence, threadSequence }, invocation) => {
     const target = parseTeamUri(uri);
     if (!target) throw new Error("Invalid team URI.");
     const { readTeamForSession, readTeamThread } = await import("@teams/server");
@@ -172,7 +173,7 @@ const inspectTeamTool = defineTool("inspect_team", {
       ![result.lead, ...result.members].some(({ id }) => id === target.agentId)
     )
       throw new Error("Team agent not found.");
-    return toTeamReadToolResult(result);
+    return toTeamReadToolResult(result, invocation.sessionId);
   },
 });
 
@@ -213,6 +214,7 @@ const readTeamForAgentTool = defineTool("read_team", {
       threadSequence === undefined
         ? await readTeamForAgent(invocation.sessionId)
         : await readTeamThreadForAgent(invocation.sessionId, threadSequence),
+      invocation.sessionId,
     );
   },
 });
@@ -419,8 +421,10 @@ const shareTeamArtifactFromAgentTool = defineTool("share_team_artifact", {
 
 async function toTeamReadToolResult(
   result: Awaited<ReturnType<typeof import(".").readTeamForSession>>,
+  readerSessionId: string,
 ) {
   const { listConnectors } = await import("@connectors/server");
+  const { receiveUntrustedContent } = await import("@security/server");
   const connectors = (await listConnectors()).map(({ id, name, status }) => ({
     connectorId: id,
     name,
@@ -429,57 +433,66 @@ async function toTeamReadToolResult(
     ...(status.state === "unreachable" ? { unreachableSince: status.since } : {}),
   }));
   const images: Attachment[] = [];
-  const messages = result.messages.map((message) => {
-    if (isTeamSystemMessage(message)) {
-      const content = message.content;
-      const { id: _id, ...rest } = message;
+  const messages = await Promise.all(
+    result.messages.map(async (message) => {
+      if (isTeamSystemMessage(message)) {
+        const content = message.content;
+        const { id: _id, ...rest } = message;
+        return {
+          ...rest,
+          content:
+            content.type === "member_joined" || content.type === "member_left"
+              ? { type: content.type, agentId: content.member.id }
+              : content.type === "artifact_shared"
+                ? {
+                    ...content,
+                    artifact: artifactForTool(content.artifact),
+                  }
+                : content,
+        };
+      }
+      const { id: _id, attachments, ...rest } = message;
+      const { sender } = message;
+      const connector =
+        sender.type === "connector"
+          ? connectors.find(({ connectorId }) => connectorId === sender.connectorId)
+          : undefined;
+      const from =
+        sender.type === "user"
+          ? "the user, in Agent Teams"
+          : sender.type === "connector"
+            ? message.origin
+              ? `${connectorOriginLabel(message.origin, "the user")}, via ${connector?.name ?? "a removed connector"}`
+              : (connector?.name ?? "a removed connector")
+            : undefined;
+      // Indexed before screening waits, so images keep message order.
+      const attachmentsForTool = attachments?.map((attachment) =>
+        typeof attachment === "string"
+          ? attachment
+          : { mimeType: attachment.mimeType, imageIndex: images.push(attachment) - 1 },
+      );
       return {
         ...rest,
-        content:
-          content.type === "member_joined" || content.type === "member_left"
-            ? { type: content.type, agentId: content.member.id }
-            : content.type === "artifact_shared"
-              ? {
-                  ...content,
-                  artifact: artifactForTool(content.artifact),
-                }
-              : content,
+        // Content a connector forwards from anyone but the owner is someone else's words; its own
+        // notices carry no origin.
+        ...(sender.type === "connector" && message.origin && !message.origin.requester?.isOwner
+          ? {
+              content: await receiveUntrustedContent(readerSessionId, {
+                source: from!,
+                text: message.content,
+              }),
+            }
+          : {}),
+        uri: teamUri({
+          type: "message",
+          teamId: result.team.id,
+          sequence: message.sequence,
+        }),
+        ...(from ? { from } : {}),
+        ...(attachmentsForTool?.length ? { attachments: attachmentsForTool } : {}),
       };
-    }
-    const { id: _id, attachments, ...rest } = message;
-    const { sender } = message;
-    const connector =
-      sender.type === "connector"
-        ? connectors.find(({ connectorId }) => connectorId === sender.connectorId)
-        : undefined;
-    return {
-      ...rest,
-      uri: teamUri({
-        type: "message",
-        teamId: result.team.id,
-        sequence: message.sequence,
-      }),
-      ...(sender.type === "user" ? { from: "the user, in Agent Teams" } : {}),
-      ...(sender.type === "connector"
-        ? {
-            from: message.origin
-              ? `${connectorOriginLabel(message.origin, "the user")}, via ${connector?.name ?? "a removed connector"}`
-              : (connector?.name ?? "a removed connector"),
-          }
-        : {}),
-      ...(attachments?.length
-        ? {
-            attachments: attachments.map((attachment) => {
-              if (typeof attachment === "string") return attachment;
-              return {
-                mimeType: attachment.mimeType,
-                imageIndex: images.push(attachment) - 1,
-              };
-            }),
-          }
-        : {}),
-    };
-  });
+    }),
+  );
   return {
     content: [
       {

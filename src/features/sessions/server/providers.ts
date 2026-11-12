@@ -12,6 +12,8 @@ import { buildSessionSystemPrompt } from "./instructions";
 import { getSessionSkillDirectories } from "./bundledSkills";
 import { ensureSessionFiles } from "./artifacts";
 import { sharedSet } from "@/shared/server/processState";
+import { UNTRUSTED_CONTENT_INSTRUCTIONS } from "@security/model/envelope";
+import { createSessionGuard } from "@security/server/guard";
 
 // A native history can become discoverable before its create request returns.
 // Only unknown histories from that provider need to wait for their public IDs.
@@ -107,14 +109,29 @@ async function defaultModel(): Promise<ModelConfiguration> {
 }
 
 function configuration(sessionId: string, options: ConfigurationOptions): SessionConfiguration {
+  const allowUserQuestions = options.sessionType === "standard" || options.sessionType === "hyper";
   return {
     model: options.model,
     directory: options.directory,
     disableMemory: options.disableMemory,
-    allowUserQuestions: options.sessionType === "standard" || options.sessionType === "hyper",
+    allowUserQuestions,
     tools: options.tools ?? [],
-    instructions: buildSessionSystemPrompt(sessionId, options),
+    instructions: [
+      buildSessionSystemPrompt(sessionId, options),
+      UNTRUSTED_CONTENT_INSTRUCTIONS,
+    ].join("\n\n"),
     skillDirectories: getSessionSkillDirectories(options.sessionType),
+    // Interactive sessions can ask their owner to approve held actions; the rest refuse them.
+    toolGuard: createSessionGuard(
+      sessionId,
+      allowUserQuestions
+        ? async (question, signal) => {
+            // The runtime acquires provider sessions through this module, so it loads lazily.
+            const { requestSessionApproval } = await import("./runtime");
+            return requestSessionApproval(sessionId, question, signal);
+          }
+        : undefined,
+    ),
   };
 }
 

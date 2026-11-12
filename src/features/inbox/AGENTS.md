@@ -27,7 +27,11 @@ Inbox ownership, and a retention callback.
 Result writes acknowledge persistence without rebuilding an entry; reads own the Inbox projection.
 `server/functions.ts` is the validated RPC ingress used by Query mutations and matching server
 callers; `server/tools.ts` validates and handles the agent-only result operation. `routes/inbox.ts`
-owns the external JSON and multipart HTTP ingress used by the browser extension.
+owns the external JSON and multipart HTTP ingress used by the browser extension. A JSON submission
+may carry a `page` beside its `prompt`: the page's URL, title, selection, and link and media URLs.
+The route screens that context first, composes the task prompt with it and its verdict in
+[Security](../security/AGENTS.md)'s untrusted-content envelope, apart from the user's own words,
+and records an attack for the new session once it's dispatched.
 
 ## Managed-session lifecycle
 

@@ -28,6 +28,12 @@ only to the model (`binaryResultsForLlm`), such as `view` and screenshots, stay 
 `generatedImages.ts` is a post-tool hook that saves each generated image under
 `~/.copilot/generated_images/<session>/` and tells the model the path, as Codex does, so agents
 can attach it.
+`guard.ts` applies Security's tool guard through the same hooks. `onPreToolUse` reviews every call
+and may hold it for the owner's approval; Copilot waits for the hook. `onPostToolUse` replaces an
+untrusted result's `textResultForLlm` with its envelope. Copilot names MCP tools
+`<server>-<tool>`, and none of its own tools contain a hyphen. `respond.ts` answers Security's
+one-off prompts in a tool-less session with no config discovery, deleted afterwards and hidden from
+`listSessions()` meanwhile.
 
 Copilot uses the Sessions-owned UUID as its native session ID.
 The registry persists the provider and resolves native identity for resume, history, and deletion.

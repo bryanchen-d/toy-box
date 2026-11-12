@@ -10,6 +10,7 @@ import { agentTeamsDirectory } from "./storage";
 import { initializeAppSchema } from "@apps/server/schema";
 import { initializeAutomationSchema } from "@automations/server/schema";
 import { initializeConnectorSchema } from "@connectors/server/schema";
+import { initializeSecuritySchema } from "@security/server/schema";
 import { initializeTeamSchema } from "@teams/server/schema";
 import { initializeSessionSchema } from "@sessions/server/schema";
 import { initializeWorkerSchema } from "@workers/server/schema";
@@ -82,6 +83,7 @@ async function initializeSchema(db: Bun.SQL, path: string): Promise<void> {
   await initializeTeamSchema(db);
   await initializeAutomationSchema(db);
   await initializeAppSchema(db);
+  await initializeSecuritySchema(db);
   await initializeWorkspaceSchema(db);
 }
 

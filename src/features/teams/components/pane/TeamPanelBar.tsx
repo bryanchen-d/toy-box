@@ -6,6 +6,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   PanelsTopLeft,
+  ShieldAlert,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -22,6 +23,7 @@ const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
   tasks: { icon: ListChecks, label: "Tasks" },
   artifacts: { icon: Files, label: "Artifacts" },
   routines: { icon: Clock3, label: "Routines" },
+  security: { icon: ShieldAlert, label: "Security" },
 };
 
 /** The Team pane's right edge: one toggle per panel, so each is a click from chat. */
@@ -29,6 +31,7 @@ export function TeamPanelBar({
   panel,
   asideOpen,
   hasCanvas,
+  alerts,
   variant,
   onToggle,
   onToggleAside,
@@ -36,6 +39,8 @@ export function TeamPanelBar({
   panel: TeamPanel | undefined;
   asideOpen: boolean;
   hasCanvas: boolean;
+  /** Panels holding something that needs the user, such as an unreviewed security finding. */
+  alerts: ReadonlySet<TeamPanel>;
   variant: PaneVariant;
   onToggle: (panel: TeamPanel) => void;
   onToggleAside: () => void;
@@ -75,7 +80,8 @@ export function TeamPanelBar({
         const { icon: Icon, label } = PANEL_BUTTONS[kind];
         const isOpen = panel === kind;
         const unavailable = kind === "canvas" && !hasCanvas;
-        const tooltip = unavailable ? "No canvas yet" : label;
+        const alert = alerts.has(kind);
+        const tooltip = unavailable ? "No canvas yet" : alert ? `${label}: needs review` : label;
 
         return (
           <Tooltip key={kind}>
@@ -85,10 +91,11 @@ export function TeamPanelBar({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={label}
+                  aria-label={alert ? `${label}, needs review` : label}
                   aria-pressed={isOpen}
                   aria-disabled={unavailable || undefined}
                   className={cn(
+                    "relative",
                     isOpen ? "bg-muted text-foreground" : "text-muted-foreground",
                     unavailable ? "cursor-not-allowed opacity-40" : "hover:text-foreground",
                   )}
@@ -97,6 +104,12 @@ export function TeamPanelBar({
                   }}
                 >
                   <Icon />
+                  {alert && (
+                    <span
+                      aria-hidden
+                      className="absolute top-1 right-1 size-2 rounded-full bg-destructive ring-2 ring-background"
+                    />
+                  )}
                 </Button>
               }
             />

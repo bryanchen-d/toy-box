@@ -2,12 +2,27 @@
 // Sessions supplies host policy and resources, and owns queues and completion.
 
 import type { ModelConfiguration, ModelInfo, ProviderSubscription } from "@providers/model";
+import type { AgentAction } from "@security/model";
 import type { SessionEvent, SessionMessage, Session, SessionSkill } from "@sessions/model";
 import type { SessionQuestionAnswer } from "@sessions/model/protocol";
 import type { Tool } from "@sessions/server/tools/definition";
 
 /** The operation was not submitted; reacquiring the connection is safe. */
 export class SessionConnectionUnavailableError extends Error {}
+
+/**
+ * Agent Teams' review of native tool activity. Providers translate native calls into actions and
+ * apply it from their native hooks, as far as each one allows.
+ */
+export interface SessionToolGuard {
+  /** Whether a tool call may run; a refusal's reason reaches the model in place of its result. */
+  review(
+    action: AgentAction,
+    signal?: AbortSignal,
+  ): Promise<{ allowed: true } | { allowed: false; reason: string }>;
+  /** The text the model should read for a tool's result: the same, or marked untrusted. */
+  screen(action: AgentAction, result: string): Promise<string>;
+}
 
 export type SessionConfiguration = {
   model?: ModelConfiguration;
@@ -16,7 +31,16 @@ export type SessionConfiguration = {
   tools: Tool<any>[];
   instructions: string;
   skillDirectories: string[];
+  toolGuard: SessionToolGuard;
   disableMemory?: boolean;
+};
+
+/** One prompt answered by a model with no tools and no retained history. */
+export type ProviderPrompt = {
+  model: string;
+  instructions: string;
+  prompt: string;
+  signal?: AbortSignal;
 };
 
 /** One attached native session, independent of browser observation. */
@@ -40,6 +64,8 @@ export interface SessionProvider {
   listModels(): Promise<ModelInfo[]>;
   /** Read the signed-in account's subscription; an account using an API key has none. */
   readSubscription(): Promise<ProviderSubscription | undefined>;
+  /** Answer a one-off prompt for Agent Teams' own judgments. Providers that can't omit it. */
+  respond?(prompt: ProviderPrompt): Promise<string>;
   listSkills(
     directory: string | undefined,
     skillDirectories: readonly string[],

@@ -61,6 +61,7 @@ import { teamQueries } from "@teams/queries";
 import { parseTeamReferenceHash } from "@teams/model/references";
 import { automationQueries } from "@automations/queries";
 import { connectorQueries } from "@connectors/queries";
+import { securityQueries } from "@security/queries";
 import { inboxQueries } from "@inbox/queries";
 import { appQueries } from "@apps/queries";
 
@@ -110,6 +111,7 @@ export const Route = createFileRoute("/")({
       context.queryClient.ensureQueryData(teamQueries.list()),
       context.queryClient.ensureQueryData(automationQueries.list()),
       context.queryClient.ensureQueryData(connectorQueries.list()),
+      context.queryClient.ensureQueryData(securityQueries.open()),
       context.queryClient.ensureQueryData(inboxQueries.list()),
       context.queryClient.ensureQueryData(appQueries.list()),
       context.queryClient.ensureQueryData(providerQueries.catalog()),
@@ -770,6 +772,7 @@ function WorkspacePage() {
         panes={openPanes}
         onOpenApp={openAppInMainSurface}
         onOpenFile={openFile}
+        onOpenSession={openSessionInWorkspace}
         onRevealFile={revealFile}
         onOpenScreen={openScreen}
         teamPanel={teamPanel}

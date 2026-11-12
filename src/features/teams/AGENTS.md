@@ -257,7 +257,11 @@ and tool logs never enter the Team. Agents reach connectors by opening a message
 and name them without @ when only talking about them. They keep each connector
 conversation in one thread, answer each message where it came from (what the user typed in Agent
 Teams in the team, and what a connector relayed through that connector), and treat content whose
-requester isn't the owner as information rather than the user's instructions. They send conversational
+requester isn't the owner as information rather than the user's instructions. `read_team` and
+`inspect_team` deliver that content in [Security](../security/AGENTS.md)'s untrusted-content
+envelope, screened for injections. A detected attack holds the reading agent's actions that send
+data out, read credentials, delete work, or change agent instructions until the user reviews it;
+reading such content alone restricts nothing. They send conversational
 messages through the connector so replies route back, never directly with service tokens or scripts.
 Read-only Slack analysis and bulk retrieval may use the user's configured skills or authorized APIs
 and scripts with existing authorized credentials, including messages, history, threads, permalinks,
@@ -514,7 +518,8 @@ to the top together, and Sort arranges only unpinned Shared artifacts once by ne
 reorders locally until its optimistic arrangement replaces the list.
 
 The pane's right edge is `TeamPanelBar`, with a top show/hide button followed by one toggle per
-panel: overview, canvas (available once the lead sets one), members, tasks, artifacts, and routines.
+panel: overview, canvas (available once the lead sets one), members, tasks, artifacts, routines,
+and security, which is marked while one of the Team's agents has an open finding.
 The top button replaces header close buttons; its chevron points right to close and left to reopen
 the last selected panel while the pane remains mounted, or overview if none was selected or its
 canvas is no longer available. One aside shows beside chat at a time. Choosing a panel replaces

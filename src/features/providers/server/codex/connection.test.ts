@@ -9,7 +9,7 @@ import {
   replaySessionHistory,
 } from "@sessions/model/reducer";
 import type { SessionEvent, SessionMessage } from "@sessions/model";
-import type { SessionConfiguration } from "@providers/server/provider";
+import type { SessionConfiguration, SessionToolGuard } from "@providers/server/provider";
 import { defineTool } from "@sessions/server/tools/definition";
 import { CodexConnection } from "./connection";
 import { CodexTransport } from "./protocol/transport";
@@ -17,6 +17,12 @@ import * as transport from "./protocol/transport";
 import { codexProvider } from "./provider";
 import { itemTimestamp } from "./projector";
 import type { Thread, ThreadItem, Turn, UserInput } from "./protocol";
+import type { AgentAction } from "@security/model";
+
+const toolGuard: SessionToolGuard = {
+  review: async () => ({ allowed: true }),
+  screen: async (_action, result) => result,
+};
 
 const turn: Turn = {
   id: "00000001-0001-7001-8001-000000000001",
@@ -49,7 +55,7 @@ function sessionState(events: SessionEvent[]) {
   return events.reduce(applySessionEvent, createInitialSessionState());
 }
 
-function setup(tools: SessionConfiguration["tools"] = []) {
+function setup(tools: SessionConfiguration["tools"] = [], guard: SessionToolGuard = toolGuard) {
   const sessionId = `agent-teams-test-${crypto.randomUUID()}`;
   const written: Record<string, unknown>[] = [];
   const responses = new Map<string, (value: unknown) => void>();
@@ -99,6 +105,7 @@ function setup(tools: SessionConfiguration["tools"] = []) {
       tools,
       instructions: "Test",
       skillDirectories: [],
+      toolGuard: guard,
     },
     { provider: "codex", name: "model-one", reasoningEffort: "low" },
     [],
@@ -149,6 +156,50 @@ function setup(tools: SessionConfiguration["tools"] = []) {
     },
   };
 }
+
+test("Codex results can't be rewritten, so completed outside reads are still screened", async () => {
+  const screened: [AgentAction, string][] = [];
+  const { notify, notifyThread } = setup([], {
+    review: async () => ({ allowed: true }),
+    screen: async (action, result) => {
+      screened.push([action, result]);
+      return result;
+    },
+  });
+  const command: Extract<ThreadItem, { type: "commandExecution" }> = {
+    type: "commandExecution",
+    id: "issue",
+    pluginId: null,
+    scriptPath: null,
+    command: "gh issue view 7",
+    cwd: "/tmp",
+    processId: null,
+    source: "agent",
+    status: "completed",
+    commandActions: [],
+    aggregatedOutput: "Bug: sidebar collapses",
+    exitCode: 0,
+    durationMs: 1,
+  };
+  notify("turn/started", { turn });
+  notify("item/completed", { turnId: turn.id, item: command });
+  notify("item/completed", {
+    turnId: turn.id,
+    item: {
+      type: "webSearch",
+      id: "search",
+      query: "codex hooks",
+      action: { type: "openPage", url: "https://example.com/hooks" },
+      results: null,
+    },
+  });
+  notifyThread("child", "item/completed", { turnId: "child-turn", item: command });
+
+  expect(screened).toEqual([
+    [{ type: "command", command: "gh issue view 7" }, "Bug: sidebar collapses"],
+    [{ type: "fetch", url: "https://example.com/hooks" }, ""],
+  ]);
+});
 
 test("a late turn/start response never reactivates a completed Codex turn", async () => {
   const { connection, notify, beforeStartResponse, written } = setup();

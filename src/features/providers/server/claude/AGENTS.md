@@ -38,6 +38,13 @@ Native permissions follow Agent Teams' trusted-owner policy. Connections pin
 auto mode would. `AskUserQuestion` goes to the shared question UI when the session's role allows
 it; each native question is its own tool call and is answered individually.
 
+`guard.ts` applies Security's tool guard through SDK hooks. `PreToolUse` runs for every tool, even
+ones Claude allows without asking, and may hold a call for the owner's approval under a day-long
+timeout. `PostToolUse` returns an untrusted result's envelope through `updatedToolOutput` in the
+native shape: a string, MCP content blocks, or the `stdout`, `result`, or `output` text field.
+Claude keeps the original output when a replacement's shape doesn't match. These hooks have not
+yet run against an installed Claude CLI.
+
 Enable `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS` and `CLAUDE_CODE_BG_TASKS_REPORT_RUNNING`: native
 `session_state_changed: idle` follows background work and its notifications.
 `CLAUDE_CODE_ENABLE_TODO_TOOLS` keeps native checklists available on newer models.

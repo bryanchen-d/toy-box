@@ -4,10 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineTool } from "@sessions/server/tools/definition";
-import type { SessionConfiguration, SessionConnection } from "@providers/server/provider";
+import type {
+  SessionConfiguration,
+  SessionConnection,
+  SessionToolGuard,
+} from "@providers/server/provider";
 import * as transport from "./protocol/transport";
 import { codexProvider, toSubscription } from "./provider";
 import type { GetAccountRateLimitsResponse, RateLimitSnapshot } from "./protocol";
+
+const toolGuard: SessionToolGuard = {
+  review: async () => ({ allowed: true }),
+  screen: async (_action, result) => result,
+};
 
 const rateLimits: RateLimitSnapshot = {
   limitId: "codex",
@@ -213,6 +222,7 @@ test("resumed threads apply the current workspace, model, and session skills", a
     ],
     instructions: "Session instructions",
     skillDirectories: [root],
+    toolGuard,
   };
   expect(await codexProvider.listSkills(root, [root])).toEqual([
     {

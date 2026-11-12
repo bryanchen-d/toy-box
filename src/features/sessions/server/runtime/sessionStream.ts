@@ -33,6 +33,9 @@ type StreamEndReason = Extract<SessionEvent, { type: "end" }>["reason"];
 // Expired replay and lagging observers reject without stopping provider work.
 const MAX_REPLAY_EVENTS = 1500;
 
+/** How the owner answers an approval request; the first choice allows. */
+const APPROVAL_CHOICES = ["Allow", "Deny"] as const;
+
 // Dev HMR can reload this module while active turns are still running. Keep the
 // registry on globalThis so reconnects and stop requests keep finding the same
 // runtime object. A registered stream is therefore expected to mean "active or
@@ -110,6 +113,8 @@ export class SessionStream {
   #abortRequested = false;
   #finished = false;
   #completionResult: SessionCompletion | undefined;
+  // Actions held for the owner's approval, by question request ID.
+  readonly #approvals = new Map<string, (allowed: boolean) => void>();
   private constructor(
     sessionId: string,
     connection: SessionConnection,
@@ -221,7 +226,67 @@ export class SessionStream {
       return false;
     }
 
+    const approval = this.#approvals.get(requestId);
+    if (approval) {
+      this.#settleApproval(requestId, answer);
+      approval(answer === APPROVAL_CHOICES[0]);
+      return true;
+    }
     return this.connection.answerQuestion({ requestId, answer, wasFreeform });
+  }
+
+  /**
+   * Ask the owner to approve an action the host is holding. Approval rows are live-only; their
+   * outcome reaches provider history as the action's result. Stopping the stream declines.
+   */
+  requestApproval(question: string, signal?: AbortSignal): Promise<boolean> {
+    if (this.#finished || this.#abortRequested || signal?.aborted) return Promise.resolve(false);
+    const requestId = `approval:${crypto.randomUUID()}`;
+    const ask = { question, choices: [...APPROVAL_CHOICES], allowFreeform: false };
+    return new Promise((resolve) => {
+      const cancel = () => {
+        if (!this.#approvals.has(requestId)) return;
+        this.#settleApproval(requestId);
+        resolve(false);
+      };
+      this.#approvals.set(requestId, (allowed) => {
+        signal?.removeEventListener("abort", cancel);
+        resolve(allowed);
+      });
+      signal?.addEventListener("abort", cancel, { once: true });
+      this.#emit({
+        type: "tool_start",
+        toolCallId: requestId,
+        toolName: "ask_user",
+        arguments: {},
+        question: ask,
+      });
+      this.#emit({ type: "question_requested", toolCallId: requestId, requestId, question: ask });
+    });
+  }
+
+  /** Close an approval row with the owner's answer, or as unanswered when the action can't wait. */
+  #settleApproval(requestId: string, answer?: string): void {
+    this.#approvals.delete(requestId);
+    if (this.#finished) return;
+    this.#emit(
+      answer === undefined
+        ? { type: "question_cancelled", toolCallId: requestId }
+        : { type: "question_resolved", toolCallId: requestId, answer },
+    );
+    this.#emit({
+      type: "tool_end",
+      toolCallId: requestId,
+      success: true,
+      result: answer ?? "Not answered",
+    });
+  }
+
+  #declineApprovals(): void {
+    for (const [requestId, resolve] of [...this.#approvals]) {
+      this.#settleApproval(requestId);
+      resolve(false);
+    }
   }
 
   /** Wait for this stream instance to complete, not future replacements with the same ID. */
@@ -258,6 +323,7 @@ export class SessionStream {
   /** @internal Complete this execution; external controls should abort or delete the session. */
   finish(reason: StreamEndReason = "idle", error?: string): void {
     if (this.#finished) return;
+    this.#declineApprovals();
     this.#finished = true;
     this.#emit({ type: "end", reason, ...(error ? { error } : {}) });
     this.#completionResult = completionResult(
@@ -279,6 +345,7 @@ export class SessionStream {
   /** Always finish the stream, even if the SDK abort itself fails. */
   async abort(): Promise<void> {
     this.#abortRequested = true;
+    this.#declineApprovals();
     try {
       await this.connection.abort();
     } catch (error) {
@@ -291,6 +358,7 @@ export class SessionStream {
 
   private async removeForDeletion(): Promise<void> {
     this.#abortRequested = true;
+    this.#declineApprovals();
     if (!this.#finished) this.#emit({ type: "end", reason: "idle" });
     this.#dispose();
     await this.connection.abort();

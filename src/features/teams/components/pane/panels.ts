@@ -6,6 +6,7 @@ export const TEAM_PANELS = [
   "tasks",
   "artifacts",
   "routines",
+  "security",
 ] as const;
 
 export type TeamPanel = (typeof TEAM_PANELS)[number];

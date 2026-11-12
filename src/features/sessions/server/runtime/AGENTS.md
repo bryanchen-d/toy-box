@@ -75,6 +75,13 @@ changes beneath the Session storage root and supplies open editors. `refreshSess
 stream through canonical events containing the current file list; idle snapshots read the files when loaded.
 Streams neither own filesystem watchers nor wait for artifact discovery at turn completion.
 
+A live stream can also ask its owner to approve an action the host is holding.
+`requestSessionApproval` adds an `ask_user` row with Allow and Deny through the same question
+events, and the stream routes its answer to the held action rather than the provider. Approval rows
+are live-only; their outcome reaches provider history as the action's result. Aborting, finishing,
+deletion, or the held call's own cancellation declines what's still pending.
+[Security](../../../security/AGENTS.md)'s tool guard is the caller.
+
 A delivery receipt exposes the initial `started` or `queued` decision and a waiter bound to that exact stream instance. Completion reports `completed`, `failed`, or `timed_out`, plus the latest substantive assistant response when available. Failed live completion also forwards the final assistant message's error, preserving partial output separately from the failure detail. Waiting by session ID also covers work announced before its stream exists and falls back to the final snapshot when no live stream remains. A timeout ends only that caller's wait; it does not abort the session or alter its supervisor's policy.
 
 A supervisor that retains durable history but expects little immediate reuse may call

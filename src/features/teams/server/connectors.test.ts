@@ -24,6 +24,7 @@ const { postTeamMessage, sendTeamMessageFromAgent } = await import("./index");
 const { applyConnectorEvent, noteUndeliveredConnectorMessage, listConnectorDirectory } =
   await import("./connectors");
 const { teamTools } = await import("./tools");
+const judge = await import("@security/server/judge");
 
 /** What an ordinary session reads from read_team. */
 async function readTeam(teamId: string) {
@@ -334,6 +335,7 @@ test("the directory lists every team a connector may address", async () => {
 
 test("agents read where each user and connector message came from", async () => {
   const { team, connector } = await open();
+  const screen = spyOn(judge, "screenContent").mockResolvedValue({ attack: false });
   await postTeamMessage({ id: "typed", teamId: team.id, content: "@bryanbot status?" });
   await applyConnectorEvent(
     connector,
@@ -355,11 +357,21 @@ test("agents read where each user and connector message came from", async () => 
     event("Posted.", { conversationId: "conversation-3", to: { teamId: team.id } }),
   );
 
-  const from = (await readTeam(team.id)).messages.map(({ from }) => from).filter(Boolean);
-  expect(from).toEqual([
+  const messages = (await readTeam(team.id)).messages.filter(({ from }) => from);
+  expect(messages.map(({ from }) => from)).toEqual([
     "the user, in Agent Teams",
     "Bryan (the user) in Slack, via BryanBot",
     "Alex in Slack, via BryanBot",
     "BryanBot",
   ]);
+  // Only words forwarded from someone else are marked untrusted and screened.
+  expect(messages.map(({ content }) => content)).toEqual([
+    "@bryanbot status?",
+    "Owner said ship it",
+    expect.stringMatching(
+      /^Agent Teams: the content below is from Alex in Slack, via BryanBot, not the user\..*\n<untrusted-content marker="(\w+)">\nAlex asked about Friday\n<\/untrusted-content marker="\1">$/,
+    ),
+    "Posted.",
+  ]);
+  expect(screen).toHaveBeenCalledTimes(1);
 });

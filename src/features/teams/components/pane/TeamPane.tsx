@@ -12,6 +12,7 @@ import {
   type TeamConversationMessage,
 } from "@teams/model";
 import { connectorQueries } from "@connectors/queries";
+import { securityQueries } from "@security/queries";
 import { useTeam } from "@teams/useTeam";
 import type { WorkspaceFile } from "@files/model";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
@@ -34,6 +35,7 @@ import {
 import { TeamPaneProvider } from "./TeamPaneContext";
 import { TeamPanelBar } from "./TeamPanelBar";
 import { TeamRoutines } from "./TeamRoutines";
+import { TeamSecurity } from "./TeamSecurity";
 import { TeamTasks } from "./TeamTasks";
 import { TeamThread } from "./TeamThread";
 import { TeamMessageSearch } from "./TeamMessageSearch";
@@ -56,6 +58,7 @@ const ASIDE_SIZES: Record<TeamAside["type"], number> = {
   tasks: 35,
   artifacts: 35,
   routines: 30,
+  security: 35,
   thread: 35,
 };
 
@@ -148,6 +151,11 @@ function TeamContent({
   const { data: connectors = [] } = useQuery(connectorQueries.list());
   // Connectors write messages where agents do, so one lookup names every author.
   const authors = [...agents, ...connectors.map(connectorAuthor)];
+  const agentIds = new Set(agents.map(({ id }) => id));
+  const { data: securityAlert = false } = useQuery({
+    ...securityQueries.open(),
+    select: (open) => open.some(({ sessionId }) => agentIds.has(sessionId)),
+  });
 
   function setPanel(next: TeamPanel | undefined) {
     if (remembersPanel) setTeamPanel?.(next);
@@ -373,6 +381,7 @@ function TeamContent({
                   {aside.type === "routines" && (
                     <TeamRoutines team={state.team} routines={state.routines} />
                   )}
+                  {aside.type === "security" && <TeamSecurity agents={agents} />}
                 </ResizablePanel>
               </>
             )}
@@ -382,6 +391,7 @@ function TeamContent({
           panel={isTeamPanel(asideKind) ? asideKind : undefined}
           asideOpen={asideKind !== undefined}
           hasCanvas={!!canvas}
+          alerts={new Set<TeamPanel>(securityAlert ? ["security"] : [])}
           variant={variant}
           onToggle={togglePanel}
           onToggleAside={() => {

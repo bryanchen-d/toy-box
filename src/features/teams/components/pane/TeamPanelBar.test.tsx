@@ -13,6 +13,7 @@ test.each(["normal", "compact"] as const)(
         panel={undefined}
         asideOpen={false}
         hasCanvas={false}
+        alerts={new Set()}
         variant={variant}
         onToggle={noop}
         onToggleAside={noop}
@@ -40,6 +41,7 @@ test.each([...TEAM_PANELS, "thread"] as const)(
         panel={panel}
         asideOpen
         hasCanvas
+        alerts={new Set()}
         variant="normal"
         onToggle={noop}
         onToggleAside={noop}
@@ -56,3 +58,23 @@ test.each([...TEAM_PANELS, "thread"] as const)(
     }
   },
 );
+
+test("a panel that needs review is marked on its toggle", () => {
+  const html = renderToStaticMarkup(
+    <TeamPanelBar
+      panel={undefined}
+      asideOpen={false}
+      hasCanvas
+      alerts={new Set(["security"] as const)}
+      variant="normal"
+      onToggle={noop}
+      onToggleAside={noop}
+    />,
+  );
+  const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)!;
+
+  expect(buttons[TEAM_PANELS.indexOf("security") + 1]).toContain(
+    'aria-label="Security, needs review"',
+  );
+  expect(html.match(/needs review/g)).toHaveLength(1);
+});

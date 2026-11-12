@@ -18,6 +18,7 @@ import {
 import { claudeSkillPlugins, closeClaudeQuery, startClaudeQuery } from "./client";
 import { encodeInput } from "./messages";
 import { createClaudeTools } from "./tools";
+import { claudeGuardHooks } from "./guard";
 import { claudeQuestions, createClaudeProjector } from "./projector";
 
 /** One SDK query per attached session. Sessions owns the queue and browser lifetimes. */
@@ -78,6 +79,7 @@ export class ClaudeConnection implements SessionConnection {
         // Pinned so the owner's native default or auto mode can't bypass Agent Teams' canUseTool policy.
         permissionMode: "default",
         canUseTool: this.#canUseTool(configuration.allowUserQuestions),
+        hooks: claudeGuardHooks(configuration.toolGuard),
         mcpServers: {
           agent_teams: createClaudeTools(this.sessionId, configuration.tools),
         },

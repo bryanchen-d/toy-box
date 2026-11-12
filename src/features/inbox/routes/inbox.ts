@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { dispatchInboxTask } from "@inbox/server/functions";
+import { inboxPageContent, inboxPagePrompt, inboxPageSchema } from "@inbox/model";
+import { recordScreening } from "@security/server";
+import { screenContent } from "@security/server/judge";
 import { attachmentsSchema } from "@/shared/attachments/model";
 
 const inboxInputSchema = z.object({
   prompt: z.string().trim().min(1),
+  page: inboxPageSchema.optional(),
   attachments: attachmentsSchema.optional(),
 });
 
@@ -21,9 +25,21 @@ export const Route = createFileRoute("/api/inbox")({
           return Response.json({ error: "Invalid inbox request." }, { status: 400 });
         }
 
+        const { prompt, page, attachments } = input;
+        // Screening first warns the agent in its prompt and holds risky actions from its start.
+        const untrusted = page && inboxPageContent(page);
+        const screening = untrusted && (await screenContent(untrusted.text));
         const result = await dispatchInboxTask({
-          data: { message: { content: input.prompt, attachments: input.attachments } },
+          data: {
+            message: {
+              content: page
+                ? inboxPagePrompt(prompt, page, Boolean(attachments?.length), screening)
+                : prompt,
+              attachments,
+            },
+          },
         });
+        if (untrusted) await recordScreening(result.sessionId, untrusted, screening);
 
         return Response.json(result, { status: 202 });
       },

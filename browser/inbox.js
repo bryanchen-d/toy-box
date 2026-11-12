@@ -4,7 +4,8 @@ const VIEWPORT_DATA_URL_PREFIX = "data:image/jpeg;base64,";
 
 export async function sendPageToInbox({ task, page, viewport }) {
   const body = JSON.stringify({
-    prompt: buildPrompt(task, page, Boolean(viewport)),
+    prompt: requireTask(task),
+    page: pageContext(page),
     attachments: viewport ? [createViewportAttachment(viewport)] : undefined,
   });
   const endpoint = await getInboxEndpoint();
@@ -40,43 +41,23 @@ export async function captureViewport(windowId) {
   }
 }
 
-function buildPrompt(task, page, hasViewport) {
+function requireTask(task) {
   const normalizedTask = task.trim();
-  const title = page.title?.trim();
-  const url = page.url?.trim();
-  const selection = page.selection?.trim();
-  const linkUrl = page.linkUrl?.trim();
-  const mediaUrl = page.mediaUrl?.trim();
-
   if (!normalizedTask) throw new Error("A task is required.");
+  return normalizedTask;
+}
+
+// Agent Teams keeps the page's own words apart from the task, as content the user didn't write.
+function pageContext(page) {
+  const url = page.url?.trim();
   if (!url) throw new Error("The current page URL is unavailable.");
 
-  const parts = ["Open and inspect the following page, then complete this background task."];
-
-  if (title) {
-    parts.push(`Page title: ${title}`);
+  const context = { url };
+  for (const key of ["title", "selection", "linkUrl", "mediaUrl"]) {
+    const value = page[key]?.trim();
+    if (value) context[key] = value;
   }
-
-  parts.push(`URL: ${url}`);
-
-  if (selection) {
-    parts.push("", "Selected text:", selection);
-  }
-
-  if (linkUrl) {
-    parts.push("", `Linked URL: ${linkUrl}`);
-  }
-
-  if (mediaUrl) {
-    parts.push("", `Media URL: ${mediaUrl}`);
-  }
-
-  if (hasViewport) {
-    parts.push("", "The attached image shows the visible viewport at submission time.");
-  }
-
-  parts.push("", "Task:", normalizedTask);
-  return parts.join("\n");
+  return context;
 }
 
 function createViewportAttachment(dataUrl) {

@@ -23,7 +23,7 @@ The Manifest V3 background declaration intentionally includes both `service_work
 
 ## Submission flow
 
-Every submission requires instructions and the active-page URL. Page title, selected text, and a visible-viewport JPEG are optional context. `inbox.js` turns those values into one prompt and sends the screenshot as Agent Teams' base64 attachment representation. It asks `settings.js` for the complete Inbox endpoint immediately before dispatch; callers never assemble the endpoint themselves.
+Every submission requires instructions and the active-page URL. Page title, selected text, and a visible-viewport JPEG are optional context. `inbox.js` sends the instructions as the prompt and the page context as a separate `page` field, so Agent Teams can keep words the page wrote apart from the user's task, and sends the screenshot as Agent Teams' base64 attachment representation. It asks `settings.js` for the complete Inbox endpoint immediately before dispatch; callers never assemble the endpoint themselves.
 
 The toolbar, keyboard shortcut, and custom context-menu action open the popup. Quick actions submit immediately from the background runtime and report pending, success, or failure through the action badge.
 

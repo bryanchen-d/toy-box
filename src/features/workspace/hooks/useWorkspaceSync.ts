@@ -10,6 +10,7 @@ import { invalidateAutomationListQuery } from "@automations/queryCache";
 import { invalidateConnectorListQuery } from "@connectors/queryCache";
 import { invalidateInboxListQuery } from "@inbox/queryCache";
 import { invalidateAppListQuery } from "@apps/queryCache";
+import { invalidateSecurityFindingQueries } from "@security/queryCache";
 import { providerQueries } from "@providers/queries";
 
 /** Keeps shared Query projections aligned with the workspace update stream. */
@@ -39,6 +40,7 @@ export function useWorkspaceSync(ssrRevision?: string): void {
         invalidateConnectorListQuery(queryClient),
         invalidateInboxListQuery(queryClient),
         invalidateAppListQuery(queryClient),
+        invalidateSecurityFindingQueries(queryClient),
         queryClient.invalidateQueries({ queryKey: providerQueries.all() }),
       ]).catch((error) => {
         console.error("Failed to refresh shared state:", error);

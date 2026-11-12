@@ -2,6 +2,7 @@ import type { AppDefinition, AppInstance, AppShare } from "@apps/model";
 import type { Automation } from "@automations/model";
 import type { ConnectorEntry } from "@connectors/model";
 import type { CustomEditorKind } from "@files/model";
+import type { SecurityFinding } from "@security/model";
 import type { SessionUpdate } from "@sessions/model";
 import type { WorkerEvent } from "@workers/model";
 import type { Team, TeamList } from "@teams/model";
@@ -80,6 +81,10 @@ export type WorkspaceEvent =
   | {
       type: "connector.deleted";
       connectorId: string;
+    }
+  | {
+      type: "security.finding.upserted";
+      finding: SecurityFinding;
     };
 
 type SimpleSessionUpdateEvents<EventName extends string> = EventName extends string

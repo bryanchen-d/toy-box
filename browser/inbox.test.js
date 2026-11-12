@@ -36,17 +36,17 @@ describe("browser Inbox dispatch", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-    expect(body.prompt).toContain("Page title: Example");
-    expect(body.prompt).toContain("Selected text:\nImportant passage");
-    expect(body.prompt).toContain("Linked URL: https://example.org/reference");
-    expect(body.prompt).toContain("Media URL: https://example.org/image.jpg");
-    expect(body.prompt).toContain("Task:\nSummarize the article.");
-    expect(body.attachments).toEqual([
-      {
-        mimeType: "image/jpeg",
-        base64: "c2NyZWVuc2hvdA==",
+    expect(body).toEqual({
+      prompt: "Summarize the article.",
+      page: {
+        title: "Example",
+        url: "https://example.org/article",
+        selection: "Important passage",
+        linkUrl: "https://example.org/reference",
+        mediaUrl: "https://example.org/image.jpg",
       },
-    ]);
+      attachments: [{ mimeType: "image/jpeg", base64: "c2NyZWVuc2hvdA==" }],
+    });
   });
 
   test("falls back to the localhost server when local storage is unavailable", async () => {

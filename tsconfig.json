@@ -33,6 +33,7 @@
       "@sessions/*": ["./src/features/sessions/*"],
       "@teams/*": ["./src/features/teams/*"],
       "@screens/*": ["./src/features/screens/*"],
+      "@security/*": ["./src/features/security/*"],
       "@terminal/*": ["./src/features/terminal/*"],
       "@whiteboard/*": ["./src/features/whiteboard/*"],
       "@workers/*": ["./src/features/workers/*"],

@@ -1,10 +1,15 @@
 import { beforeEach, expect, mock, onTestFinished, spyOn, test } from "bun:test";
-import type { CopilotClient } from "@github/copilot-sdk";
+import type { CopilotClient, SessionConfig } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
 import * as client from "./client";
 import { copilotProvider, toSubscription } from "./provider";
 import * as computerUse from "./computerUse";
-import { saveGeneratedImages } from "./generatedImages";
+import type { SessionToolGuard } from "@providers/server/provider";
+
+const toolGuard: SessionToolGuard = {
+  review: async () => ({ allowed: true }),
+  screen: async (_action, result) => result,
+};
 
 beforeEach(() => {
   const servers = spyOn(computerUse, "computerUseServers").mockResolvedValue({
@@ -73,6 +78,49 @@ test("catalog metadata retains the native repository display fields", async () =
   ]);
 });
 
+test("a one-off prompt runs in a tool-less session that is deleted and never listed", async () => {
+  const native = (sessionId: string) => ({
+    sessionId,
+    startTime: new Date(0),
+    modifiedTime: new Date(1),
+  });
+  let listedDuringPrompt: string[] = [];
+  const createSession = mock(async (_configuration: SessionConfig) => ({
+    sessionId: "one-off",
+    sendAndWait: async () => {
+      listedDuringPrompt = (await copilotProvider.listSessions()).map(({ id }) => id);
+      return { data: { content: '{"attack": false}' } };
+    },
+    abort: async () => {},
+    disconnect: async () => {},
+  }));
+  const deleteSession = mock(async () => {});
+  const start = spyOn(client, "startCopilotClient").mockResolvedValue({
+    createSession,
+    deleteSession,
+    listSessions: async () => [native("one-off"), native("kept")],
+  } as unknown as CopilotClient);
+  onTestFinished(() => start.mockRestore());
+
+  expect(
+    await copilotProvider.respond!({
+      model: "claude-haiku-5.5",
+      instructions: "Judge.",
+      prompt: "Content",
+    }),
+  ).toBe('{"attack": false}');
+  expect(createSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      model: "claude-haiku-5.5",
+      availableTools: [],
+      enableConfigDiscovery: false,
+      systemMessage: { mode: "replace", content: "Judge." },
+    }),
+  );
+  expect(deleteSession).toHaveBeenCalledWith("one-off");
+  expect(listedDuringPrompt).toEqual(["kept"]);
+});
+
 test("creation uses the canonical ID and configures the working directory", async () => {
   const createSession = mock(async ({ sessionId }: { sessionId: string }) => ({
     sessionId,
@@ -94,6 +142,7 @@ test("creation uses the canonical ID and configures the working directory", asyn
     ],
     instructions: "",
     skillDirectories: [],
+    toolGuard,
   });
 
   expect(createSession).toHaveBeenCalledWith(
@@ -101,7 +150,7 @@ test("creation uses the canonical ID and configures the working directory", asyn
       sessionId: "public",
       workingDirectory: "/repo",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
-      hooks: { onPostToolUse: saveGeneratedImages },
+      hooks: { onPreToolUse: expect.any(Function), onPostToolUse: expect.any(Function) },
       tools: [
         expect.objectContaining({ name: "protocol", defer: "never" }),
         expect.objectContaining({ name: "optional", defer: undefined }),
@@ -143,6 +192,7 @@ test("resume requests the configured model and computer use from the native sess
       ],
       instructions: "",
       skillDirectories: [],
+      toolGuard,
     },
   );
 
@@ -153,7 +203,7 @@ test("resume requests the configured model and computer use from the native sess
       reasoningEffort: "max",
       contextTier: "long_context",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
-      hooks: { onPostToolUse: saveGeneratedImages },
+      hooks: { onPreToolUse: expect.any(Function), onPostToolUse: expect.any(Function) },
       tools: [
         expect.objectContaining({ name: "protocol", defer: "never" }),
         expect.objectContaining({ name: "optional", defer: undefined }),

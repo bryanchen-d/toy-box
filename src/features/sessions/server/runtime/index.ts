@@ -192,6 +192,15 @@ export async function answerSessionQuestion(
   return SessionStream.get(sessionId)?.answerQuestion(answer) ?? false;
 }
 
+/** Ask whoever watches a running session to approve a held action; no live stream declines. */
+export async function requestSessionApproval(
+  sessionId: string,
+  question: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return (await SessionStream.get(sessionId)?.requestApproval(question, signal)) ?? false;
+}
+
 /** Discard one root user turn and every later conversation event while preserving files. */
 export async function rewindSession(sessionId: string, timestamp: string): Promise<SessionState> {
   if (SessionStream.isRunning(sessionId)) throw new Error("Stop this session before rewinding it.");

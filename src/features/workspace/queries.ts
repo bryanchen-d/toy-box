@@ -12,6 +12,7 @@ import { providerQueries } from "@providers/queries";
 import { applyTeamListEvent } from "@teams/queryCache";
 import { applyAutomationListEvent } from "@automations/queryCache";
 import { applyConnectorListEvent } from "@connectors/queryCache";
+import { applySecurityFindingEvent } from "@security/queryCache";
 import { applyInboxListEvent } from "@inbox/queryCache";
 import { applyAppListEvent } from "@apps/queryCache";
 import { areSettingsEqual, type Settings } from "./model/config/settings";
@@ -46,6 +47,7 @@ export function applyWorkspaceEvent(queryClient: QueryClient, event: WorkspaceEv
   applyTeamListEvent(queryClient, event);
   applyAutomationListEvent(queryClient, event);
   applyConnectorListEvent(queryClient, event);
+  applySecurityFindingEvent(queryClient, event);
   applyInboxListEvent(queryClient, event);
   applyAppListEvent(queryClient, event);
   queryClient.setQueryData<WorkspaceState>(workspaceQueries.stateKey(), (state) =>

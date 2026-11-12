@@ -41,6 +41,7 @@ Each guide explains one capability end to end, including adjacent callers and co
 - [`src/features/providers/AGENTS.md`](src/features/providers/AGENTS.md): the native provider contract, catalogs, Copilot, Codex, and Claude implementations, and history projection
 - [`src/features/teams/AGENTS.md`](src/features/teams/AGENTS.md): durable shared message buses, membership cursors, delivery policy, artifacts, and team presentation
 - [`src/features/connectors/AGENTS.md`](src/features/connectors/AGENTS.md): app-level links to outside services that every team can message, with durable two-way delivery
+- [`src/features/security/AGENTS.md`](src/features/security/AGENTS.md): untrusted content labeled wherever agents read it, injection screening, the record of attacks, and the hold a detected attack places on its session's risky actions
 - [`src/features/workspace/AGENTS.md`](src/features/workspace/AGENTS.md): TanStack application composition, aggregate workspace state, synchronization, pane identity, and layout
 - [`src/features/automations/AGENTS.md`](src/features/automations/AGENTS.md): dependable recurring work by scheduling ordinary managed sessions
 - [`src/features/inbox/AGENTS.md`](src/features/inbox/AGENTS.md): durable background results presented through ordinary managed sessions

@@ -18,7 +18,8 @@ import { toSdkSessionModelOptions } from "./modelConfiguration";
 import { toSessionSkills } from "./skills";
 import { createSdkEventProjector } from "./projector";
 import { computerUseServers } from "./computerUse";
-import { saveGeneratedImages } from "./generatedImages";
+import { copilotGuardHooks } from "./guard";
+import { isOneOffSession, respondOnce } from "./respond";
 
 export const copilotProvider: SessionProvider = {
   id: "copilot",
@@ -33,9 +34,11 @@ export const copilotProvider: SessionProvider = {
       authInfo && "copilotUser" in authInfo ? authInfo.copilotUser?.copilot_plan : undefined;
     return plan ? toSubscription(plan, (await rpc.account.getQuota({})).quotaSnapshots) : undefined;
   },
+  respond: respondOnce,
   async listSessions() {
-    return (await (await startCopilotClient()).listSessions()).map(
-      ({ sessionId, startTime, modifiedTime, summary, context }) => ({
+    return (await (await startCopilotClient()).listSessions())
+      .filter(({ sessionId }) => !isOneOffSession(sessionId))
+      .map(({ sessionId, startTime, modifiedTime, summary, context }) => ({
         id: sessionId,
         createdAt: startTime,
         updatedAt: modifiedTime,
@@ -46,8 +49,7 @@ export const copilotProvider: SessionProvider = {
           repository: context?.repository,
           branch: context?.branch,
         },
-      }),
-    );
+      }));
   },
   async readHistory({ id, provider }) {
     const nativeId = provider?.sessionId ?? id;
@@ -190,7 +192,7 @@ async function nativeConfiguration(
     enableConfigDiscovery: true,
     mcpServers: await computerUseServers(client),
     imageGeneration: { enabled: true },
-    hooks: { onPostToolUse: saveGeneratedImages },
+    hooks: copilotGuardHooks(configuration.toolGuard),
     enableSkills: true,
     skillDirectories: configuration.skillDirectories,
     systemMessage: { mode: "append", content: configuration.instructions },

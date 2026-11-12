@@ -36,6 +36,8 @@ const { StoreProvider, useStoreContext: useWorkspaceSurface } = createStoreConte
     panes: readonly WorkspacePane[];
     openApp: (appId: string) => void;
     openFile?: (path: string) => void;
+    /** Opens a session's pane beside what's showing. */
+    openSession?: (sessionId: string) => void;
     /** Brings a file's pane forward, opening the file when it isn't showing. */
     revealFile?: (file: WorkspaceFile) => void;
     revealScreen: (screenId: string) => boolean;
@@ -63,6 +65,7 @@ export function WorkspaceSurfaceProvider({
   panes,
   onOpenApp,
   onOpenFile,
+  onOpenSession,
   onRevealFile,
   onOpenScreen,
   teamPanel,
@@ -75,6 +78,7 @@ export function WorkspaceSurfaceProvider({
   panes: WorkspacePane[];
   onOpenApp: (appId: string) => void;
   onOpenFile?: (path: string) => void;
+  onOpenSession?: (sessionId: string) => void;
   onRevealFile?: (file: WorkspaceFile) => void;
   onOpenScreen?: (screenId: string) => Promise<void>;
   teamPanel?: string;
@@ -159,6 +163,7 @@ export function WorkspaceSurfaceProvider({
         panes,
         openApp: onOpenApp,
         openFile: onOpenFile,
+        openSession: onOpenSession,
         revealFile: onRevealFile,
         revealScreen,
         teamPanel,

@@ -55,6 +55,13 @@ completion, and broadcasts. It supplies providers with prepared skill directorie
 image inputs, and question policy on creation and resume. Providers must not reach
 into the Sessions registry, runtime, persistence, or resource layout.
 
+Every configuration carries a `toolGuard` from [Security](../security/AGENTS.md). Providers
+translate native tool calls into Security's `AgentAction`s, `review` them before they run where the
+native SDK can hold a call, and `screen` their results where it can replace them. Copilot and
+Claude do both through native hooks; Codex can only screen completed items. A provider that can
+answer a one-off prompt with no tools and no retained history implements `respond`, which
+Security's judge uses; Copilot does.
+
 Team-owned Worker sessions receive composed Agent identity instructions and Team tools like
 any other Session configuration. Providers receive no Agent-specific protocol or metadata.
 Sessions tool declarations can mark a tool `alwaysAvailable` to include its schema without

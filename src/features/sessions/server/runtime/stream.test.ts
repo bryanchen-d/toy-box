@@ -580,6 +580,77 @@ describe("SessionStream question answers", () => {
   });
 });
 
+describe("SessionStream approvals", () => {
+  /** The newest approval row, on the assistant message it joined. */
+  function latestRow(stream: SessionStream) {
+    const message = stream.getSessionState().messages.at(-1);
+    return message?.role === "assistant" ? message.toolCalls?.at(-1) : undefined;
+  }
+
+  /** The live approval row awaiting the owner, with the request ID that answers it. */
+  function pendingApproval(stream: SessionStream) {
+    const row = latestRow(stream);
+    if (row?.question?.state !== "pending") throw new Error("No approval is pending.");
+    return { row, requestId: row.question.requestId };
+  }
+
+  test("an approval waits for the owner and answers only the held action", async () => {
+    const sessionId = "session-approval";
+    cleanUpStreamAfterTest(sessionId);
+    onTestFinished(() => deleteSessionState(sessionId));
+    const answerQuestion = mock(async () => false);
+    const stream = SessionStream.getOrCreate(sessionId, makeFakeSession({ answerQuestion }));
+
+    const pushed = stream.requestApproval("Allow git push?");
+    const { row, requestId } = pendingApproval(stream);
+    expect(row).toMatchObject({
+      name: "ask_user",
+      question: { question: "Allow git push?", choices: ["Allow", "Deny"], allowFreeform: false },
+    });
+    expect(getWorkspaceSessionState(sessionId)?.status).toBe("waiting");
+
+    expect(await stream.answerQuestion({ requestId, answer: "Allow", wasFreeform: false })).toBe(
+      true,
+    );
+    expect(await pushed).toBe(true);
+    expect(answerQuestion).not.toHaveBeenCalled();
+    expect(latestRow(stream)).toMatchObject({
+      question: { state: "answered", answer: "Allow" },
+      result: { content: "Allow", success: true },
+    });
+    expect(getWorkspaceSessionState(sessionId)?.status).toBe("running");
+
+    const published = stream.requestApproval("Allow npm publish?");
+    await stream.answerQuestion({
+      requestId: pendingApproval(stream).requestId,
+      answer: "Deny",
+      wasFreeform: false,
+    });
+    expect(await published).toBe(false);
+  });
+
+  test("an unanswered approval declines when its action is cancelled or the session stops", async () => {
+    const sessionId = "session-approval-cancel";
+    cleanUpStreamAfterTest(sessionId);
+    onTestFinished(() => deleteSessionState(sessionId));
+    const stream = SessionStream.getOrCreate(sessionId, makeFakeSession());
+
+    const controller = new AbortController();
+    const cancelled = stream.requestApproval("Allow git push?", controller.signal);
+    controller.abort();
+    expect(await cancelled).toBe(false);
+    expect(latestRow(stream)).toMatchObject({
+      question: { state: "unanswered" },
+      result: { content: "Not answered" },
+    });
+
+    const stopped = stream.requestApproval("Allow git push?");
+    await stream.abort();
+    expect(await stopped).toBe(false);
+    expect(await stream.requestApproval("Allow git push?")).toBe(false);
+  });
+});
+
 describe("SessionStream abort", () => {
   test("aborts provider work and finishes idle after its subscriber disconnects", async () => {
     const sessionId = "session-disconnected-abort";

@@ -60,6 +60,10 @@ Asynchronous questions are ordinary agent messages, rendered as their text and a
 by the next message. Unattended sessions disable both question tools.
 Agent Teams' trusted-owner policy supplies native approval/sandbox configuration; a new
 approval flow belongs in the Sessions contract before exposing additional policies.
+Security's tool guard can't hold or rewrite Codex tool activity through the app-server, so
+`guard.ts` screens completed root-thread commands, MCP calls, and web searches after the fact.
+That exposes the session and records attacks, but Codex actions are not gated. Gating them needs
+the native approval requests, which the checked-in protocol doesn't generate yet.
 
 Every thread opts into V2 subagents, which emit the activity records agent cards follow,
 including on models whose catalog defaults to V1. Instant interrupts stay off: a steer

@@ -111,6 +111,9 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   connector message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via
   BryanBot". The collaboration protocol tells agents to answer each message where it came from, and
   that a requester who isn't the owner speaks only as context, never as the user's instructions.
+  Content forwarded from anyone but the owner reaches agents in
+  [Security](../security/AGENTS.md)'s untrusted-content envelope, screened for injections; a
+  connector's own notices carry no origin and stay plain.
 - Agents send conversational messages through the connector so replies can route back to the team,
   never directly with service tokens or scripts. Read-only Slack analysis and bulk retrieval may use
   the user's configured skills or authorized APIs and scripts with existing authorized credentials:
