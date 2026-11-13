@@ -157,6 +157,7 @@ export async function applyConnectorEvent(
   const attachments = event.attachments?.length
     ? await saveEventFiles(connector.id, event.id, event.attachments)
     : undefined;
+  const askedBy = event.replyTo ? await database.agentAuthorOf(teamId, event.replyTo) : undefined;
   const post = (threadSequence?: number) =>
     postMessage(
       {
@@ -166,6 +167,7 @@ export async function applyConnectorEvent(
         content: fitTeamMessage(event.content),
         ...(attachments ? { attachments } : {}),
         ...(event.origin ? { origin: event.origin } : {}),
+        ...(askedBy ? { askedBy } : {}),
         ...(threadSequence === undefined ? {} : { threadSequence }),
       },
       { authorName: connector.name },

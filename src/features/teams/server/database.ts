@@ -608,6 +608,15 @@ export class TeamDatabase {
     });
   }
 
+  /** The agent that wrote a team's message, or undefined when no agent of this team wrote it. */
+  async agentAuthorOf(teamId: string, messageId: string): Promise<string | undefined> {
+    const [row] = await this.db<{ sender_agent_id: string }[]>`
+      SELECT sender_agent_id FROM team_messages
+      WHERE team_id = ${teamId} AND id = ${messageId} AND sender_type = 'agent'
+    `;
+    return row?.sender_agent_id;
+  }
+
   /** The team thread a connector conversation lives in. */
   async getConnectorThread(connectorId: string, conversationId: string) {
     const [row] = await this.db<{ team_id: string; thread_sequence: number }[]>`
@@ -1153,6 +1162,7 @@ function messageColumns(message: TeamMessage) {
       typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     attachments: message.attachments?.length ? JSON.stringify(message.attachments) : null,
     origin: !isTeamSystemMessage(message) && message.origin ? JSON.stringify(message.origin) : null,
+    asked_by: message.askedBy ?? null,
     request: message.request ? 1 : 0,
     thread_sequence: message.threadSequence ?? null,
   };
@@ -1363,6 +1373,7 @@ type TeamMessageRow = {
   request: number;
   attachments: string | null;
   origin: string | null;
+  asked_by: string | null;
   thread_sequence: number | null;
   timestamp: string;
 };
@@ -1507,6 +1518,7 @@ function messageFromRow(row: TeamMessageRow, reactions: TeamReaction[]): TeamMes
     sender: authorFromRow(row),
     content: row.content,
     ...(row.origin ? { origin: connectorOriginSchema.parse(JSON.parse(row.origin)) } : {}),
+    ...(row.asked_by ? { askedBy: row.asked_by } : {}),
     ...(row.request ? { request: true as const } : {}),
     ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     ...(attachments?.length ? { attachments } : {}),

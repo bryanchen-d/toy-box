@@ -478,6 +478,8 @@ export type TeamConversationMessage<A = TeamAttachment> = TeamMessageBase & {
   content: string;
   /** Where a connector's forwarded content came from. */
   origin?: ConnectorOrigin;
+  /** The agent whose message a connector's reply answers; unaddressed, the reply wakes it. */
+  askedBy?: string;
   /** The lead asks for the user's response; a later user message acknowledges it. */
   request?: true;
   /** A reply's thread: the sequence of the top-level message that starts it. */
@@ -491,6 +493,7 @@ export type TeamSystemMessage = TeamMessageBase & {
   content: TeamSystemMessageContent;
   attachments?: never;
   reactions?: never;
+  askedBy?: never;
   request?: never;
   threadSequence?: never;
 };
@@ -664,12 +667,15 @@ export function resolveTeamAudience({
   sender,
   lead,
   members,
+  askedBy,
   acknowledgedRequest = false,
 }: {
   content: string;
   sender: TeamMessageAuthor;
   lead: TeamAgent;
   members: readonly TeamAgent[];
+  /** For a connector's reply, the agent whose message it answers. */
+  askedBy?: string;
   /** Persistence established that this user reply acknowledged a pending request. */
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
@@ -687,6 +693,9 @@ export function resolveTeamAudience({
   );
   const senderId = sender.type === "agent" ? sender.agentId : undefined;
   if (!mentionAll && addressed.length === 0) {
+    // A reply answers whoever asked, while it's still on the team.
+    const asker = agents.find(({ id }) => id === askedBy);
+    if (asker) return [asker];
     return lead.id === senderId ? [] : [lead];
   }
   return agents.filter(

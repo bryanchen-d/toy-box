@@ -151,6 +151,8 @@ export const connectorEventSchema = z.object({
   content: z.string().trim().min(1),
   origin: connectorOriginSchema.nullish(),
   to: z.object({ teamId: connectorIdSchema }).nullish(),
+  /** The ID of the message this event answers, whose agent author it wakes. */
+  replyTo: connectorIdSchema.nullish(),
   attachments: connectorAttachmentsSchema.optional(),
 });
 export type ConnectorEvent = z.output<typeof connectorEventSchema>;

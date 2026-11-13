@@ -548,7 +548,7 @@ export async function postMessage(
   input: Parameters<TeamDatabase["appendMessage"]>[0],
   { authorName }: { authorName?: string } = {},
 ): Promise<StoredTeamMessage> {
-  const { teamId, sender, content } = input;
+  const { teamId, sender, content, askedBy } = input;
   const database = new TeamDatabase(await getStateDatabase());
   const members = await database.listMembers(teamId);
   const change = await database.appendMessage(input);
@@ -581,6 +581,7 @@ export async function postMessage(
     sender,
     lead,
     members,
+    askedBy,
     acknowledgedRequest: change.acknowledgedRequest,
   });
 

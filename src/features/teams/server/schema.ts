@@ -45,6 +45,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       origin               TEXT CHECK (
         origin IS NULL OR (sender_type = 'connector' AND json_valid(origin))
       ),
+      -- The agent whose message a connector's reply answers.
+      asked_by             TEXT CHECK (asked_by IS NULL OR sender_type = 'connector'),
       -- A reply names the earlier top-level message that starts its thread.
       thread_sequence      INTEGER CHECK (
         thread_sequence IS NULL OR (sender_type <> 'system' AND thread_sequence < sequence)

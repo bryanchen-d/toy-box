@@ -44,7 +44,8 @@ The wire contract is version 1. A connector serves it; Agent Teams is always the
 
 Every request carries `X-Connector-Client`. Event content is free-form Markdown; a connector may
 classify events with `kind`, but Agent Teams presents every kind alike and ignores fields it
-doesn't use. An event that starts a conversation names its team with `to`. Forwarded content
+doesn't use. An event that starts a conversation names its team with `to`. An event that answers a
+message names it with `replyTo`, the ID Agent Teams sent that message with. Forwarded content
 carries `origin`: where it came from and whether its requester is the owner.
 
 Messages and events may carry `attachments`: up to 4 files of `{ name, mimeType, base64 }`, each a
@@ -100,9 +101,10 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   connectors.
 - A connector event posts as `{ type: "connector", connectorId }` in its conversation's thread, or
   top-level when it starts one, which then becomes that conversation's thread. Its ID derives from
-  the connector and event IDs, so a replay applies once. It routes like any other message: without
-  mentions it wakes the lead. It never acknowledges the lead's pending request, because only the
-  user answers one.
+  the connector and event IDs, so a replay applies once. It routes like any other message, except
+  that one answering an agent's message, by `replyTo`, records that agent as `askedBy` and, without
+  mentions, wakes it while it is on the team. Otherwise, without mentions, it wakes the lead. It
+  never acknowledges the lead's pending request, because only the user answers one.
 - Agents may send one conversation at most 20 messages an hour. The fuse resets on restart, the
   user is never throttled, and a throttled message is noted in the team.
 - `connector_undelivered` is the typed system message for a message that expired, was rejected, or

@@ -75,6 +75,19 @@ describe("team delivery policy", () => {
       members[0],
     ]);
   });
+
+  test("an unmentioned connector reply wakes the agent who asked, while it's on the team", () => {
+    const connector = { type: "connector", connectorId: "bryanbot" } as const;
+    const reply = (content: string, askedBy?: string) =>
+      resolveTeamAudience({ content, sender: connector, lead, members, askedBy });
+    expect(reply("Posted.", "builder")).toEqual([members[1]]);
+    expect(reply("Posted.", lead.id)).toEqual([lead]);
+    // Without an asker on the team, the reply reaches the lead as any connector message does.
+    expect(reply("Posted.")).toEqual([lead]);
+    expect(reply("Posted.", "removed")).toEqual([lead]);
+    // Mentions it opens with still decide who it wakes.
+    expect(reply("@critic please check the post", "builder")).toEqual([members[0]]);
+  });
   test.each<{ acknowledgedRequest: boolean; expected: TeamAgent[] }>([
     { acknowledgedRequest: true, expected: [lead, members[1]!] },
     { acknowledgedRequest: false, expected: [members[1]!] },

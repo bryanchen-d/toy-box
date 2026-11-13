@@ -83,7 +83,8 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   earlier top-level conversation message that starts the thread. Threads are one level deep, so
   replying to a reply joins the same thread, and system messages neither start nor join one. A
   reply is an ordinary message in the same sequence, so reading, paging, reactions, requests,
-  status targets, and replay need nothing thread-specific.
+  status targets, and replay need nothing thread-specific. A connector message that answers an
+  agent's message records that agent as `askedBy`.
 - `TeamReaction` is one Agent's durable acknowledgement or sentiment on a user or Agent message.
   It does not wake anyone or advance message sequence.
 - `TeamArtifact` indexes a shared `WorkspaceFile` by its `id` (the file's identity), with its
@@ -156,7 +157,8 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   top-level message, rejecting system messages and messages outside the Team. Read one thread
   whole, without changing read state.
 - Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
-  or connector message wakes the lead. An unmentioned lead message wakes nobody. Explicit name-derived mentions
+  or connector message wakes the lead, except that a connector's reply wakes its `askedBy` agent
+  while that agent is on the team. An unmentioned lead message wakes nobody. Explicit name-derived mentions
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
   An agent's handle addresses it anywhere in a message; any other handle, such as a connector's,
   addresses only among the mentions a message opens with and is otherwise plain text.

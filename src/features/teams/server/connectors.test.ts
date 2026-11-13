@@ -2,7 +2,7 @@ import { expect, mock, onTestFinished, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStoredTeam } from "@teams/server/testFixtures";
+import { createStoredTeam, teamAgent } from "@teams/server/testFixtures";
 import { createTestDatabase } from "@/server/database";
 import * as sessionRuntime from "@sessions/server/runtime";
 import * as workspaceEvents from "@workspace/server/events";
@@ -161,6 +161,47 @@ test("a connector's reply lands once in its thread as the connector, and wakes t
   expect(wakes.mock.calls).toEqual([
     [team.id, { systemMessage: { type: "team_message", senderName: "BryanBot" }, immediate: true }],
   ]);
+});
+
+test("a connector's reply to an agent's message wakes that agent instead of the lead", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  const { member } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  const ask = await sendTeamMessageFromAgent("builder", {
+    content: "@bryanbot what did Alex say?",
+  });
+  const [sent] = await queued(connectors, connector.id);
+  wakes.mockClear();
+
+  await applyConnectorEvent(
+    connector,
+    event("Alex said ship Friday.", { conversationId: sent!.conversationId, replyTo: ask.id }),
+  );
+
+  const [, reply] = await teams.listThread(team.id, ask.sequence);
+  expect(reply).toMatchObject({ content: "Alex said ship Friday.", askedBy: member.id });
+  expect(wakes.mock.calls).toEqual([
+    [
+      member.id,
+      { systemMessage: { type: "team_message", senderName: "BryanBot" }, immediate: true },
+    ],
+  ]);
+});
+
+test("a connector's reply to the user's message, or to no message of the team, wakes the lead", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  const root = await postTeamMessage({ id: "root", teamId: team.id, content: "@bryanbot hi" });
+  const [sent] = await queued(connectors, connector.id);
+
+  for (const replyTo of ["root", "another-team-message"]) {
+    await applyConnectorEvent(
+      connector,
+      event("Hi!", { conversationId: sent!.conversationId, replyTo }),
+    );
+  }
+
+  const replies = (await teams.listThread(team.id, root.sequence)).slice(1);
+  expect(replies.map(({ askedBy }) => askedBy)).toEqual([undefined, undefined]);
+  expect(wakes.mock.calls.map(([sessionId]) => sessionId)).toEqual([team.id, team.id]);
 });
 
 test("a connector can start a conversation with a team, and continue it in that thread", async () => {

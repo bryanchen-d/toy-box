@@ -173,6 +173,19 @@ describe("agent run entries", () => {
     expect(addressee("lead", "The lift is ready.")).toBeUndefined();
   });
 
+  test("a connector's reply names the agent who asked as its addressee", () => {
+    const reply = (askedBy?: string): TeamMessage => ({
+      id: "1",
+      sequence: 1,
+      timestamp: at(26, 10, 1),
+      sender: { type: "connector", connectorId: "bryanbot" },
+      content: "Posted.",
+      ...(askedBy ? { askedBy } : {}),
+    });
+    expect(runOf([reply("engine")])[0]!.addressee).toBe("Engine");
+    expect(runOf([reply()])[0]!.addressee).toBe("Lead");
+  });
+
   test("the body drops the mentions it opens with, since the addressee names them", () => {
     const [entry] = runOf([agentPost(1, "lead", undefined, "@engine Build the lift.")]);
     expect(entry!.body).toBe("Build the lift.");

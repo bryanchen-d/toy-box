@@ -348,10 +348,10 @@ function agentRunEntry(
 
 /** Who an agent's message wakes, by name; none when it's for the user. */
 function addresseeOf(
-  { content, sender }: TeamConversationMessage,
+  { content, sender, askedBy }: TeamConversationMessage,
   { lead, members }: RowContext,
 ): string | undefined {
-  const audience = resolveTeamAudience({ content, sender, lead, members });
+  const audience = resolveTeamAudience({ content, sender, lead, members, askedBy });
   // Everyone but the sender reads as "Everyone"; a message that wakes no agent is for the user.
   return audience.length > 0 ? teamAudienceLabel(audience, members.length) : undefined;
 }

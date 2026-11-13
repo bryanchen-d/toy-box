@@ -759,6 +759,7 @@
               "id": "s-reply-to",
               "title": "Route connector replies to the agent who asked",
               "doneWhen": "A connector event whose `replyTo` names an agent's message wakes that agent and shows it as the transcript addressee; events without it, or answering the user, wake the lead; model, database, and server tests cover each case and pass.",
+              "status": "complete",
               "implements": ["r-reply-to-wire", "r-asked-by", "r-audience", "r-guidance", "d-reply-audience"]
             },
             {
