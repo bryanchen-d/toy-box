@@ -30,9 +30,11 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       team_id           TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       sequence             INTEGER NOT NULL
         CHECK (typeof(sequence) = 'integer' AND sequence > 0),
-      sender_type          TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'connector', 'system')),
+      sender_type          TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'connector', 'team', 'system')),
       sender_agent_id      TEXT,
       sender_connector_id  TEXT,
+      -- Another team that addressed this one; sender_agent_id names its lead when the lead wrote it.
+      sender_team_id       TEXT,
       content              TEXT NOT NULL
         CHECK (sender_type <> 'system' OR json_valid(content)),
       request              INTEGER NOT NULL DEFAULT 0 CHECK (request IN (0, 1)),
@@ -51,9 +53,11 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       CHECK (request = 0 OR (sender_type = 'agent' AND sender_agent_id = team_id)),
       CHECK (
         (sender_type = 'agent' AND sender_agent_id IS NOT NULL) OR
-        (sender_type <> 'agent' AND sender_agent_id IS NULL)
+        (sender_type = 'team' AND (sender_agent_id IS NULL OR sender_agent_id = sender_team_id)) OR
+        (sender_type NOT IN ('agent', 'team') AND sender_agent_id IS NULL)
       ),
       CHECK ((sender_type = 'connector') = (sender_connector_id IS NOT NULL)),
+      CHECK ((sender_type = 'team') = (sender_team_id IS NOT NULL)),
       UNIQUE(team_id, sequence)
     );
 
@@ -72,6 +76,15 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       thread_sequence  INTEGER NOT NULL,
       PRIMARY KEY(connector_id, conversation_id),
       UNIQUE(connector_id, team_id, thread_sequence)
+    );
+
+    -- A conversation between two teams spans one thread on each side; each side records the other's.
+    CREATE TABLE IF NOT EXISTS team_peer_threads (
+      team_id               TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      thread_sequence       INTEGER NOT NULL,
+      peer_team_id          TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      peer_thread_sequence  INTEGER NOT NULL,
+      PRIMARY KEY(team_id, thread_sequence, peer_team_id)
     );
 
     CREATE TABLE IF NOT EXISTS team_message_reactions (
@@ -117,11 +130,44 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       title       TEXT NOT NULL,
       schedule    TEXT NOT NULL,
       prompt      TEXT NOT NULL,
+      agent_id    TEXT,
       next_at     TEXT NOT NULL,
       created_at  TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_team_routines_next_at
       ON team_routines(next_at);
+
+    -- Proposed improvements; only the user resolves one, by applying or dismissing it.
+    CREATE TABLE IF NOT EXISTS team_advice (
+      id           TEXT PRIMARY KEY,
+      team_id      TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      author_id    TEXT NOT NULL,
+      title        TEXT NOT NULL,
+      finding      TEXT NOT NULL,
+      action       TEXT NOT NULL CHECK (json_valid(action)),
+      status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'applied', 'dismissed')),
+      created_at   TEXT NOT NULL,
+      resolved_at  TEXT,
+      CHECK ((status = 'open') = (resolved_at IS NULL))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_advice_team
+      ON team_advice(team_id, status, created_at);
+
+    -- Each time the team woke one of its agents, and whether that started a turn, steered the
+    -- running turn, or waited behind it. Rows outlive membership, like authored messages.
+    CREATE TABLE IF NOT EXISTS team_wakes (
+      team_id           TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      agent_id          TEXT NOT NULL,
+      at                TEXT NOT NULL,
+      cause             TEXT NOT NULL CHECK (cause IN ('message', 'routine', 'follow_up')),
+      -- The author key of a waking message: an agent, connector, or team ID, or 'user'.
+      author            TEXT,
+      message_sequence  INTEGER,
+      disposition       TEXT NOT NULL CHECK (disposition IN ('started', 'steered', 'queued'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_wakes_team_at ON team_wakes(team_id, at);
   `);
 }

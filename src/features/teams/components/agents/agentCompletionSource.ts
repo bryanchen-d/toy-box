@@ -3,6 +3,8 @@ import {
   agentHandleFromName,
   agentMatchesMentionQuery,
   CONNECTOR_AVATAR,
+  TEAM_AUTHOR_AVATAR,
+  teamHandle,
   type AgentAvatar,
   type TeamLead,
   type TeamMember,
@@ -23,12 +25,15 @@ export function agentCompletionSource({
   lead,
   members,
   connectors = [],
+  teams = [],
   createMember,
 }: {
   lead: TeamLead;
   members: readonly TeamMember[];
   /** App-level connectors, which every team can mention. */
   connectors?: readonly { name: string }[];
+  /** Other teams, whose leads a message reaches when it opens with their mention. */
+  teams?: readonly { name: string; purpose?: string }[];
   /** Omit while paused; otherwise creates and onboards an unknown handle. */
   createMember?: (name: string) => Promise<{ name: string }>;
 }): CompletionSource<AgentCompletionItem> {
@@ -37,7 +42,7 @@ export function agentCompletionSource({
     trigger: AGENT_MENTION_TRIGGER,
     empty: createMember ? "Type a name to create a member." : "No matching agents.",
     query: (text) =>
-      agentItems(text.toLowerCase(), lead, members, connectors).filter(
+      agentItems(text.toLowerCase(), lead, members, connectors, teams).filter(
         (item) => createMember || item.kind !== "create",
       ),
     accept: (item) => {
@@ -48,13 +53,14 @@ export function agentCompletionSource({
   };
 }
 
-/** Everyone, the lead, matching members, then connectors; an unknown handle offers to create
- *  that member. */
+/** Everyone, the lead, matching members, connectors, then other teams; an unknown handle offers to
+ *  create that member. */
 function agentItems(
   query: string,
   lead: TeamLead,
   members: readonly TeamMember[],
   connectors: readonly { name: string }[],
+  teams: readonly { name: string; purpose?: string }[],
 ): AgentCompletionItem[] {
   const items: AgentCompletionItem[] = [];
   if ("everyone".includes(query)) {
@@ -96,6 +102,17 @@ function agentItems(
       description: "Send this message to the connector",
       group: "Connectors",
       avatar: CONNECTOR_AVATAR,
+    });
+  }
+  for (const team of teams
+    .filter((team) => agentMatchesMentionQuery({ name: team.name }, query))
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    items.push({
+      value: `@${teamHandle(team)}`,
+      label: team.name,
+      description: "Send this message to the team's lead",
+      group: "Teams",
+      avatar: TEAM_AUTHOR_AVATAR,
     });
   }
   const words = query.split("-").filter(Boolean);

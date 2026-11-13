@@ -6,7 +6,8 @@ introducing another execution model.
 
 ## Model
 
-A `Worker` has one Session ID, creation time, immutable owner, and lifetime. Spawning constructs
+A `Worker` has one Session ID, creation time, owner, and lifetime; only a team member's owning team
+can change. Spawning constructs
 and persists that identity and starts its first execution. Team members start onboarding when
 they join; subsequent mentions use normal Session delivery. Optional `name` and opaque `metadata`
 are owner-provided details. Owners validate their metadata's meaning; Workers validates bounded JSON
@@ -22,7 +23,8 @@ policy. Trusted owners may supply a shared Session ID. Teams uses its own ID for
 - An app-owned Worker belongs to one saved app and is ephemeral by default.
 - A team-owned Worker is durable until member or Team deletion. Teams interprets its name
   and metadata as member identity, read position, and collaboration status. The Team derives its
-  intrinsic lead's fixed identity and owns its model.
+  intrinsic lead's fixed identity and owns its model. A member, never a lead, may move to another
+  team (`moveToTeam`), the one change of owner Workers allows; its Session stays the same.
 - An Inbox-owned Worker supplies a retention callback that keeps reported results and failures.
   Workers deletes clean completions without a result. Its metadata carries the Inbox message and
   optional artifact path.

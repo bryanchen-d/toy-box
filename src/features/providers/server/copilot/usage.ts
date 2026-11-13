@@ -1,6 +1,6 @@
 import type { SessionEvent as SdkSessionEvent } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
-import type { SessionUsage } from "@sessions/model/usage";
+import type { SessionUsage, TokenUsage } from "@sessions/model/usage";
 
 type UsageData = Extract<SdkSessionEvent, { type: "assistant.usage" }>["data"];
 type CheckpointData = Extract<SdkSessionEvent, { type: "session.usage_checkpoint" }>["data"];
@@ -25,6 +25,7 @@ export function createCopilotUsageProjector() {
           watermarks[accounting.sourceSessionId] = accounting.sequence;
         }
         const amount = usage.copilotUsage?.totalNanoAiu;
+        const tokens = tokenUsage(usage);
         return [
           {
             type: "usage",
@@ -33,6 +34,7 @@ export function createCopilotUsageProjector() {
               aiCredits: toAiCredits(amount ?? 0),
               status: usage.aiCreditsStatus ?? (amount === undefined ? "unavailable" : "complete"),
             },
+            ...(tokens ? { tokens } : {}),
           },
         ];
       }
@@ -69,6 +71,27 @@ function checkpointUsage(
         : amount > 0 || statuses.some((status) => status === "complete" || status === "partial")
           ? "partial"
           : "unavailable",
+  };
+}
+
+function tokenUsage({
+  inputTokens,
+  outputTokens,
+  cacheReadTokens,
+  cacheWriteTokens,
+}: UsageData): TokenUsage | undefined {
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    cacheReadTokens === undefined &&
+    cacheWriteTokens === undefined
+  )
+    return undefined;
+  return {
+    input: inputTokens ?? 0,
+    output: outputTokens ?? 0,
+    cacheRead: cacheReadTokens ?? 0,
+    cacheWrite: cacheWriteTokens ?? 0,
   };
 }
 

@@ -74,6 +74,11 @@ function AgentMessage({
           )}
           <ClockTime className="shrink-0 text-2xs text-muted-foreground" date={message.timestamp} />
           {message.origin && <MessageOrigin origin={message.origin} />}
+          {message.sender.type === "team" && (
+            <span className="min-w-0 truncate text-muted-foreground">
+              {message.sender.by === "user" ? "from you" : "from its lead"}
+            </span>
+          )}
           {request && <RequestTag state={request} />}
         </div>
       )}

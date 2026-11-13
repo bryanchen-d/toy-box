@@ -9,6 +9,7 @@ import {
 import { cronSchema } from "@/shared/cron";
 import { previewSchema, type Preview } from "@/shared/preview";
 import type { ConnectorOrigin } from "@connectors/model";
+import type { TeamAdvice } from "./advice";
 import type { TeamAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
 import { teamTasksSchema, type TeamTask } from "./tasks";
@@ -281,16 +282,22 @@ const teamMessageActorSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("agent"), agentId: durableIdSchema }).strict(),
 ]);
 
-/** Who wrote a conversation message: the user, an agent, or a connector relaying its service. */
-export type TeamMessageAuthor = TeamMessageActor | { type: "connector"; connectorId: string };
+/** Who wrote a conversation message: the user, an agent, a connector relaying its service, or
+ *  another team, whose lead or user addressed this team from there. */
+export type TeamMessageAuthor =
+  | TeamMessageActor
+  | { type: "connector"; connectorId: string }
+  | { type: "team"; teamId: string; by: "lead" | "user" };
 
-/** The agent or connector that wrote a message; the user has no author ID. */
+/** The agent, connector, or team that wrote a message; the user has no author ID. */
 export function messageAuthorId(sender: TeamMessageAuthor): string | undefined {
   return sender.type === "agent"
     ? sender.agentId
     : sender.type === "connector"
       ? sender.connectorId
-      : undefined;
+      : sender.type === "team"
+        ? sender.teamId
+        : undefined;
 }
 
 export const CONNECTOR_AVATAR = {
@@ -303,6 +310,53 @@ export function connectorAuthor({ id, name }: { id: string; name: string }): Tea
   return { id, name, role: "Connector", avatar: CONNECTOR_AVATAR };
 }
 
+export const TEAM_AUTHOR_AVATAR = {
+  mark: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M5 7a4 4 0 1 0 8 0a4 4 0 1 0-8 0M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  color: "#0f766e",
+} as const;
+
+/** Another team speaks in a transcript under its own name, like a connector. */
+export function teamAuthor({ id, name }: Pick<Team, "id" | "name">): TeamAgent {
+  return { id, name, role: "Team", avatar: TEAM_AUTHOR_AVATAR };
+}
+
+/** The @handle that reaches a team's lead from another team. */
+export function teamHandle(team: Pick<Team, "name">): string {
+  return agentHandleFromName(team.name);
+}
+
+/**
+ * The teams one team can address: every other team whose handle no agent of its own or connector
+ * already answers to, since those take precedence.
+ */
+export function addressableTeams<T extends Pick<Team, "id" | "name">>(
+  teams: readonly T[],
+  {
+    teamId,
+    agents,
+    connectors,
+  }: {
+    teamId: string;
+    agents: readonly { name: string }[];
+    connectors: readonly { name: string }[];
+  },
+): T[] {
+  const taken = new Set([
+    "everyone",
+    ...[...agents, ...connectors].map(({ name }) => agentHandleFromName(name)),
+  ]);
+  return teams.filter((team) => team.id !== teamId && !taken.has(teamHandle(team)));
+}
+
+/** The teams a message opens by addressing; elsewhere a team's handle is just its name. */
+export function teamsAddressedBy<T extends Pick<Team, "name">>(
+  content: string,
+  teams: readonly T[],
+): T[] {
+  const handles = leadingMentionHandles(content);
+  return teams.filter((team) => handles.includes(teamHandle(team)));
+}
+
 /** Who and where a connector relayed content from, such as "Bryan Chen (you) in Slack". */
 export function connectorOriginLabel(origin: ConnectorOrigin, owner = "you"): string {
   const where = origin.kind === "slack" ? "Slack" : origin.kind;
@@ -311,10 +365,13 @@ export function connectorOriginLabel(origin: ConnectorOrigin, owner = "you"): st
   return `${requester.name ?? requester.id}${requester.isOwner ? ` (${owner})` : ""} in ${where}`;
 }
 
-/** A titled, recurring prompt that privately wakes the lead. Only the lead adds or changes one. */
+/** A titled, recurring prompt that privately wakes a team agent. Only the lead adds or changes one. */
 export const teamRoutineInputSchema = z
   .object({
     title: z.string().trim().min(1).max(80).describe("A short name for the routine."),
+    agentId: durableIdSchema
+      .optional()
+      .describe("The current team agent to wake, by agentId from read_team. Omit for the lead."),
     schedule: cronSchema
       // One fixed minute can match at most once an hour.
       .refine(
@@ -467,6 +524,8 @@ export type TeamState = {
   artifacts: TeamArtifact[];
   /** Oldest first. */
   routines: TeamRoutine[];
+  /** Open advice first, then recently resolved; newest first within each. */
+  advice: TeamAdvice[];
   presence: Record<string, TeamAgentPresence>;
 };
 
@@ -483,6 +542,7 @@ export type TeamEvent<A = TeamAttachment> = (
     }
   | { type: "tasks"; tasks: TeamTask[] }
   | { type: "artifacts"; artifacts: TeamArtifact[] }
+  | { type: "advice"; advice: TeamAdvice }
   | { type: "model"; model: ModelConfiguration; updatedAt: string }
   | { type: "read"; seenThrough: number }
   | { type: "member"; member: TeamMember }
@@ -613,6 +673,8 @@ export function resolveTeamAudience({
   /** Persistence established that this user reply acknowledged a pending request. */
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
+  // Another team reaches only this team's lead, which decides what its members do.
+  if (sender.type === "team") return [lead];
   const { handles, mentionAll } = extractAgentMentionHandles(content);
   const agents = [lead, ...members];
   const agentHandles = new Set(agents.map(({ name }) => agentHandleFromName(name)));

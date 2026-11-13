@@ -21,9 +21,11 @@ import {
   markTeamRead,
   postTeamMessage,
   removeTeamMember,
+  resolveTeamAdvice,
   runTeamRoutine,
   updateTeamMember,
 } from "@teams/server/functions";
+import type { ResolveTeamAdviceInput } from "@teams/model/advice";
 
 export const teamMutations = {
   create: () =>
@@ -62,6 +64,11 @@ export const teamMutations = {
   deleteRoutine: (teamId: string) =>
     mutationOptions({
       mutationFn: (routineId: string) => deleteTeamRoutine({ data: { teamId, routineId } }),
+    }),
+  resolveAdvice: (teamId: string) =>
+    mutationOptions({
+      mutationFn: (input: Omit<ResolveTeamAdviceInput, "teamId">) =>
+        resolveTeamAdvice({ data: { teamId, ...input } }),
     }),
   /** Arranges at once; the committed `artifacts` event then confirms or corrects it. */
   arrangeArtifacts: (teamId: string) => {

@@ -240,7 +240,7 @@ export function TeamMembers({
         <DestructiveConfirmationDialog
           key={removingMember.id}
           title={`Remove ${removingMember.name}?`}
-          description={`This removes ${removingMember.name} from #${team.name} and deletes their private team session. Their messages and reactions remain attributed to Deleted agent.`}
+          description={`This removes ${removingMember.name} from #${team.name} and deletes their private team session and assigned routines. Their messages and reactions remain attributed to Deleted agent.`}
           confirmLabel="Remove"
           pendingLabel="Removing…"
           mutation={teamMutations.removeMember(removingMember.id)}

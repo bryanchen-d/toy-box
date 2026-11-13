@@ -2,6 +2,8 @@ import { useEffect, useState, type RefObject } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/shared/utils";
 
+const INLINE_OVERFLOW_PX = 4;
+
 /**
  * Collapsed content the reader can expand. Style the element with `collapsed`, and with `clamped`
  * when collapsing cuts it off. Clamping depends on rendered width, so the element is re-measured as
@@ -15,8 +17,9 @@ export function useShowMore(ref: RefObject<HTMLElement | null>, content: unknown
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
+    // Inline decorations such as a mention's padding overflow by a few pixels without hiding text.
     const observer = new ResizeObserver(() =>
-      setIsClamped(element.scrollHeight > element.clientHeight),
+      setIsClamped(element.scrollHeight - element.clientHeight > INLINE_OVERFLOW_PX),
     );
     observer.observe(element);
     return () => observer.disconnect();

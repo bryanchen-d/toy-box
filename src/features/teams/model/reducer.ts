@@ -10,6 +10,7 @@ import type {
   TeamState,
 } from ".";
 import { workspaceFileId } from "@files/model";
+import { upsertTeamAdvice } from "./advice";
 
 type TeamStateEvent =
   | Exclude<TeamObservationEvent, { type: "deleted" }>
@@ -52,6 +53,8 @@ export function reduceTeamState(previous: TeamState, event: TeamStateEvent): Tea
     if (state.request) state.request = reduceTeamReaction(state.request, event);
   } else if (event.type === "artifacts") {
     state.artifacts = event.artifacts;
+  } else if (event.type === "advice") {
+    state.advice = upsertTeamAdvice(state.advice, event.advice);
   } else if (event.type === "message") {
     const { message } = event;
     state.messages = upsertMessage(state.messages, message);

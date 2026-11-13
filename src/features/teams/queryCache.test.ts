@@ -39,6 +39,7 @@ const snapshot: TeamQueryData = {
   messages: [message],
   artifacts: [],
   routines: [],
+  advice: [],
 };
 const detailKey = teamQueries.detail(team.id).queryKey;
 

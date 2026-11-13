@@ -4,6 +4,14 @@ export type SessionUsage = {
   status: "complete" | "partial" | "unavailable";
 };
 
+/** Tokens one model call reported; input includes prompt tokens read from or written to cache. */
+export type TokenUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+};
+
 export function sumSessionUsage(usages: readonly (SessionUsage | undefined)[]): SessionUsage {
   const reported = usages.filter(
     (usage): usage is SessionUsage => usage !== undefined && usage.status !== "unavailable",

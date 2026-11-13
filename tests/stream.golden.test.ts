@@ -6,6 +6,7 @@ import type { SessionEvent, SessionState } from "@sessions/model";
 import { loadSessionFixture } from "./helpers";
 import * as realSessionRegistry from "@sessions/server/state/registry";
 import * as realBroadcast from "@workspace/server/events";
+import * as realActivity from "@sessions/server/activity";
 
 // Golden replay of the full stream lifetime: real v1 CLI events from the
 // fixture drive a SessionStream through two turns — explicit start, fixture
@@ -24,6 +25,7 @@ const sideEffects: string[] = [];
 const workspaceEventListeners = new Set<(event: WorkspaceEvent) => void>();
 const realSessionRegistryExports = { ...realSessionRegistry };
 const realBroadcastExports = { ...realBroadcast };
+const realActivityExports = { ...realActivity };
 const unused = () => {
   throw new Error("not used in stream golden replay");
 };
@@ -81,10 +83,16 @@ mock.module("@workspace/server/events", () => ({
     };
   },
 }));
+// Activity persistence is outside the replayed runtime; never write it to a real database.
+mock.module("@sessions/server/activity", () => ({
+  ...realActivityExports,
+  recordSessionActivity: async () => {},
+}));
 
 afterAll(() => {
   mock.module("@sessions/server/state/registry", () => realSessionRegistryExports);
   mock.module("@workspace/server/events", () => realBroadcastExports);
+  mock.module("@sessions/server/activity", () => realActivityExports);
 });
 
 beforeEach(() => {

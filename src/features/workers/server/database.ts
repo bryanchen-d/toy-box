@@ -81,6 +81,16 @@ export class WorkerDatabase {
     return rows.length > 0;
   }
 
+  /** Moves a team Worker to another team; its Session and history stay with it. */
+  async moveToTeam(sessionId: string, teamId: string): Promise<boolean> {
+    const rows = await this.db<{ session_id: string }[]>`
+      UPDATE workers SET team_id = ${teamId}
+      WHERE session_id = ${sessionId} AND worker_type = 'team'
+      RETURNING session_id
+    `;
+    return rows.length > 0;
+  }
+
   /** Initialize absent metadata without replacing a result or recreating deleted ownership. */
   async initializeMetadata(
     sessionId: string,

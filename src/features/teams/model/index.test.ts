@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { machineFile } from "@files/model";
 import type { ArrangeTeamArtifactsInput, TeamAgent, TeamArtifact, TeamMember } from "./index";
 import {
+  addressableTeams,
   agentHandleFromName,
   applyTeamArtifactArrangement,
   arrangeTeamArtifactsInputSchema,
   teamAudienceLabel,
   teamLead,
+  teamsAddressedBy,
   teamRoutineInputSchema,
   teamSystemMessageContentSchema,
   teamUnreadAfter,
@@ -90,6 +92,36 @@ describe("team delivery policy", () => {
       ).toEqual(expected);
     },
   );
+  test("another team reaches only the lead, whatever it mentions", () => {
+    const team = { type: "team", teamId: "other", by: "lead" } as const;
+    expect(
+      resolveTeamAudience({ content: "@critic @everyone go", sender: team, lead, members }),
+    ).toEqual([lead]);
+  });
+});
+
+describe("team addressing", () => {
+  const teams = [
+    { id: "team", name: "Docs" },
+    { id: "health", name: "Health" },
+    { id: "critic-team", name: "Critic" },
+    { id: "bot-team", name: "BryanBot" },
+  ];
+
+  test("a team addresses other teams whose handle none of its agents or connectors uses", () => {
+    expect(
+      addressableTeams(teams, {
+        teamId: "team",
+        agents: [lead, ...members],
+        connectors: [{ name: "BryanBot" }],
+      }).map(({ id }) => id),
+    ).toEqual(["health"]);
+  });
+
+  test("only the mentions a message opens with address a team", () => {
+    expect(teamsAddressedBy("@health @lead check 727", teams)).toEqual([teams[1]]);
+    expect(teamsAddressedBy("Ask @health about 727", teams)).toEqual([]);
+  });
 });
 
 describe("team unread position", () => {

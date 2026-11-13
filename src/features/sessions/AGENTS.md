@@ -48,6 +48,13 @@ and apps compose sessions rather than introducing another transcript or executio
   partial, and unavailable coverage; missing data never claims zero spend. Canonical `usage`
   events add receipts or replace cumulative checkpoints, so live and historical reads agree.
   The runtime's `getSessionUsage` projects only that metadata, without copying private messages.
+  A `usage` delta may also carry its call's `tokens`; the reducer ignores them.
+- `activity.ts` folds timestamped canonical events into hourly `ActivityHour` increments, shared
+  by live recording and history backfill. A turn starts each time the session begins working after
+  being ready for input (`idle` or `background`); busy time runs until it is ready again or ends,
+  split across UTC hours, and includes a turn's wait on its own questions. Credit deltas add; a
+  cumulative total adds only its increase over credits already observed, seeded from a resumed
+  session's usage. Each report includes the running turn's busy time so far.
 - `constants.ts` contains stable persisted identity and path conventions.
 
 `Message` is one canonical transcript entry. `SessionMessage` is an identified user or system
@@ -389,6 +396,14 @@ does not own session data or streaming behavior.
   extension points.
 - `functions.ts` is the validated browser ingress, including the short-lived voice token endpoint.
   It delegates to the same server capabilities used by trusted orchestration.
+- `activity.ts` persists activity increments as additive upserts into `session_activity_hours`
+  (one row per session and UTC hour) and serves `listSessionActivity` for activity charts.
+  `SessionStream` observes every emitted event and records each report without awaiting it,
+  logging failures; a process that stops mid-turn loses only that turn's busy time since its
+  latest report. Rows outlive session deletion, so recreated and removed sessions keep their
+  history. `backfillSessionActivity` folds timestamped history, such as Providers'
+  `readCopilotActivity`, through the same model and replaces the session's rows within the hours
+  it covers; run it while the session is idle.
 
 Automations and Workers build on `@sessions/server/runtime`; Inbox builds on Workers. They add scheduling, ownership,
 admission, and retention policy without importing provider details, snapshot storage, or the registry

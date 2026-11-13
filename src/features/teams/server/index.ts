@@ -24,7 +24,9 @@ import {
   teamMemberIdentity,
   resolveTeamAudience,
   isTeamSystemMessage,
+  messageAuthorId,
 } from "@teams/model";
+import { USER_AUTHOR } from "@teams/model/performance";
 import { workspaceFileFromAbsolutePath } from "@files/server/paths";
 import {
   abortSession,
@@ -232,6 +234,37 @@ export async function removeTeamMember(agentId: string): Promise<void> {
   await deleteWorker(agentId, "team");
 }
 
+/**
+ * Moves members to an existing team or to a new one that starts with its own lead and purpose,
+ * keeping each member's Session. Returns the team they joined.
+ */
+export async function moveTeamMembers({
+  teamId,
+  agentIds,
+  to,
+}: {
+  teamId: string;
+  agentIds: readonly string[];
+  to: { teamId: string } | { newTeam: Pick<CreateTeamInput, "name" | "purpose"> };
+}): Promise<Team> {
+  const database = new TeamDatabase(await getStateDatabase());
+  const source = await database.getTeam(teamId);
+  if (!source) throw new Error("Team not found.");
+  const target =
+    "teamId" in to
+      ? await database.getTeam(to.teamId)
+      : await createTeam({
+          ...to.newTeam,
+          model: source.model,
+          ...(source.directory ? { directory: source.directory } : {}),
+        });
+  if (!target) throw new Error("The target team is gone.");
+  const change = await database.moveMembers(teamId, agentIds, target.id);
+  publishTeamChange(change.source);
+  publishTeamChange(change.target);
+  return change.target.team;
+}
+
 export async function markTeamRead(teamId: string, sequence: number): Promise<Team | null> {
   const database = new TeamDatabase(await getStateDatabase());
   const change = await database.markUserSeen(teamId, sequence);
@@ -348,7 +381,18 @@ export async function sendTeamMessageFromAgent(
     threadSequence?: number;
   },
 ): Promise<StoredTeamMessage> {
-  const agent = await requireTeamAgent(new TeamDatabase(await getStateDatabase()), sessionId);
+  const database = new TeamDatabase(await getStateDatabase());
+  const agent = await requireTeamAgent(database, sessionId);
+  const { teamsAddressedFrom, admitAgentTeamMessage } = await import("./peers");
+  const roster = await database.getRoster(agent.teamId);
+  admitAgentTeamMessage(
+    agent,
+    await teamsAddressedFrom(
+      agent.teamId,
+      input.content,
+      roster ? [roster.lead, ...roster.members] : [],
+    ),
+  );
   return postMessage({
     id: crypto.randomUUID(),
     teamId: agent.teamId,
@@ -432,7 +476,7 @@ export async function deleteTeamRoutine(teamId: string, routineId: string): Prom
   return true;
 }
 
-/** Privately wake each lead whose follow-up or routine is due. Claims commit before delivery. */
+/** Privately wake each agent whose follow-up or routine is due. Claims commit before delivery. */
 export async function wakeDueTeamAgents(now = new Date()): Promise<void> {
   try {
     const database = await getStateDatabase({ createIfMissing: false });
@@ -441,10 +485,10 @@ export async function wakeDueTeamAgents(now = new Date()): Promise<void> {
     for (const { change } of followUps) publishTeamChange(change);
     await Promise.all([
       ...followUps.map(({ agentId, waitingFor }) =>
-        wakeLead(agentId, { type: "team_follow_up", waitingFor }),
+        wakeAgent(agentId, { type: "team_follow_up", waitingFor }),
       ),
-      ...routines.map(({ teamId, title, prompt }) =>
-        wakeLead(teamId, { type: "team_routine", title, prompt }),
+      ...routines.map(({ agentId, title, prompt }) =>
+        wakeAgent(agentId, { type: "team_routine", title, prompt }),
       ),
     ]);
   } catch (error) {
@@ -461,7 +505,7 @@ export async function runTeamRoutine(teamId: string, routineId: string): Promise
   const routines = await database.listRoutines(teamId);
   const routine = routines.find(({ id }) => id === routineId);
   if (!routine) return false;
-  await wakeTeamAgent(teamId, {
+  await wakeTeamAgent(routine.agentId ?? teamId, {
     type: "team_routine",
     title: routine.title,
     prompt: routine.prompt,
@@ -469,9 +513,9 @@ export async function runTeamRoutine(teamId: string, routineId: string): Promise
   return true;
 }
 
-function wakeLead(leadId: string, systemMessage: SessionSystemMessage): Promise<void> {
-  return wakeTeamAgent(leadId, systemMessage).catch((error) => {
-    console.error(`Failed to wake Team lead ${leadId}:`, error);
+function wakeAgent(agentId: string, systemMessage: SessionSystemMessage): Promise<void> {
+  return wakeTeamAgent(agentId, systemMessage).catch((error) => {
+    console.error(`Failed to wake Team agent ${agentId}:`, error);
   });
 }
 
@@ -499,10 +543,10 @@ async function resolveAttachmentPaths(sessionId: string, paths: readonly string[
   );
 }
 
-/** Persist once, then apply the same audience plan for user, Agent, and connector senders. */
+/** Persist once, then apply the same audience plan for user, Agent, connector, and team senders. */
 export async function postMessage(
   input: Parameters<TeamDatabase["appendMessage"]>[0],
-  { connectorName }: { connectorName?: string } = {},
+  { authorName }: { authorName?: string } = {},
 ): Promise<StoredTeamMessage> {
   const { teamId, sender, content } = input;
   const database = new TeamDatabase(await getStateDatabase());
@@ -514,14 +558,22 @@ export async function postMessage(
     sender.type === "agent"
       ? ([lead, ...members].find(({ id }) => id === sender.agentId)?.name ?? "an agent")
       : sender.type === "connector"
-        ? (connectorName ?? "a connector")
-        : "the user";
-  // Connectors never forward to one another, so two can't relay a loop between them.
-  if (sender.type !== "connector") {
+        ? (authorName ?? "a connector")
+        : sender.type === "team"
+          ? (authorName ?? "another team")
+          : "the user";
+  // Messages from outside never forward again, so connectors and teams can't relay a loop.
+  if (sender.type !== "connector" && sender.type !== "team") {
     const { forwardToAddressedConnectors } = await import("./connectors");
-    await forwardToAddressedConnectors(change.team, change.message, senderName).catch((error) => {
-      console.error(`Failed to forward Team ${teamId} message to connectors:`, error);
-    });
+    const { forwardToAddressedTeams } = await import("./peers");
+    await Promise.all([
+      forwardToAddressedConnectors(change.team, change.message, senderName).catch((error) => {
+        console.error(`Failed to forward Team ${teamId} message to connectors:`, error);
+      }),
+      forwardToAddressedTeams(change.team, change.message, [lead, ...members]).catch((error) => {
+        console.error(`Failed to forward Team ${teamId} message to other teams:`, error);
+      }),
+    ]);
   }
   if (change.team.paused) return change.message;
   const audience = resolveTeamAudience({
@@ -532,9 +584,14 @@ export async function postMessage(
     acknowledgedRequest: change.acknowledgedRequest,
   });
 
+  const author = messageAuthorId(sender) ?? USER_AUTHOR;
   await Promise.all(
     audience.map((member) =>
-      wakeTeamAgent(member.id, { type: "team_message", senderName }).catch((error) => {
+      wakeTeamAgent(
+        member.id,
+        { type: "team_message", senderName },
+        { author, sequence: change.message.sequence },
+      ).catch((error) => {
         console.error(`Failed to wake Team Agent ${member.id}:`, error);
       }),
     ),
@@ -633,13 +690,36 @@ export function publishTeamChange({ teamId, events, team }: TeamChange): void {
   if (team) broadcast({ type: "team.upserted", team });
 }
 
-async function wakeTeamAgent(agentId: string, systemMessage: SessionSystemMessage): Promise<void> {
+/**
+ * Delivers a wake into the agent's turn at once, then records how it landed, so the team can see
+ * how often its agents are interrupted. `cause` names the message that woke it, when one did.
+ */
+async function wakeTeamAgent(
+  agentId: string,
+  systemMessage: SessionSystemMessage,
+  cause?: { author: string; sequence: number },
+): Promise<void> {
   const database = new TeamDatabase(await getStateDatabase());
   const agent = await requireTeamAgent(database, agentId);
   const team = await database.getTeam(agent.teamId);
   if (!team) throw new Error("Team not found.");
   if (team.paused) return;
-  await deliverSessionMessage(agentId, { systemMessage, immediate: true });
+  const at = new Date().toISOString();
+  const { disposition } = await deliverSessionMessage(agentId, { systemMessage, immediate: true });
+  await database
+    .recordWake(team.id, {
+      agentId,
+      at,
+      cause:
+        systemMessage.type === "team_routine"
+          ? "routine"
+          : systemMessage.type === "team_follow_up"
+            ? "follow_up"
+            : "message",
+      ...(cause ? { author: cause.author, messageSequence: cause.sequence } : {}),
+      delivery: disposition,
+    })
+    .catch((error) => console.error(`Could not record waking ${agentId}:`, error));
   const change = await database.clearAgentStatus(agentId, "waiting");
   if (change) publishTeamChange(change);
 }

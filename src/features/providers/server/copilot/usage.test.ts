@@ -66,6 +66,33 @@ test("durable receipts convert nano-AIU to credits and agree live and after hist
   expect(replayed.usage).toEqual(live.usage);
 });
 
+test("receipts carry their call's token counts only when Copilot reports them", () => {
+  const counted: CopilotEvent = {
+    type: "session.usage_record",
+    data: {
+      usage: {
+        model: "test",
+        inputTokens: 120,
+        outputTokens: 30,
+        cacheReadTokens: 100,
+        copilotUsage: { totalNanoAiu: 1e9 },
+      },
+    },
+  };
+  const usage = { aiCredits: 1, status: "complete" } as const;
+  expect(createSdkEventProjector("session")(counted)).toEqual([
+    {
+      type: "usage",
+      mode: "delta",
+      usage,
+      tokens: { input: 120, output: 30, cacheRead: 100, cacheWrite: 0 },
+    },
+  ]);
+  expect(createSdkEventProjector("session")(receipt(1e9, 1))).toEqual([
+    { type: "usage", mode: "delta", usage },
+  ]);
+});
+
 test("checkpoint watermarks and duplicate receipts cannot double count main or child calls", () => {
   const project = createSdkEventProjector("session");
   const events = [

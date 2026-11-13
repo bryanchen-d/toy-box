@@ -32,6 +32,7 @@ const snapshot: TeamState = {
   messages: [message(101)],
   artifacts: [],
   routines: [],
+  advice: [],
   request: null,
   presence: {},
 };

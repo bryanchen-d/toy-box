@@ -114,6 +114,11 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   Content forwarded from anyone but the owner reaches agents in
   [Security](../security/AGENTS.md)'s untrusted-content envelope, screened for injections; a
   connector's own notices carry no origin and stay plain.
+- Successful sends are silent by default: a connector should not post a conversational
+  delivery receipt unless the current request explicitly asks for confirmation. Agents
+  do not routinely ask for receipts or wait for one. Failed, queued, refused, or
+  uncertain sends and substantive answers still need a response. Protocol acknowledgements
+  and durable retries are unchanged.
 - Agents send conversational messages through the connector so replies can route back to the team,
   never directly with service tokens or scripts. Read-only Slack analysis and bulk retrieval may use
   the user's configured skills or authorized APIs and scripts with existing authorized credentials:

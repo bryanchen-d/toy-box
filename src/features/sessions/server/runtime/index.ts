@@ -27,6 +27,8 @@ import { sharedMap } from "@/shared/server/processState";
 import { SessionStream, SessionStreamFinishedError } from "./sessionStream";
 import type { SessionStreamSubscription } from "./eventBus";
 
+export type { MessageDisposition } from "./sessionStream";
+
 export { getSessionDirectory } from "../providers";
 export { deleteSession, deleteSessionIfExists, releaseIdleSession } from "../state/registry";
 export { isSessionNotFoundError } from "../state/registry";

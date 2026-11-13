@@ -1,6 +1,7 @@
 import {
   agentHandleFromName,
   teamAgentMetadataSchema,
+  teamHandle,
   isTeamSystemMessage,
   teamTasksSchema,
   applyTeamTaskEdits,
@@ -35,6 +36,12 @@ import {
   type UpdateTeamInput,
 } from "@teams/model";
 import { reduceTeam } from "@teams/model/reducer";
+import {
+  orderTeamAdvice,
+  teamAdviceActionSchema,
+  type ProposeTeamAdviceInput,
+  type TeamAdvice,
+} from "@teams/model/advice";
 import { applyPatch } from "@teams/model/changes";
 import { previewSchema } from "@/shared/preview";
 import { connectorOriginSchema } from "@connectors/model";
@@ -57,6 +64,7 @@ import { z } from "zod";
 import { attachmentSchema } from "@/shared/attachments/model";
 import { createMessageSearchMatcher, MESSAGE_SEARCH_LIMIT } from "@/shared/messages/search";
 import type { TeamMessageMatch } from "@teams/model/search";
+import type { TeamWake } from "@teams/model/performance";
 
 const teamAttachmentSchema = z.union([attachmentSchema, z.string().min(1).max(4_096)]);
 export type StoredAttachment = z.output<typeof teamAttachmentSchema>;
@@ -95,6 +103,7 @@ export class TeamDatabase {
   async createTeam(input: CreateTeamInput, lead: Extract<Worker, { type: "team" }>): Promise<Team> {
     const id = lead.sessionId;
     return inStateTransaction(this.db, async (db) => {
+      await assertTeamNameAvailable(db, input.name);
       await db`
         INSERT INTO teams ${db({
           id,
@@ -173,6 +182,7 @@ export class TeamDatabase {
         messages: await listMessagesBefore(db, teamId, undefined, messageLimit),
         artifacts: await listArtifacts(db, teamId),
         routines: await listRoutines(db, teamId),
+        advice: await listAdvice(db, teamId),
       };
     });
   }
@@ -310,11 +320,24 @@ export class TeamDatabase {
           UPDATE teams SET tasks = ${JSON.stringify(unassigned)} WHERE id = ${member.teamId}
         `;
       }
+      const routines = await db<TeamRoutineRow[]>`
+        DELETE FROM team_routines WHERE team_id = ${member.teamId} AND agent_id = ${agentId}
+        RETURNING id, title, schedule, prompt, agent_id
+      `;
+      const events = [];
+      for (const routine of routines) {
+        events.push(
+          await appendSystemMessage(db, member.teamId, {
+            type: "routine_deleted",
+            routine: routineFromRow(routine),
+          }),
+        );
+      }
       const change = await appendSystemMessage(db, member.teamId, {
         type: "member_left",
         member,
       });
-      return { ...(await recordTeamChange(db, team, [change])), member };
+      return { ...(await recordTeamChange(db, team, [...events, change])), member };
     });
   }
 
@@ -322,6 +345,123 @@ export class TeamDatabase {
     return (await new WorkerDatabase(this.db).list({ type: "team", teamId }))
       .map(({ sessionId }) => sessionId)
       .sort();
+  }
+
+  /**
+   * Moves members, never a lead, to another team with their Sessions intact. The source releases
+   * their tasks and deletes their routines, as removal does; the target receives them reading from
+   * its latest message. Each team records the change in its own transcript.
+   */
+  async moveMembers(sourceTeamId: string, agentIds: readonly string[], targetTeamId: string) {
+    return inStateTransaction(this.db, async (db) => {
+      const workers = new WorkerDatabase(db);
+      const source = await requireTeam(db, sourceTeamId);
+      const target = await requireTeam(db, targetTeamId);
+      if (source.id === target.id) throw new Error("Move members to a different team.");
+      if (target.paused) throw new Error("Resume the team before adding an agent.");
+      const moving: Extract<Worker, { type: "team" }>[] = [];
+      for (const agentId of agentIds) {
+        const worker = await workers.get(agentId, "team");
+        if (!worker || worker.teamId !== source.id || isTeamLead(worker)) {
+          throw new Error("Move only this team's current members, never its lead.");
+        }
+        await assertMemberNameAvailable(db, target.id, worker.name);
+        moving.push(worker);
+      }
+
+      const tasks = moving.reduce(
+        (current, { sessionId }) => unassignTeamTasks(current, sessionId),
+        source.tasks,
+      );
+      if (!Bun.deepEquals(tasks, source.tasks)) {
+        await db`UPDATE teams SET tasks = ${JSON.stringify(tasks)} WHERE id = ${source.id}`;
+      }
+      const sourceEvents: TeamEvent[] = [];
+      const targetEvents: TeamEvent[] = [];
+      for (const worker of moving) {
+        const routines = await db<TeamRoutineRow[]>`
+          DELETE FROM team_routines WHERE team_id = ${source.id} AND agent_id = ${worker.sessionId}
+          RETURNING id, title, schedule, prompt, agent_id
+        `;
+        for (const routine of routines) {
+          sourceEvents.push(
+            await appendSystemMessage(db, source.id, {
+              type: "routine_deleted",
+              routine: routineFromRow(routine),
+            }),
+          );
+        }
+        sourceEvents.push(
+          await appendSystemMessage(db, source.id, {
+            type: "member_left",
+            member: teamMemberFromWorker(worker),
+          }),
+        );
+        const { status: _status, ...metadata } = teamAgentMetadataSchema.parse(worker.metadata);
+        await workers.moveToTeam(worker.sessionId, target.id);
+        await workers.update(worker.sessionId, {
+          metadata: { ...metadata, seenThrough: target.latestSequence },
+        });
+        targetEvents.push(
+          await appendSystemMessage(db, target.id, {
+            type: "member_joined",
+            member: teamMemberFromWorker({ ...worker, teamId: target.id }, metadata),
+          }),
+        );
+      }
+      return {
+        source: await recordTeamChange(db, source, sourceEvents),
+        target: await recordTeamChange(db, target, targetEvents),
+      };
+    });
+  }
+
+  /** Conversation messages from `since` on, without reactions, for measuring the team. */
+  async listConversationSince(teamId: string, since: string): Promise<TeamMessage[]> {
+    const rows = await this.db<TeamMessageRow[]>`
+      SELECT * FROM team_messages
+      WHERE team_id = ${teamId} AND sender_type <> 'system' AND timestamp >= ${since}
+      ORDER BY sequence
+    `;
+    return rows.map((row) => messageFromRow(row, []));
+  }
+
+  /** Records how waking one agent was delivered, for measuring the team. */
+  async recordWake(teamId: string, wake: TeamWake & { messageSequence?: number }): Promise<void> {
+    await this.db`
+      INSERT INTO team_wakes ${this.db({
+        team_id: teamId,
+        agent_id: wake.agentId,
+        at: wake.at,
+        cause: wake.cause,
+        author: wake.author ?? null,
+        message_sequence: wake.messageSequence ?? null,
+        disposition: wake.delivery,
+      })}
+    `;
+  }
+
+  async listWakesSince(teamId: string, since: string): Promise<TeamWake[]> {
+    const rows = await this.db<
+      {
+        agent_id: string;
+        at: string;
+        cause: TeamWake["cause"];
+        author: string | null;
+        disposition: TeamWake["delivery"];
+      }[]
+    >`
+      SELECT agent_id, at, cause, author, disposition FROM team_wakes
+      WHERE team_id = ${teamId} AND at >= ${since}
+      ORDER BY at
+    `;
+    return rows.map(({ agent_id, at, cause, author, disposition }) => ({
+      agentId: agent_id,
+      at,
+      cause,
+      ...(author === null ? {} : { author }),
+      delivery: disposition,
+    }));
   }
 
   async listMessagesAfter(
@@ -370,11 +510,13 @@ export class TeamDatabase {
           | "sender_type"
           | "sender_agent_id"
           | "sender_connector_id"
+          | "sender_team_id"
           | "content"
           | "thread_sequence"
         >[]
       >`
-        SELECT sequence, sender_type, sender_agent_id, sender_connector_id, content, thread_sequence
+        SELECT sequence, sender_type, sender_agent_id, sender_connector_id, sender_team_id, content,
+          thread_sequence
         FROM team_messages
         WHERE team_id = ${teamId} AND sequence < ${before} AND sender_type <> 'system'
           AND (${thread} IS NULL OR sequence = ${thread} OR thread_sequence = ${thread})
@@ -427,8 +569,8 @@ export class TeamDatabase {
   }
 
   /**
-   * Appends a user, Agent, or connector message, in a thread when it replies. The lead can flag
-   * its own message as a request for the user.
+   * Appends a user, Agent, connector, or team message, in a thread when it replies. The lead can
+   * flag its own message as a request for the user.
    */
   async appendMessage({
     teamId,
@@ -497,6 +639,35 @@ export class TeamDatabase {
         AND thread_sequence = ${threadSequence}
     `;
     return row?.conversation_id ?? conversationId;
+  }
+
+  /** The thread another team holds its side of this thread's conversation in, if any. */
+  async getPeerThread(
+    teamId: string,
+    threadSequence: number,
+    peerTeamId: string,
+  ): Promise<number | null> {
+    const [row] = await this.db<{ peer_thread_sequence: number }[]>`
+      SELECT peer_thread_sequence FROM team_peer_threads
+      WHERE team_id = ${teamId} AND thread_sequence = ${threadSequence}
+        AND peer_team_id = ${peerTeamId}
+    `;
+    return row?.peer_thread_sequence ?? null;
+  }
+
+  /** Links two teams' threads as one conversation, from either side. */
+  async linkPeerThreads(
+    teamId: string,
+    threadSequence: number,
+    peerTeamId: string,
+    peerThreadSequence: number,
+  ): Promise<void> {
+    await this.db`
+      INSERT INTO team_peer_threads (team_id, thread_sequence, peer_team_id, peer_thread_sequence)
+      VALUES (${teamId}, ${threadSequence}, ${peerTeamId}, ${peerThreadSequence}),
+        (${peerTeamId}, ${peerThreadSequence}, ${teamId}, ${threadSequence})
+      ON CONFLICT DO NOTHING
+    `;
   }
 
   /** Notes in the transcript that a connector never received a message. */
@@ -638,28 +809,95 @@ export class TeamDatabase {
     return listRoutines(this.db, teamId);
   }
 
+  async listAdvice(teamId: string): Promise<TeamAdvice[]> {
+    return listAdvice(this.db, teamId);
+  }
+
+  async getAdvice(teamId: string, adviceId: string): Promise<TeamAdvice | null> {
+    const [row] = await this.db<TeamAdviceRow[]>`
+      SELECT * FROM team_advice WHERE id = ${adviceId} AND team_id = ${teamId}
+    `;
+    return row ? adviceFromRow(row) : null;
+  }
+
+  /** Records an agent's advice for the user to apply or dismiss. */
+  async proposeAdvice(authorId: string, input: ProposeTeamAdviceInput) {
+    return inStateTransaction(this.db, async (db) => {
+      const worker = await requireTeamWorker(db, authorId);
+      const advice: TeamAdvice = {
+        id: crypto.randomUUID(),
+        ...input,
+        authorId,
+        status: "open",
+        createdAt: new Date().toISOString(),
+      };
+      await db`
+        INSERT INTO team_advice ${db({
+          id: advice.id,
+          team_id: worker.teamId,
+          author_id: authorId,
+          title: advice.title,
+          finding: advice.finding,
+          action: JSON.stringify(advice.action),
+          created_at: advice.createdAt,
+        })}
+      `;
+      return adviceChange(db, worker.teamId, advice);
+    });
+  }
+
+  /**
+   * Moves advice between open and resolved. Resolving claims only open advice, so concurrent
+   * applies act once; reopening restores advice whose action failed.
+   */
+  async setAdviceStatus(teamId: string, adviceId: string, status: TeamAdvice["status"]) {
+    return inStateTransaction(this.db, async (db) => {
+      const [row] = await db<TeamAdviceRow[]>`
+        UPDATE team_advice
+        SET status = ${status},
+          resolved_at = ${status === "open" ? null : new Date().toISOString()}
+        WHERE id = ${adviceId} AND team_id = ${teamId}
+          AND (status = 'open') = ${status !== "open"}
+        RETURNING *
+      `;
+      return row ? adviceChange(db, teamId, adviceFromRow(row)) : null;
+    });
+  }
+
   /** Adds a routine to the lead's Team, or changes one. An identical change is a no-op. */
   async setRoutine(leadId: string, { routineId, ...input }: SetTeamRoutineInput) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireLeadTeam(db, leadId);
-      const routine = { id: routineId ?? crypto.randomUUID(), ...input };
+      const agentId = input.agentId === team.id ? undefined : input.agentId;
+      if (agentId) {
+        const worker = await requireTeamWorker(db, agentId);
+        if (worker.teamId !== team.id) throw new Error("Routine agent must belong to this team.");
+      }
+      const { agentId: _agentId, ...content } = input;
+      const routine = {
+        id: routineId ?? crypto.randomUUID(),
+        ...content,
+        ...(agentId ? { agentId } : {}),
+      };
+      const columns = { ...content, agent_id: agentId ?? null };
       const nextAt = nextCronOccurrence(input.schedule, new Date()).toISOString();
       if (routineId) {
-        const [current] = await db<TeamRoutine[]>`
-          SELECT id, title, schedule, prompt FROM team_routines
+        const [current] = await db<TeamRoutineRow[]>`
+          SELECT id, title, schedule, prompt, agent_id FROM team_routines
           WHERE id = ${routineId} AND team_id = ${team.id}
         `;
         if (!current) throw new Error("Routine not found in this team.");
-        if (Bun.deepEquals(current, routine)) {
+        if (Bun.deepEquals(routineFromRow(current), routine)) {
           return { teamId: team.id, events: [], routine };
         }
         await db`
-          UPDATE team_routines SET ${db({ ...input, next_at: nextAt })} WHERE id = ${routineId}
+          UPDATE team_routines SET ${db({ ...columns, next_at: nextAt })} WHERE id = ${routineId}
         `;
       } else {
         await db`
           INSERT INTO team_routines ${db({
-            ...routine,
+            id: routine.id,
+            ...columns,
             team_id: team.id,
             next_at: nextAt,
             created_at: new Date().toISOString(),
@@ -677,22 +915,22 @@ export class TeamDatabase {
   /** Deletes a routine, or returns null when it's already gone. */
   async deleteRoutine(teamId: string, routineId: string) {
     return inStateTransaction(this.db, async (db) => {
-      const [row] = await db<TeamRoutine[]>`
+      const [row] = await db<TeamRoutineRow[]>`
         DELETE FROM team_routines WHERE id = ${routineId} AND team_id = ${teamId}
-        RETURNING id, title, schedule, prompt
+        RETURNING id, title, schedule, prompt, agent_id
       `;
       if (!row) return null;
       const team = await requireTeam(db, teamId);
       const change = await appendSystemMessage(db, teamId, {
         type: "routine_deleted",
-        routine: row,
+        routine: routineFromRow(row),
       });
       return recordTeamChange(db, team, [change]);
     });
   }
 
   /**
-   * Claims every due follow-up and routine, so each wakes its lead once. A follow-up clears its
+   * Claims every due follow-up and routine, so each wakes its agent once. A follow-up clears its
    * waiting status. A routine moves past `now`, so runs missed while stopped collapse into one.
    */
   async claimDueWakes(now: Date) {
@@ -721,8 +959,8 @@ export class TeamDatabase {
           waitingFor: status.text,
         });
       }
-      const routines = await db<(TeamRoutine & { team_id: string })[]>`
-        SELECT id, team_id, title, schedule, prompt FROM team_routines
+      const routines = await db<(TeamRoutineRow & { team_id: string })[]>`
+        SELECT id, team_id, title, schedule, prompt, agent_id FROM team_routines
         WHERE next_at <= ${now.toISOString()}
           AND team_id IN (SELECT id FROM teams WHERE paused = 0)
       `;
@@ -735,8 +973,9 @@ export class TeamDatabase {
       }
       return {
         followUps,
-        routines: routines.map(({ team_id, title, prompt }) => ({
+        routines: routines.map(({ team_id, agent_id, title, prompt }) => ({
           teamId: team_id,
+          agentId: agent_id ?? team_id,
           title,
           prompt,
         })),
@@ -788,6 +1027,7 @@ async function updateTeamFields(
   if (Bun.deepEquals(next, current)) {
     return { ...(await recordTeamChange(db, current, events)), purposeChanged: false };
   }
+  if (next.name !== current.name) await assertTeamNameAvailable(db, next.name, current.id);
   const updates: TeamSystemMessageContent[] = [];
   if (next.paused !== current.paused) updates.push({ type: "team_paused", paused: next.paused });
   if (next.name !== current.name) updates.push({ type: "team_renamed", actor, name: next.name });
@@ -901,8 +1141,14 @@ function messageColumns(message: TeamMessage) {
     sequence: message.sequence,
     timestamp: message.timestamp,
     sender_type: message.sender.type,
-    sender_agent_id: message.sender.type === "agent" ? message.sender.agentId : null,
+    sender_agent_id:
+      message.sender.type === "agent"
+        ? message.sender.agentId
+        : message.sender.type === "team" && message.sender.by === "lead"
+          ? message.sender.teamId
+          : null,
     sender_connector_id: message.sender.type === "connector" ? message.sender.connectorId : null,
+    sender_team_id: message.sender.type === "team" ? message.sender.teamId : null,
     content:
       typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     attachments: message.attachments?.length ? JSON.stringify(message.attachments) : null,
@@ -1025,11 +1271,66 @@ async function listArtifacts(db: Bun.SQL, teamId: string): Promise<TeamArtifact[
 }
 
 async function listRoutines(db: Bun.SQL, teamId: string): Promise<TeamRoutine[]> {
-  return db<TeamRoutine[]>`
-    SELECT id, title, schedule, prompt FROM team_routines
+  const rows = await db<TeamRoutineRow[]>`
+    SELECT id, title, schedule, prompt, agent_id FROM team_routines
     WHERE team_id = ${teamId}
     ORDER BY created_at, id
   `;
+  return rows.map(routineFromRow);
+}
+
+type TeamRoutineRow = Omit<TeamRoutine, "agentId"> & { agent_id: string | null };
+
+function routineFromRow({ agent_id, ...routine }: TeamRoutineRow): TeamRoutine {
+  return { ...routine, ...(agent_id ? { agentId: agent_id } : {}) };
+}
+
+/** How many resolved advice items a snapshot keeps beside every open one. */
+const RESOLVED_ADVICE_LIMIT = 20;
+
+async function listAdvice(db: Bun.SQL, teamId: string): Promise<TeamAdvice[]> {
+  const rows = await db<TeamAdviceRow[]>`
+    SELECT * FROM team_advice WHERE team_id = ${teamId} AND status = 'open'
+    UNION ALL
+    SELECT * FROM (
+      SELECT * FROM team_advice WHERE team_id = ${teamId} AND status <> 'open'
+      ORDER BY resolved_at DESC LIMIT ${RESOLVED_ADVICE_LIMIT}
+    )
+  `;
+  return orderTeamAdvice(rows.map(adviceFromRow));
+}
+
+async function adviceChange(db: Bun.SQL, teamId: string, advice: TeamAdvice) {
+  return {
+    teamId,
+    events: [{ type: "advice" as const, advice, revision: await advanceRevision(db, teamId) }],
+    advice,
+  };
+}
+
+type TeamAdviceRow = {
+  id: string;
+  team_id: string;
+  author_id: string;
+  title: string;
+  finding: string;
+  action: string;
+  status: TeamAdvice["status"];
+  created_at: string;
+  resolved_at: string | null;
+};
+
+function adviceFromRow(row: TeamAdviceRow): TeamAdvice {
+  return {
+    id: row.id,
+    title: row.title,
+    finding: row.finding,
+    action: teamAdviceActionSchema.parse(JSON.parse(row.action)),
+    authorId: row.author_id,
+    status: row.status,
+    createdAt: row.created_at,
+    ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
+  };
 }
 
 type TeamRow = {
@@ -1057,6 +1358,7 @@ type TeamMessageRow = {
   sender_type: TeamMessageSender["type"];
   sender_agent_id: string | null;
   sender_connector_id: string | null;
+  sender_team_id: string | null;
   content: string;
   request: number;
   attachments: string | null;
@@ -1159,6 +1461,17 @@ async function assertMemberNameAvailable(
   if (conflict) throw new Error(`${conflict.name} already uses the @${handle} mention.`);
 }
 
+/** Teams address one another by handle, so each team's must be its own. */
+async function assertTeamNameAvailable(db: Bun.SQL, name: string, exceptTeamId?: string) {
+  const handle = teamHandle({ name });
+  if (handle === agentHandleFromName(TEAM_LEAD_PROFILE.name)) {
+    throw new Error(`Every team's lead already uses the @${handle} mention.`);
+  }
+  const teams = await db<{ id: string; name: string }[]>`SELECT id, name FROM teams`;
+  const conflict = teams.find((team) => team.id !== exceptTeamId && teamHandle(team) === handle);
+  if (conflict) throw new Error(`Team ${conflict.name} already uses the @${handle} mention.`);
+}
+
 function artifactFromRow(row: TeamArtifactRow): TeamArtifact {
   const file =
     row.kind === "session" ? sessionFile(row.session_id, row.path) : machineFile(row.path);
@@ -1202,13 +1515,22 @@ function messageFromRow(row: TeamMessageRow, reactions: TeamReaction[]): TeamMes
 }
 
 function authorFromRow(
-  row: Pick<TeamMessageRow, "sender_type" | "sender_agent_id" | "sender_connector_id">,
+  row: Pick<
+    TeamMessageRow,
+    "sender_type" | "sender_agent_id" | "sender_connector_id" | "sender_team_id"
+  >,
 ): TeamMessageAuthor {
   switch (row.sender_type) {
     case "agent":
       return { type: "agent", agentId: row.sender_agent_id! };
     case "connector":
       return { type: "connector", connectorId: row.sender_connector_id! };
+    case "team":
+      return {
+        type: "team",
+        teamId: row.sender_team_id!,
+        by: row.sender_agent_id ? "lead" : "user",
+      };
     default:
       return { type: "user" };
   }

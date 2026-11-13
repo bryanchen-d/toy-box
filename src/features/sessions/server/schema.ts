@@ -28,5 +28,19 @@ export async function initializeSessionSchema(db: Bun.SQL): Promise<void> {
       position   INTEGER NOT NULL,
       PRIMARY KEY (session_id, path)
     );
+
+    -- hour is the epoch milliseconds of a UTC hour's start. Rows outlive their session.
+    CREATE TABLE IF NOT EXISTS session_activity_hours (
+      session_id         TEXT NOT NULL,
+      hour               INTEGER NOT NULL,
+      turns              INTEGER NOT NULL DEFAULT 0,
+      busy_ms            INTEGER NOT NULL DEFAULT 0,
+      ai_credits         REAL NOT NULL DEFAULT 0,
+      input_tokens       INTEGER NOT NULL DEFAULT 0,
+      output_tokens      INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, hour)
+    );
   `);
 }

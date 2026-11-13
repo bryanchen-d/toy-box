@@ -29,6 +29,7 @@ import {
   steerQueuedMessage as steerRuntimeQueuedMessage,
   streamSession as streamSessionEvents,
   waitForSessions,
+  type MessageDisposition,
 } from "@sessions/server/runtime";
 import type { SessionCompletion, SessionSkill } from "../model";
 import {
@@ -162,7 +163,7 @@ export const createSession = createServerFn({ method: "POST" })
 /** Deliver a follow-up message, optionally requesting immediate delivery. */
 export const deliverMessage = createServerFn({ method: "POST" })
   .validator(zodValidator(deliverMessageInputSchema))
-  .handler(async ({ data }): Promise<{ disposition: "started" | "queued" }> => {
+  .handler(async ({ data }): Promise<{ disposition: MessageDisposition }> => {
     const receipt = await deliverSessionMessage(data.sessionId, data.message);
     return { disposition: receipt.disposition };
   });

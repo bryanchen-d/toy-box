@@ -76,6 +76,16 @@ supplies complete message text, and `reasoning` replaces the current reasoning t
 assembly belongs in each projector; canonical text never mixes incremental and cumulative semantics.
 `context_usage_changed` reports the root conversation's context occupancy against its model's window;
 subagent usage is not the parent's and is dropped.
+`usage` deltas carry a call's `tokens` (input including cache reads and writes, output, cache
+reads, and cache writes) when the provider reports them per call. Copilot does, from its durable
+`session.usage_record` receipts. Claude and Codex report no credits and emit no `usage` events, so
+their sessions stay unreported rather than unavailable; their token counts are not clean per-call
+receipts either. Claude restates one response's usage on each of its content blocks, and Codex
+reports tokens only live, as a thread total and an unidentified latest-request breakdown.
+`server/copilot/activity.ts`'s `readCopilotActivity` streams a native `events.jsonl` into the
+timestamped events Sessions' activity backfill folds. Native idle events are ephemeral, so work ends
+where a root turn ended and input or a notification followed, or at an abort, error, or process
+boundary.
 A provider's `end` notification ends native work; the session runtime drains its queue
 before publishing completion. Disconnecting a browser never disconnects the provider.
 

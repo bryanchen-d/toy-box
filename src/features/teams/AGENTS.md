@@ -28,7 +28,7 @@ accountable for the purpose and for the quality of every member's outcome.
    finishes, optionally leaving a waiting status.
 4. **Involve the user.** The lead sends a question flagged as a request, or posts a result and
    completes the task list. The sidebar holds each until the user replies or reads it.
-5. **Keep going.** Follow-ups and routines privately wake the lead on a schedule, so ongoing work
+5. **Keep going.** Follow-ups wake the lead and routines wake their selected agent on a schedule, so ongoing work
    advances without anyone posting.
 6. **Pause.** The user can pause or resume the Team from either team menu. Pausing durably
    stops the lead and all members, including Sessions still starting, and suppresses message,
@@ -45,7 +45,8 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
 │  └─ Members  created on demand; editable and removable
 ├─ Transcript  sequenced user, agent, and system messages, plus agent reactions; replies form threads
 ├─ Artifacts   shared workspace files
-└─ Routines    scheduled prompts that privately wake the lead
+├─ Routines    scheduled prompts that privately wake a team agent
+└─ Advice      proposed improvements the user applies or dismisses
 ```
 
 - `Team` owns its name, optional purpose and working directory, lead model, public
@@ -97,10 +98,12 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   machine files, and non-app artifacts. `canvas_changed` is a durable system message,
   reduced and replayed like preview changes. The artifact remains the source of truth:
   Teams stores no app code, app state, or alternate execution model.
-- `TeamRoutine` is scheduled, recurring work that serves the purpose: a short title, a prompt, and
+- `TeamRoutine` is scheduled, recurring work that serves the purpose: a short title, a prompt, an
+  optional `agentId` for a current team member (omitted for the lead), and
   a local-time cron schedule with one fixed minute, so it runs at most hourly. Adding, changing, and
   deleting one each append a typed system message that shows its title. Only the lead adds or changes
-  routines. The user can run one immediately or delete it.
+  routines. The user can run one immediately or delete it. Removing a member deletes its
+  targeted routines with ordinary `routine_deleted` events in the same transaction.
 - `TeamState` is the canonical reduced detail: Team metadata, lead, members, messages,
   pending request, artifacts, routines, presence, and revision. A snapshot is a state value at one
   instant, not a separate type. Earlier messages page by sequence; revision is the durable replay cursor.
@@ -163,6 +166,18 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - Send a user or Agent message to each connector it opens by addressing, in the conversation its
   thread holds, and post a connector's events back into that thread. The composer shows addressed
   connectors as recipients beside the agents a message wakes.
+- Address another team. Teams are flat peers that leads organize into larger efforts by talking,
+  not by sharing members; a lead belongs to exactly one team. A user or lead message that opens
+  with another team's handle (`teamHandle`, derived from its name and unique across teams; `@lead`
+  is reserved) posts into that team as `{ type: "team", teamId, by: "lead" | "user" }`, where it
+  wakes only that team's lead whatever it mentions. The two teams' threads form one conversation
+  in `team_peer_threads`, so a reply opening with the sender team's handle returns to the thread
+  it came from. The team's own agents, then connectors, take precedence over a team with the same
+  handle (`addressableTeams`). Members can't address teams, a lead may send each team 20 messages an
+  hour (a fuse reset on restart), and a message from another team never forwards again. The
+  composer offers other teams after connectors and shows them as recipients; the transcript names
+  the source team and whether its lead or the user wrote it; `read_team` says how to answer, and
+  `list_teams` gives each team's mention.
 - Set or clear one reaction per Agent without advancing transcript state.
 - Register durable artifacts once and surface later file edits automatically. Attach screenshots,
   other images, recordings, and Markdown, text, or PDF documents to messages; generated images are
@@ -192,8 +207,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 
 ### Scheduled wakes
 
-- Wake a lead privately when its follow-up or one of its routines comes due, or when the user runs a
-  routine, through ordinary Session delivery. A run adds nothing to the transcript, and the lead
+- Wake the selected agent privately when a routine comes due or the user runs it; omitted
+  `agentId` targets the lead. Wake the lead when its follow-up comes due,
+  through ordinary Session delivery. A run adds nothing to the transcript, and the agent
   posts only if something needs the team. Running a routine leaves its schedule unchanged.
 - Paused Teams are excluded from due claims without consuming their follow-ups or advancing
   routine schedules. On resume, missed routine occurrences collapse into one as usual. Manual runs
@@ -202,6 +218,36 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   Team edits serialize stop/resume effects, and agent configuration rejects execution while
   paused, including direct private-Session starts. This does not disable unrelated workspace
   Automations or terminate detached programs an agent previously launched.
+
+### Performance and advice
+
+- Measure the team with `projectTeamPerformance` (`model/performance.ts`), a pure projection over
+  the public transcript, the current roster, recorded wakes, and the hourly runtime activity
+  Sessions records for each agent. Nothing else is stored: per local hour (last 24), day (last 14),
+  or week (last 12), it counts each author's messages and each agent's notifications (the audience
+  policy replayed with today's roster), measures each agent's time from a notification to its next
+  public message (P50, P90, mean, or max, with unanswered notifications left open), lists who
+  addresses whom, and sums AI credits, tokens, busy time, and turns. Reactions carry no time, so
+  they don't count as answers.
+- `wakeTeamAgent` records each delivery's outcome in `team_wakes`: its cause (message, routine, or
+  follow-up), the message author and sequence when a message caused it, and the Sessions
+  disposition. `started` woke an idle agent, `steered` injected the prompt into its running turn
+  (what the panel calls interrupted), and `queued` waited for that turn to end. Wakes before
+  recording began were backfilled by hand from provider histories; aborted turns aren't counted.
+- Advice (`model/advice.ts`) is one finding with its evidence and one typed action: `message_lead`
+  tells the lead what to change, and `move_members` moves current members, never the lead, to an
+  existing team or a new one with its own lead and purpose. Any team agent proposes advice with
+  `propose_team_advice`, usually a performance auditor: an ordinary member with a routine targeted
+  at it. Only the user resolves advice. Applying claims open advice in one transaction, so it acts
+  once, then acts with the user's authority (a user message to `@lead`, or a member move) and
+  reopens the advice if the action fails. Advice travels as a quiet revisioned `advice` event and
+  `TeamState.advice` holds every open item plus the 20 most recently resolved.
+- Move members with their Sessions and histories intact. The source team releases their tasks,
+  deletes their targeted routines, and records `member_left`; the target records `member_joined`
+  and each moved member reads it from its latest message onward with no stale status. Moving rejects
+  a lead, a paused target, and a name already taken there. The agent's next execution configures it
+  for its new team.
+- Agents read the same projection, named rather than identified, with `read_team_performance`.
 
 ## Agent execution
 
@@ -603,9 +649,16 @@ presents one deleted identity everywhere.
   with up to three tasks in progress, the first three Shared artifacts, and the next routine to run.
   Its header holds the team menu.
 - The tasks panel holds the full task checklist. The routines panel lists routines by title with
-  their next run, each expanding to its prompt and offering Run routine and Delete routine. The
+  their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
   members panel adds an agent through the composer's mention and removes members after
   confirmation, alongside its roster table.
+- The performance panel has two tabs. Stats charts a chosen metric (messages, notifications,
+  steered, queued, woke idle, AI credits, busy hours, or tokens) per hour, day, or week, stacked by
+  agent, or reply time as one line per agent under a chosen aggregation (P50, P90, mean, or max).
+  Below, sortable tables list per-agent totals and each sender and receiver pair with its delivery
+  outcomes and reply times. Advice lists open advice with its evidence and a plain statement of what
+  Apply does, beside Apply and Dismiss; without open advice it offers to ask the lead to set up an
+  auditor.
 - Both checklists share a task projection with stable identity and compact diff totals (exact counts
   on hover and for assistive technology). Naturally sized counts and owners float beside the first
   title line, without reserved columns. Pending rows omit diff counts; reported zeros use the same

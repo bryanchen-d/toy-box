@@ -5,7 +5,7 @@ import type { ModelConfiguration } from "@providers/model";
 import type { Attachment } from "@/shared/attachments/model";
 import type { SessionSystemMessage } from "./systemMessages";
 import type { SessionType } from "./protocol";
-import type { SessionUsage } from "./usage";
+import type { SessionUsage, TokenUsage } from "./usage";
 
 export type SessionContext = {
   directory?: string;
@@ -263,7 +263,9 @@ export type SessionEvent = (
   // Live output appended to a running tool call.
   | { type: "tool_output_delta"; toolCallId: string; parentToolCallId?: string; content: string }
   | { type: "context_usage_changed"; usage: ContextUsage }
-  | { type: "usage"; usage: SessionUsage; mode: "delta" | "total" }
+  // A delta is one receipt and may carry its call's tokens; a total is a cumulative checkpoint.
+  | { type: "usage"; mode: "delta"; usage: SessionUsage; tokens?: TokenUsage }
+  | { type: "usage"; mode: "total"; usage: SessionUsage }
   | {
       type: "question_requested";
       toolCallId: string;

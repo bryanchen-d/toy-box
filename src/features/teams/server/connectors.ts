@@ -168,7 +168,7 @@ export async function applyConnectorEvent(
         ...(event.origin ? { origin: event.origin } : {}),
         ...(threadSequence === undefined ? {} : { threadSequence }),
       },
-      { connectorName: connector.name },
+      { authorName: connector.name },
     );
 
   let message: StoredTeamMessage;

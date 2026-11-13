@@ -24,6 +24,7 @@ function teamData(artifacts: TeamArtifact[] = []): TeamQueryData {
     messages: [],
     artifacts,
     routines: [],
+    advice: [],
     presence: {},
     request: null,
     revision: 0,

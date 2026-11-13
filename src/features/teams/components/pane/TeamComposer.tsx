@@ -7,10 +7,13 @@ import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import { AgentCompletionMenu } from "@teams/components/agents/AgentCompletionMenu";
 import { agentCompletionSource } from "@teams/components/agents/agentCompletionSource";
 import {
+  addressableTeams,
   agentHandleFromName,
   connectorAuthor,
   teamAudienceLabel,
+  teamAuthor,
   teamHasPendingRequest,
+  teamsAddressedBy,
   teamTasksDiff,
   resolveTeamAudience,
   type TeamAgent,
@@ -18,6 +21,7 @@ import {
   type PostTeamMessageInput,
 } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
+import { teamQueries } from "@teams/queries";
 import { connectorsAddressedBy } from "@connectors/model";
 import { connectorQueries } from "@connectors/queries";
 import { workspaceFileId } from "@files/model";
@@ -95,6 +99,8 @@ export function TeamComposer({
   });
   const createMember = useMutation(teamMutations.createMember());
   const { data: connectors = [] } = useQuery(connectorQueries.list());
+  const { data: catalog } = useQuery(teamQueries.list());
+  const teams = addressableTeams(catalog?.teams ?? [], { teamId, agents, connectors });
   // Delivery resolves the same audience, so this is exactly who the message will wake.
   const audience = resolveTeamAudience({
     content: draft.value,
@@ -103,7 +109,10 @@ export function TeamComposer({
     members,
     acknowledgedRequest: needsReply,
   });
-  const connectorRecipients = connectorsAddressedBy(draft.value, connectors).map(connectorAuthor);
+  const recipients = [
+    ...connectorsAddressedBy(draft.value, connectors).map(connectorAuthor),
+    ...teamsAddressedBy(draft.value, teams).map(teamAuthor),
+  ];
 
   useImperativeHandle(handleRef, () => ({
     reply: (agent) => {
@@ -160,6 +169,7 @@ export function TeamComposer({
             lead,
             members,
             connectors,
+            teams,
             createMember: team?.paused
               ? undefined
               : (name) => createMember.mutateAsync({ teamId, name }),
@@ -174,11 +184,7 @@ export function TeamComposer({
               Team paused - Messages won't wake agents
             </span>
           ) : (
-            <TeamAudience
-              audience={audience}
-              connectors={connectorRecipients}
-              agentCount={agents.length}
-            />
+            <TeamAudience audience={audience} recipients={recipients} agentCount={agents.length} />
           )}
           {request && onShowRequest && (
             <InputNeeded request={request.content} onShow={onShowRequest} />
@@ -203,27 +209,28 @@ export function TeamComposer({
 /** Who the draft will wake or reach. Mentions that match no one leave a posted message unheard. */
 function TeamAudience({
   audience,
-  connectors,
+  recipients: outside,
   agentCount,
 }: {
   audience: readonly TeamAgent[];
-  /** Connectors the message opens by addressing, which receive it rather than wake. */
-  connectors: readonly TeamAgent[];
+  /** Connectors and other teams the message opens by addressing, which receive it rather than
+   *  wake. */
+  recipients: readonly TeamAgent[];
   agentCount: number;
 }) {
-  const recipients = [...audience, ...connectors];
+  const recipients = [...audience, ...outside];
   const summary =
     recipients.length === 0
-      ? "No agent or connector matches these mentions"
+      ? "No agent, connector, or team matches these mentions"
       : [
           audience.length > 0 && `Wakes ${audience.map(({ name }) => name).join(", ")}`,
-          connectors.length > 0 && `Sends to ${connectors.map(({ name }) => name).join(", ")}`,
+          outside.length > 0 && `Sends to ${outside.map(({ name }) => name).join(", ")}`,
         ]
           .filter(Boolean)
           .join(". ");
   const label = [
     ...(audience.length > 0 ? [teamAudienceLabel(audience, agentCount)] : []),
-    ...connectors.map(({ name }) => name),
+    ...outside.map(({ name }) => name),
   ].join(", ");
 
   return (

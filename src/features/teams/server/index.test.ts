@@ -1047,62 +1047,74 @@ test("a message that wakes the lead first cancels its follow-up", async () => {
   ]);
 });
 
-test("a due routine privately wakes its lead without adding to the transcript", async () => {
-  const teams = await openTeams();
-  const team = await createStoredTeam(teams, { name: "Watch", ...TEAM_DEFAULTS });
-  const events: TeamEvent[] = [];
-  const unsubscribe = subscribeTeamEvents(team.id, (event) => events.push(event));
-  onTestFinished(() => {
-    unsubscribe();
-    releaseTeamEvents(team.id);
-  });
-  const deliver = spyOnDelivery();
+test.each(["lead", "member"] as const)(
+  "a due routine privately wakes its %s without adding to the transcript",
+  async (recipient) => {
+    const teams = await openTeams();
+    const team = await createStoredTeam(teams, { name: "Watch", ...TEAM_DEFAULTS });
+    const { member } = await teams.createMember(teamAgent(team.id, "watcher", "Watcher"));
+    const agentId = recipient === "member" ? member.id : undefined;
+    const events: TeamEvent[] = [];
+    const unsubscribe = subscribeTeamEvents(team.id, (event) => events.push(event));
+    onTestFinished(() => {
+      unsubscribe();
+      releaseTeamEvents(team.id);
+    });
+    const deliver = spyOnDelivery();
 
-  const routine = await setTeamRoutineFromLead(team.id, {
-    title: "CI",
-    schedule: "0 * * * *",
-    prompt: "Check CI",
-  });
-  const { latestSequence } = (await teams.getTeam(team.id))!;
-  await wakeDueTeamAgents(new Date(Date.now() + 61 * 60_000));
+    const routine = await setTeamRoutineFromLead(team.id, {
+      title: "CI",
+      schedule: "0 * * * *",
+      prompt: "Check CI",
+      agentId,
+    });
+    const { latestSequence } = (await teams.getTeam(team.id))!;
+    await wakeDueTeamAgents(new Date(Date.now() + 61 * 60_000));
 
-  expect(
-    events.filter((event) => event.type === "message").map((event) => event.message.content),
-  ).toEqual([{ type: "routine_scheduled", routine }]);
-  expect(deliver.mock.calls).toEqual([
-    [
-      team.id,
+    expect(
+      events.filter((event) => event.type === "message").map((event) => event.message.content),
+    ).toEqual([{ type: "routine_scheduled", routine }]);
+    expect(deliver.mock.calls).toEqual([
+      [
+        agentId ?? team.id,
+        {
+          systemMessage: { type: "team_routine", title: "CI", prompt: "Check CI" },
+          immediate: true,
+        },
+      ],
+    ]);
+    expect((await teams.getTeam(team.id))?.latestSequence).toBe(latestSequence);
+  },
+);
+
+test.each(["lead", "member"] as const)(
+  "running a routine wakes its %s now and leaves its schedule alone",
+  async (recipient) => {
+    const teams = await openTeams();
+    const team = await createStoredTeam(teams, { name: "Watch", ...TEAM_DEFAULTS });
+    const { member } = await teams.createMember(teamAgent(team.id, "watcher", "Watcher"));
+    const agentId = recipient === "member" ? member.id : undefined;
+    const deliver = spyOnDelivery();
+    const routine = await setTeamRoutineFromLead(team.id, {
+      title: "CI",
+      schedule: "0 * * * *",
+      prompt: "Check CI",
+      agentId,
+    });
+    const wake: Parameters<typeof sessionRuntime.deliverSessionMessage> = [
+      agentId ?? team.id,
       {
         systemMessage: { type: "team_routine", title: "CI", prompt: "Check CI" },
         immediate: true,
       },
-    ],
-  ]);
-  expect((await teams.getTeam(team.id))?.latestSequence).toBe(latestSequence);
-});
+    ];
 
-test("running a routine wakes its lead now and leaves its schedule alone", async () => {
-  const teams = await openTeams();
-  const team = await createStoredTeam(teams, { name: "Watch", ...TEAM_DEFAULTS });
-  const deliver = spyOnDelivery();
-  const routine = await setTeamRoutineFromLead(team.id, {
-    title: "CI",
-    schedule: "0 * * * *",
-    prompt: "Check CI",
-  });
-  const wake: Parameters<typeof sessionRuntime.deliverSessionMessage> = [
-    team.id,
-    {
-      systemMessage: { type: "team_routine", title: "CI", prompt: "Check CI" },
-      immediate: true,
-    },
-  ];
+    expect(await runTeamRoutine(team.id, routine.id)).toBe(true);
+    await wakeDueTeamAgents(new Date(Date.now() + 61 * 60_000));
 
-  expect(await runTeamRoutine(team.id, routine.id)).toBe(true);
-  await wakeDueTeamAgents(new Date(Date.now() + 61 * 60_000));
-
-  expect(deliver.mock.calls).toEqual([wake, wake]);
-});
+    expect(deliver.mock.calls).toEqual([wake, wake]);
+  },
+);
 
 test("pause stops the entire roster, saves messages without delivery, and resume wakes only the lead", async () => {
   const teams = await openTeams();
@@ -1112,6 +1124,7 @@ test("pause stops the entire roster, saves messages without delivery, and resume
     title: "CI",
     schedule: "0 * * * *",
     prompt: "Check CI",
+    agentId: "builder",
   });
   const deliver = spyOnDelivery();
   const abort = spyOn(sessionRuntime, "abortSession").mockImplementation(async () => {

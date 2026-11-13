@@ -15,10 +15,23 @@ import {
   updateTeamMemberInputSchema,
 } from "@teams/model";
 import * as teams from ".";
+import * as advice from "./advice";
+import { getTeamPerformance as readTeamPerformance } from "./performance";
 import { teamMessageSearchInputSchema } from "@teams/model/search";
+import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
+import { resolveTeamAdviceInputSchema } from "@teams/model/advice";
+import { z } from "zod";
 export const listTeams = createServerFn({ method: "GET" }).handler((): Promise<TeamList> =>
   teams.listTeams(),
 );
+
+export const getTeamPerformance = createServerFn({ method: "GET" })
+  .validator(zodValidator(teamIdentitySchema.extend({ bucket: z.enum(PERFORMANCE_BUCKETS) })))
+  .handler(({ data }) => readTeamPerformance(data.teamId, data.bucket));
+
+export const resolveTeamAdvice = createServerFn({ method: "POST" })
+  .validator(zodValidator(resolveTeamAdviceInputSchema))
+  .handler(({ data }) => advice.resolveTeamAdvice(data));
 
 export const getTeamUsage = createServerFn({ method: "GET" })
   .validator(zodValidator(teamIdentitySchema))

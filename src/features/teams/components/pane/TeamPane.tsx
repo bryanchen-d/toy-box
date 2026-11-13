@@ -8,6 +8,7 @@ import {
   connectorAuthor,
   messageAuthorId,
   teamAgentIdentity,
+  teamAuthor,
   teamLead,
   type TeamConversationMessage,
 } from "@teams/model";
@@ -26,6 +27,7 @@ import { cn } from "@/shared/utils";
 import { TeamCanvas } from "./TeamCanvas";
 import { TeamArtifacts } from "./TeamArtifacts";
 import { TeamMembers } from "./TeamMembers";
+import { TeamPerformance } from "./TeamPerformance";
 import {
   addressedDraft,
   TeamComposer,
@@ -58,6 +60,7 @@ const ASIDE_SIZES: Record<TeamAside["type"], number> = {
   tasks: 35,
   artifacts: 35,
   routines: 30,
+  performance: 50,
   security: 35,
   thread: 35,
 };
@@ -149,8 +152,15 @@ function TeamContent({
   const members = state?.members ?? [];
   const agents = [lead, ...members];
   const { data: connectors = [] } = useQuery(connectorQueries.list());
-  // Connectors write messages where agents do, so one lookup names every author.
-  const authors = [...agents, ...connectors.map(connectorAuthor)];
+  const { data: catalog } = useQuery(teamQueries.list());
+  // Connectors, other teams, and members who moved to another team wrote messages here too, so
+  // one lookup names every author.
+  const authors = [
+    ...agents,
+    ...connectors.map(connectorAuthor),
+    ...(catalog?.teams ?? []).filter(({ id }) => id !== teamId).map(teamAuthor),
+    ...(catalog?.members ?? []).filter((member) => member.teamId !== teamId),
+  ];
   const agentIds = new Set(agents.map(({ id }) => id));
   const { data: securityAlert = false } = useQuery({
     ...securityQueries.open(),
@@ -379,7 +389,15 @@ function TeamContent({
                     <TeamArtifacts teamId={teamId} artifacts={state.artifacts} />
                   )}
                   {aside.type === "routines" && (
-                    <TeamRoutines team={state.team} routines={state.routines} />
+                    <TeamRoutines team={state.team} routines={state.routines} agents={agents} />
+                  )}
+                  {aside.type === "performance" && (
+                    <TeamPerformance
+                      team={state.team}
+                      advice={state.advice}
+                      isVisible={isVisible}
+                      onAskLead={(content) => postMessage({ content })}
+                    />
                   )}
                   {aside.type === "security" && <TeamSecurity agents={agents} />}
                 </ResizablePanel>

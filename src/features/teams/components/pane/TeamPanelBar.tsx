@@ -1,6 +1,7 @@
 import {
   Clock3,
   Files,
+  Gauge,
   Hash,
   ListChecks,
   PanelRightClose,
@@ -23,6 +24,7 @@ const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
   tasks: { icon: ListChecks, label: "Tasks" },
   artifacts: { icon: Files, label: "Artifacts" },
   routines: { icon: Clock3, label: "Routines" },
+  performance: { icon: Gauge, label: "Performance" },
   security: { icon: ShieldAlert, label: "Security" },
 };
 

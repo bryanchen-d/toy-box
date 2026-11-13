@@ -1163,6 +1163,83 @@ describe("team database", () => {
     expect(archived?.pinned).toBeUndefined();
   });
 
+  test("each team's handle is its own, and no team can take the lead's", async () => {
+    const teams = await openTeams();
+    const docs = await createStoredTeam(teams, { name: "Docs", ...TEAM_DEFAULTS });
+    const ops = await createStoredTeam(teams, { name: "Ops", ...TEAM_DEFAULTS });
+
+    await expect(createStoredTeam(teams, { name: "docs", ...TEAM_DEFAULTS })).rejects.toThrow(
+      "Team Docs already uses the @docs mention.",
+    );
+    await expect(createStoredTeam(teams, { name: "Lead", ...TEAM_DEFAULTS })).rejects.toThrow(
+      "Every team's lead already uses the @lead mention.",
+    );
+    await expect(teams.editTeam({ teamId: ops.id, name: "DOCS" })).rejects.toThrow(
+      "Team Docs already uses the @docs mention.",
+    );
+    expect((await teams.editTeam({ teamId: docs.id, name: "Docs!" })).team.name).toBe("Docs!");
+  });
+
+  test("another team's message keeps who wrote it there, and linked threads resolve both ways", async () => {
+    const teams = await openTeams();
+    const docs = await createStoredTeam(teams, { name: "Docs", ...TEAM_DEFAULTS });
+    const ops = await createStoredTeam(teams, { name: "Ops", ...TEAM_DEFAULTS });
+    for (const by of ["lead", "user"] as const) {
+      await teams.appendMessage({
+        id: by,
+        teamId: ops.id,
+        sender: { type: "team", teamId: docs.id, by },
+        content: "@ops check",
+      });
+    }
+    expect((await teams.listMessagesAfter(ops.id)).map(({ sender }) => sender)).toEqual([
+      { type: "team", teamId: docs.id, by: "lead" },
+      { type: "team", teamId: docs.id, by: "user" },
+    ]);
+
+    await teams.linkPeerThreads(docs.id, 4, ops.id, 1);
+    expect(await teams.getPeerThread(docs.id, 4, ops.id)).toBe(1);
+    expect(await teams.getPeerThread(ops.id, 1, docs.id)).toBe(4);
+    expect(await teams.getPeerThread(ops.id, 2, docs.id)).toBeNull();
+  });
+
+  test("a moved member reads its new team from now on, unless the team is paused or its name is taken", async () => {
+    const teams = await openTeams();
+    const docs = await createStoredTeam(teams, { name: "Docs", ...TEAM_DEFAULTS });
+    const ops = await createStoredTeam(teams, { name: "Ops", ...TEAM_DEFAULTS });
+    await teams.createMember(teamAgent(docs.id, "writer", "Writer"));
+    await teams.setAgentStatus("writer", { state: "working", text: "Drafting" });
+    await teams.appendMessage({
+      id: "earlier",
+      teamId: ops.id,
+      sender: { type: "user" },
+      content: "Earlier context",
+    });
+
+    await expect(teams.moveMembers(docs.id, [docs.id], ops.id)).rejects.toThrow("never its lead");
+    await teams.editTeam({ teamId: ops.id, paused: true });
+    await expect(teams.moveMembers(docs.id, ["writer"], ops.id)).rejects.toThrow("Resume the team");
+    await teams.editTeam({ teamId: ops.id, paused: false });
+    await teams.createMember(teamAgent(ops.id, "other-writer", "Writer"));
+    await expect(teams.moveMembers(docs.id, ["writer"], ops.id)).rejects.toThrow(
+      "already uses the @writer mention",
+    );
+    await teams.deleteMember("other-writer");
+
+    const { latestSequence } = (await teams.getTeam(ops.id))!;
+    const change = await teams.moveMembers(docs.id, ["writer"], ops.id);
+    expect(change.target.team.latestSequence).toBe(latestSequence + 1);
+    expect(await teams.getAgent("writer")).toMatchObject({
+      teamId: ops.id,
+      seenThrough: latestSequence,
+    });
+    expect((await teams.getAgent("writer"))?.status).toBeUndefined();
+    expect((await teams.listMessagesAfter(docs.id)).at(-1)?.content).toMatchObject({
+      type: "member_left",
+      member: { id: "writer", teamId: docs.id },
+    });
+  });
+
   test("deleting a member retains sender attribution in prior messages", async () => {
     const teams = await openTeams();
     const team = await createStoredTeam(teams, {
@@ -1256,6 +1333,53 @@ describe("team routines", () => {
     );
   });
 
+  test("routines target only current agents in their team and can return to the lead", async () => {
+    const { teams, team } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "watcher", "Watcher"));
+    const other = await createStoredTeam(teams, { name: "Other", ...TEAM_DEFAULTS });
+    const input = { title: "CI", schedule: "0 * * * *", prompt: "Check CI" };
+    const { routine } = await teams.setRoutine(team.id, { ...input, agentId: member.id });
+
+    expect((await teams.getSnapshot(team.id, 100))?.routines).toEqual([routine]);
+    expect(routine.agentId).toBe(member.id);
+    expect(
+      (await teams.setRoutine(team.id, { ...input, routineId: routine.id, agentId: member.id }))
+        .events,
+    ).toEqual([]);
+    await expect(teams.setRoutine(team.id, { ...input, agentId: other.id })).rejects.toThrow(
+      "Routine agent must belong to this team.",
+    );
+    await expect(teams.setRoutine(team.id, { ...input, agentId: "missing" })).rejects.toThrow(
+      "Team agent not found.",
+    );
+
+    const changed = await teams.setRoutine(team.id, {
+      ...input,
+      routineId: routine.id,
+      agentId: team.id,
+    });
+    expect(changed.routine.agentId).toBeUndefined();
+    expect(await teams.listRoutines(team.id)).toEqual([changed.routine]);
+  });
+
+  test("removing a member deletes only its routines and publishes their deletion", async () => {
+    const { teams, team } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "watcher", "Watcher"));
+    const input = { title: "CI", schedule: "0 * * * *", prompt: "Check CI" };
+    const targeted = await teams.setRoutine(team.id, { ...input, agentId: member.id });
+    const defaulted = await teams.setRoutine(team.id, input);
+    const change = await teams.deleteMember(member.id);
+
+    expect(
+      change?.events.map((event) => event.type === "message" && event.message.content),
+    ).toEqual([
+      { type: "routine_deleted", routine: targeted.routine },
+      { type: "member_left", member },
+    ]);
+    expect((await teams.getSnapshot(team.id, 100))?.routines).toEqual([defaulted.routine]);
+    expect(await teams.deleteMember(member.id)).toBeNull();
+  });
+
   test("a due routine is claimed once, and runs missed while stopped collapse into one", async () => {
     const { teams, team } = await setup();
     setSystemTime(localTime(10, 30));
@@ -1265,7 +1389,7 @@ describe("team routines", () => {
       schedule: "0 * * * *",
       prompt: "Check CI",
     });
-    const due = [{ teamId: team.id, title: "CI", prompt: "Check CI" }];
+    const due = [{ teamId: team.id, agentId: team.id, title: "CI", prompt: "Check CI" }];
 
     expect((await teams.claimDueWakes(localTime(10, 59))).routines).toEqual([]);
     expect((await teams.claimDueWakes(localTime(14, 10))).routines).toEqual(due);
@@ -1295,13 +1419,17 @@ describe("team routines", () => {
     );
     const due = await teams.claimDueWakes(localTime(14, 10));
     expect(due.followUps).toEqual([]);
-    expect(due.routines).toEqual([{ teamId: other.id, title: "CI", prompt: "Check CI" }]);
+    expect(due.routines).toEqual([
+      { teamId: other.id, agentId: other.id, title: "CI", prompt: "Check CI" },
+    ]);
     expect((await teams.getAgent(team.id))?.status).toEqual(status);
 
     await teams.editTeam({ teamId: team.id, paused: false });
     const resumed = await teams.claimDueWakes(localTime(14, 10));
     expect(resumed.followUps.map(({ agentId }) => agentId)).toEqual([team.id]);
-    expect(resumed.routines).toEqual([{ teamId: team.id, title: "CI", prompt: "Check CI" }]);
+    expect(resumed.routines).toEqual([
+      { teamId: team.id, agentId: team.id, title: "CI", prompt: "Check CI" },
+    ]);
     expect(await teams.claimDueWakes(localTime(14, 10))).toEqual({
       followUps: [],
       routines: [],

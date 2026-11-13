@@ -5,6 +5,8 @@
 //
 // The event bus stamps eventId for reconnect cursors. Client-provided message
 // identity is correlated separately when the provider echoes sent inputs.
+// Every emitted event is also observed for hourly activity, which is persisted
+// without delaying emission.
 
 import type { SessionConnection } from "@providers/server/provider";
 import { evictCachedSessionIfStale, releaseSession } from "@sessions/server/state/registry";
@@ -14,6 +16,12 @@ import { systemMessageCoalesceKey } from "@sessions/model/systemMessages";
 import { areModelConfigurationsEqual, type ModelConfiguration } from "@providers/model";
 import type { SessionQuestionAnswer, SessionSubscriptionMode } from "@sessions/model/protocol";
 import { applySessionEvent, createInitialSessionState } from "@sessions/model/reducer";
+import {
+  createSessionActivity,
+  observeActivity,
+  type SessionActivity,
+} from "@sessions/model/activity";
+import { recordSessionActivity } from "@sessions/server/activity";
 import { hasBlockingSessionQuestion, hasPendingSessionQuestion } from "@sessions/model/questions";
 import type {
   SessionArtifact,
@@ -26,7 +34,8 @@ import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
 import { createSessionEventBus, type SessionStreamSubscription } from "./eventBus";
 
-type MessageDisposition = "started" | "queued";
+/** A first message starts a turn; an immediate one steers the running turn; any other waits. */
+export type MessageDisposition = "started" | "steered" | "queued";
 type StreamEndReason = Extract<SessionEvent, { type: "end" }>["reason"];
 
 // Replay and per-observer count cap; the bus also owns their UTF-8 byte budget.
@@ -106,6 +115,7 @@ export class SessionStream {
   // Live session state survives turn boundaries; only replay history is
   // turn-scoped.
   #sessionState: SessionState;
+  #activity: SessionActivity;
 
   // Claimed synchronously before #startTurn awaits so concurrent deliveries
   // cannot both open the stream's first turn.
@@ -123,6 +133,7 @@ export class SessionStream {
     this.sessionId = sessionId;
     this.connection = connection;
     this.#sessionState = createInitialSessionState(initialState);
+    this.#activity = createSessionActivity(this.#sessionState.usage?.aiCredits);
 
     this.#unsubscribeProvider = connection.onEvent((event) => this.#handleProviderEvent(event));
   }
@@ -156,7 +167,7 @@ export class SessionStream {
 
     if (queuedMessage.immediate) {
       await this.#submitMessage(queuedMessage);
-      return "queued";
+      return "steered";
     }
 
     const coalesceKey = coalesceKeyForMessage(queuedMessage);
@@ -449,6 +460,7 @@ export class SessionStream {
   #emit(event: SessionEvent): void {
     const published = this.#bus.publish(event);
     this.#sessionState = applySessionEvent(this.#sessionState, published);
+    this.#recordActivity(published);
     if (
       published.type === "status" ||
       published.type === "question_requested" ||
@@ -464,6 +476,16 @@ export class SessionStream {
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────
+
+  /** A process that stops mid-turn loses only the busy time since that turn's latest report. */
+  #recordActivity(event: SessionEvent): void {
+    const { activity, hours } = observeActivity(this.#activity, event, Date.now());
+    this.#activity = activity;
+    if (hours.length === 0) return;
+    recordSessionActivity(this.sessionId, hours).catch((error) =>
+      console.error(`Could not record activity for session ${this.sessionId}:`, error),
+    );
+  }
 
   async #submitMessage(message: SessionMessage): Promise<void> {
     this.#emit({ type: "message_queued", message });

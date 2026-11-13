@@ -38,6 +38,7 @@ function snapshot(): TeamState {
     messages: [message(1), message(101)],
     artifacts: [],
     routines: [],
+    advice: [],
     request: null,
     presence: { team: { state: "idle" } },
   };
@@ -459,6 +460,41 @@ test("arranging artifacts replaces them quietly", () => {
   expect(next.team).toBe(previous.team);
   expect(next.messages).toBe(previous.messages);
   expect(reduceTeamState(next, { type: "artifacts", revision: 102, artifacts: [] })).toBe(next);
+});
+
+test("advice updates in place, open first and newest first, without transcript activity", () => {
+  const previous = snapshot();
+  const advice = (id: string, createdAt: string, status: "open" | "applied" = "open") => ({
+    id,
+    title: id,
+    finding: "Evidence",
+    action: { type: "message_lead" as const, content: "Change it" },
+    authorId: "auditor",
+    status,
+    createdAt,
+  });
+  const older = reduceTeamState(previous, {
+    type: "advice",
+    revision: 102,
+    advice: advice("older", "2026-11-01T00:00:00.000Z"),
+  });
+  const both = reduceTeamState(older, {
+    type: "advice",
+    revision: 103,
+    advice: advice("newer", "2026-11-02T00:00:00.000Z"),
+  });
+  expect(both.advice.map(({ id }) => id)).toEqual(["newer", "older"]);
+  const applied = reduceTeamState(both, {
+    type: "advice",
+    revision: 104,
+    advice: advice("newer", "2026-11-02T00:00:00.000Z", "applied"),
+  });
+  expect(applied.advice.map(({ id, status }) => [id, status])).toEqual([
+    ["older", "open"],
+    ["newer", "applied"],
+  ]);
+  expect(applied.team).toBe(previous.team);
+  expect(applied.messages).toBe(previous.messages);
 });
 
 test("a new share goes after pins, and retitling preserves a pin", () => {

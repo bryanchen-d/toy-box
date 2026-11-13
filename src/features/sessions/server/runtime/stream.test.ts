@@ -1,5 +1,14 @@
 import type { SessionConnection } from "@providers/server/provider";
-import { describe, expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  describe,
+  expect,
+  mock,
+  onTestFinished,
+  setSystemTime,
+  spyOn,
+  test,
+} from "bun:test";
 import * as realSessionProviders from "../providers";
 import {
   abortSession,
@@ -22,10 +31,25 @@ import * as realBroadcast from "@workspace/server/events";
 import type { SessionEvent, SessionMessage, SessionState } from "@sessions/model";
 import { createInitialSessionState } from "@sessions/model/reducer";
 import * as sessionRecords from "@sessions/server/state/sessions";
+import * as realActivity from "@sessions/server/activity";
+import { sumActivityHours, type ActivityHour } from "@sessions/model/activity";
 
 const realSnapshotCacheExports = { ...realSnapshotCache };
 const realWorkspaceStateExports = { ...realWorkspaceState };
 const realBroadcastExports = { ...realBroadcast };
+const realActivityExports = { ...realActivity };
+
+// Streams report activity as they run; capture it rather than writing to a real database.
+const recordSessionActivity = mock(
+  async (_sessionId: string, _hours: readonly ActivityHour[]) => {},
+);
+mock.module("@sessions/server/activity", () => ({
+  ...realActivityExports,
+  recordSessionActivity,
+}));
+afterAll(() => {
+  mock.module("@sessions/server/activity", () => realActivityExports);
+});
 
 function userMessage(
   content: string,
@@ -492,6 +516,102 @@ test("artifact refresh reconciles both clients and ignores updates after executi
   stream.finish();
   stream.updateArtifacts([{ path: "after-finish.md", updatedAt: 3 }]);
   expect(stream.getSessionState().artifacts).toEqual([created]);
+});
+
+describe("SessionStream activity", () => {
+  function activityHour(time: string, counts: Partial<Omit<ActivityHour, "hour">>): ActivityHour {
+    return {
+      hour: new Date(time).toISOString(),
+      turns: 0,
+      busyMs: 0,
+      aiCredits: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      ...counts,
+    };
+  }
+
+  function resetActivityRecording(): void {
+    recordSessionActivity.mockClear();
+    onTestFinished(() => {
+      setSystemTime();
+      recordSessionActivity.mockImplementation(async () => {});
+    });
+  }
+
+  test("a turn reports its start, usage, and end without waiting for persistence", async () => {
+    const sessionId = "session-activity";
+    cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
+    mockStreamRuntimeModules();
+    resetActivityRecording();
+    recordSessionActivity.mockImplementation(() => new Promise<void>(() => {}));
+    const { session, emit } = makeControllableSession();
+    const stream = SessionStream.getOrCreate(sessionId, session, {
+      usage: { aiCredits: 2, status: "complete" },
+    });
+
+    setSystemTime(new Date("2026-11-12T10:50:00Z"));
+    await stream.deliver(userMessage("go"));
+    setSystemTime(new Date("2026-11-12T11:05:00Z"));
+    emit({
+      type: "usage",
+      mode: "delta",
+      usage: { aiCredits: 0.5, status: "complete" },
+      tokens: { input: 100, output: 10, cacheRead: 90, cacheWrite: 0 },
+    });
+    emit({ type: "usage", mode: "total", usage: { aiCredits: 2.5, status: "complete" } });
+    setSystemTime(new Date("2026-11-12T11:10:00Z"));
+    emit({ type: "status", status: "background" });
+    emit({ type: "end", reason: "idle" });
+    await settle();
+
+    expect(SessionStream.isRunning(sessionId)).toBe(false);
+    expect(recordSessionActivity.mock.calls.map(([id]) => id)).toEqual([
+      sessionId,
+      sessionId,
+      sessionId,
+    ]);
+    expect(
+      sumActivityHours(recordSessionActivity.mock.calls.flatMap(([, hours]) => hours)),
+    ).toEqual([
+      activityHour("2026-11-12T10:00:00Z", { turns: 1, busyMs: 10 * 60_000 }),
+      activityHour("2026-11-12T11:00:00Z", {
+        busyMs: 10 * 60_000,
+        aiCredits: 0.5,
+        inputTokens: 100,
+        outputTokens: 10,
+        cacheReadTokens: 90,
+      }),
+    ]);
+  });
+
+  test("a failed activity write is logged without interrupting the session", async () => {
+    const sessionId = "session-activity-failure";
+    cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
+    mockStreamRuntimeModules();
+    resetActivityRecording();
+    recordSessionActivity.mockImplementation(async () => {
+      throw new Error("disk full");
+    });
+    const logged = spyOn(console, "error").mockImplementation(() => {});
+    const stream = SessionStream.getOrCreate(sessionId, makeFakeSession());
+    const events = stream.subscribe();
+
+    setSystemTime(new Date("2026-11-12T10:00:00Z"));
+    await stream.deliver(userMessage("go"));
+    setSystemTime(new Date("2026-11-12T10:01:00Z"));
+    stream.finish();
+    expect((await collectStreamEvents(events)).map(({ type }) => type)).toEqual(["status", "end"]);
+    await settle();
+
+    expect(recordSessionActivity).toHaveBeenCalledTimes(2);
+    expect(logged).toHaveBeenCalledWith(
+      `Could not record activity for session ${sessionId}:`,
+      expect.any(Error),
+    );
+  });
 });
 
 describe("SessionStream question answers", () => {
@@ -1643,7 +1763,7 @@ describe("delivery receipts", () => {
       immediate: true,
     });
 
-    expect(receipt.disposition).toBe("queued");
+    expect(receipt.disposition).toBe("steered");
     expect(sendMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ role: "user", content: "Send this now", immediate: true }),
     );

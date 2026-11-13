@@ -11,6 +11,7 @@ import {
   createTeamInputSchema,
   editTeamTasksInputSchema,
   isTeamSystemMessage,
+  teamHandle,
   teamRoutineIdentitySchema,
   selfUpdateTeamMemberInputSchema,
   setTeamAgentStatusInputSchema,
@@ -19,6 +20,7 @@ import {
   type Team,
   type TeamAgent,
   type TeamArtifact,
+  type TeamMessageAuthor,
 } from "@teams/model";
 import { workspaceFileId } from "@files/model";
 import { resolveWorkspaceFile } from "@files/server/paths";
@@ -28,6 +30,8 @@ import { getSessionState } from "@workspace/server/state/sessions";
 import { teamUri, parseTeamUri } from "@teams/model/references";
 import type { ModelConfiguration } from "@providers/model";
 import { connectorHandle } from "@connectors/model";
+import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
+import { proposeTeamAdviceInputSchema } from "@teams/model/advice";
 
 export const TEAM_REFERENCE_INSTRUCTIONS =
   "Use list_teams to discover Agent Teams teams and inspect_team to read a team URI. " +
@@ -237,7 +241,7 @@ const sendLeadMessageParameters = sendTeamMessageParameters.extend({
 const sendTeamMessageTool = defineTool("send_team_message", {
   alwaysAvailable: true,
   description:
-    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, video, Markdown, text, and PDF paths in attachments; a message to a connector carries its images, Markdown, text, and PDF files, up to 4 files of 10 MB each. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody.",
+    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, video, Markdown, text, and PDF paths in attachments; a message to a connector carries its images, Markdown, text, and PDF files, up to 4 files of 10 MB each. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody. A lead can open a message with another team's mention from list_teams to send it to that team's lead.",
   parameters: sendTeamMessageParameters,
   handler: async (args: z.output<typeof sendLeadMessageParameters>, invocation) => {
     const { sendTeamMessageFromAgent } = await import("@teams/server");
@@ -265,6 +269,27 @@ const reactToTeamMessageTool = defineTool("react_to_team_message", {
     const { setTeamMessageReactionFromAgent } = await import("@teams/server");
     const reaction = await setTeamMessageReactionFromAgent(invocation.sessionId, args);
     return { reaction };
+  },
+});
+
+const readTeamPerformanceTool = defineTool("read_team_performance", {
+  description:
+    "Reads this team's measured performance per hour (last 24), day (last 14), or week (last 12): each agent's public messages, notifications received, wakes answered, median and 90th percentile time from a notification to its next public message, AI credits, tokens, busy time and turns, who addresses whom, and the open and recently resolved advice. Does not change read positions.",
+  parameters: z.object({ bucket: z.enum(PERFORMANCE_BUCKETS).default("day") }).strict(),
+  handler: async ({ bucket }, invocation) => {
+    const { readTeamPerformanceForAgent } = await import("@teams/server/performance");
+    return readTeamPerformanceForAgent(invocation.sessionId, bucket);
+  },
+});
+
+const proposeTeamAdviceTool = defineTool("propose_team_advice", {
+  description:
+    "Proposes one improvement to how this team works, for the user to apply or dismiss in the Performance panel. Give the measured finding with its evidence and exactly one action: message_lead tells the lead what to change; move_members moves current members (never the lead) to another team by teamId or to a new team with its own lead. Applying acts with the user's authority. Does not wake anyone.",
+  parameters: proposeTeamAdviceInputSchema,
+  handler: async (input, invocation) => {
+    const { proposeTeamAdviceFromAgent } = await import("@teams/server/advice");
+    const advice = await proposeTeamAdviceFromAgent(invocation.sessionId, input);
+    return { adviceId: advice.id };
   },
 });
 
@@ -364,7 +389,7 @@ const finishLeadTurnTool = { ...finishTeamAgentTurnTool, parameters: finishLeadT
 
 const setRoutineTool = defineTool("set_routine", {
   description:
-    "Adds a routine that privately wakes you with its prompt on its schedule, or changes one by routineId. Use a 5-field local-time cron with one fixed minute (at most hourly), and a prompt of at most 2,000 characters. Posts a system message to the team.",
+    "Adds a routine that privately wakes a current team agent with its prompt on its schedule, or changes one by routineId. Pass agentId to target a member; omit it for the lead. Removing the member deletes its routines. Use a 5-field local-time cron with one fixed minute (at most hourly), and a prompt of at most 2,000 characters. Posts a system message to the team.",
   parameters: setTeamRoutineInputSchema,
   handler: async (input, invocation) => {
     const { setTeamRoutineFromLead } = await import("@teams/server");
@@ -424,7 +449,9 @@ async function toTeamReadToolResult(
   readerSessionId: string,
 ) {
   const { listConnectors } = await import("@connectors/server");
+  const { listTeams } = await import("@teams/server");
   const { receiveUntrustedContent } = await import("@security/server");
+  const teamNames = new Map((await listTeams()).teams.map(({ id, name }) => [id, name]));
   const connectors = (await listConnectors()).map(({ id, name, status }) => ({
     connectorId: id,
     name,
@@ -464,7 +491,9 @@ async function toTeamReadToolResult(
             ? message.origin
               ? `${connectorOriginLabel(message.origin, "the user")}, via ${connector?.name ?? "a removed connector"}`
               : (connector?.name ?? "a removed connector")
-            : undefined;
+            : sender.type === "team"
+              ? peerTeamLabel(sender, teamNames.get(sender.teamId))
+              : undefined;
       // Indexed before screening waits, so images keep message order.
       const attachmentsForTool = attachments?.map((attachment) =>
         typeof attachment === "string"
@@ -564,12 +593,27 @@ function artifactForTool({ file, title }: Pick<TeamArtifact, "file" | "title">) 
   return { artifactId: workspaceFileId(file), path: resolveWorkspaceFile(file)!, title };
 }
 
+/** Who wrote a message another team sent, and how to answer it there. */
+function peerTeamLabel(
+  sender: Extract<TeamMessageAuthor, { type: "team" }>,
+  name: string | undefined,
+): string {
+  if (!name) return "a team that has since been deleted";
+  const author =
+    sender.by === "lead"
+      ? `the lead of team ${JSON.stringify(name)}`
+      : `the user, in team ${JSON.stringify(name)}`;
+  return `${author}. Reply in this thread opening with @${teamHandle({ name })} to answer there`;
+}
+
 function teamForTool({ id: teamId, name, purpose, directory, model }: Team) {
   return {
     teamId,
     uri: teamUri({ type: "team", teamId }),
     membersUri: teamUri({ type: "members", teamId }),
     name,
+    // Another team's lead reaches this one by opening a message with this mention.
+    mention: `@${teamHandle({ name })}`,
     ...(purpose ? { purpose } : {}),
     directory,
     model,
@@ -593,6 +637,8 @@ const commonTeamAgentTools = [
   setTeamStatusTool,
   reactToTeamMessageTool,
   shareTeamArtifactFromAgentTool,
+  readTeamPerformanceTool,
+  proposeTeamAdviceTool,
 ];
 
 export const teamLeadTools = [

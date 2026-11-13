@@ -6,6 +6,7 @@ export const TEAM_PANELS = [
   "tasks",
   "artifacts",
   "routines",
+  "performance",
   "security",
 ] as const;
 

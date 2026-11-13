@@ -11,11 +11,13 @@ import {
   type TeamMessage,
 } from "./model";
 import {
+  getTeamPerformance,
   getTeamThreadSequence,
   getTeamUsage,
   listTeams,
   searchTeamMessages,
 } from "@teams/server/functions";
+import type { PerformanceBucket } from "./model/performance";
 import { TeamStreamError, streamTeam } from "./stream";
 import { removeTeamFromList } from "./queryCache";
 
@@ -67,6 +69,13 @@ export const teamQueries = {
       queryFn: ({ signal }) => getTeamUsage({ data: { teamId }, signal }),
       staleTime: 5_000,
       refetchInterval: 5_000,
+    }),
+  performance: (teamId: string, bucket: PerformanceBucket) =>
+    queryOptions({
+      queryKey: [...teamQueries.all(), "performance", teamId, bucket] as const,
+      queryFn: ({ signal }) => getTeamPerformance({ data: { teamId, bucket }, signal }),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
     }),
   detail: (teamId: string) =>
     queryOptions({

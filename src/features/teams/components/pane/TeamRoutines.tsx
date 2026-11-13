@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronRight, Clock3, Play, Trash2 } from "lucide-react";
-import type { Team, TeamRoutine } from "@teams/model";
+import { teamAgentIdentity, type Team, type TeamAgent, type TeamRoutine } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
 import { Badge } from "@/shared/ui/badge";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
@@ -10,8 +10,16 @@ import { nextCronOccurrence } from "@/shared/cron";
 import { RowMenu } from "./overview/RowMenu";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 
-/** The lead's scheduled prompts, each of which the user can run now or delete. */
-export function TeamRoutines({ team, routines }: { team: Team; routines: TeamRoutine[] }) {
+/** Scheduled prompts for team agents, each of which the user can run now or delete. */
+export function TeamRoutines({
+  team,
+  routines,
+  agents,
+}: {
+  team: Team;
+  routines: TeamRoutine[];
+  agents: TeamAgent[];
+}) {
   return (
     <section aria-label="Routines" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
       <TeamPanelHeader icon={Clock3} title="Routines">
@@ -26,6 +34,7 @@ export function TeamRoutines({ team, routines }: { team: Team; routines: TeamRou
                 teamId={team.id}
                 paused={team.paused}
                 routine={routine}
+                recipient={teamAgentIdentity(agents, routine.agentId ?? team.id).name}
               />
             ))}
           </div>
@@ -43,10 +52,12 @@ function RoutineItem({
   teamId,
   paused,
   routine,
+  recipient,
 }: {
   teamId: string;
   paused: boolean;
   routine: TeamRoutine;
+  recipient: string;
 }) {
   const { mutate: runRoutine, error: runError } = useMutation(teamMutations.runRoutine(teamId));
   const { mutate: deleteRoutine } = useMutation(teamMutations.deleteRoutine(teamId));
@@ -62,6 +73,7 @@ function RoutineItem({
           />
           <span className="flex min-w-0 flex-col items-start gap-1">
             <span className="text-foreground/90">{routine.title}</span>
+            <Badge variant="metadata">Runs as {recipient}</Badge>
             <Badge variant="metadata" title={routine.schedule}>
               <Clock3 className="h-3 w-3 shrink-0" />
               {paused ? (
