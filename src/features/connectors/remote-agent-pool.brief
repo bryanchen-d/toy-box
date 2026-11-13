@@ -124,6 +124,30 @@
           "sources": [
             "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills"
           ]
+        },
+        {
+          "id": "f-host-auth",
+          "statement": "A standalone agent host's Copilot provider requires the client to `authenticate` `https://api.github.com` with a GitHub token before it runs turns; the owner's gh CLI token works.",
+          "whyItMatters": "The pool, not the node, supplies the owner's credential to each node connection.",
+          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+        },
+        {
+          "id": "f-create-conflict",
+          "statement": "Creating a session whose URI already exists is rejected with `-32002` (\"Conflicting chat storage identity\"), not the documented `-32003`.",
+          "whyItMatters": "A retried create is detected by subscribing to the session URI, not by matching an error code.",
+          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+        },
+        {
+          "id": "f-active-client-subscription",
+          "statement": "A client's active-client role and tools last only while it holds a subscription to the session; unsubscribing removes them, while a 20-second disconnect keeps them and a pending call to the client's tool, which completes after reconnecting with the same client ID.",
+          "whyItMatters": "The pool keeps every open remote session subscribed, under one stable client ID.",
+          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+        },
+        {
+          "id": "f-background-work",
+          "statement": "An autopilot turn can end while its shell keeps running as background work; that work's completion reaches the agent later as a system notification.",
+          "whyItMatters": "A finished turn does not mean the session is idle.",
+          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
         }
       ]
     },
@@ -278,8 +302,9 @@
           "subject": "Pool definition",
           "change": "new",
           "values": {
-            "behavior": "An `agentPool` connector lists its nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Agent Teams stores no secrets and reads the token file when connecting."
-          }
+            "behavior": "An `agentPool` connector lists its nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Agent Teams stores no secrets: it reads the token file when connecting and authenticates each node connection with the owner's GitHub token from the gh CLI."
+          },
+          "basedOn": ["f-host-auth"]
         },
         {
           "id": "r-placement",
@@ -294,17 +319,18 @@
           "subject": "Thread is a session",
           "change": "new",
           "values": {
-            "behavior": "A thread holds one remote session. Follow-ups start its next turn or steer the running one; replies resolve its open question; `/stop` cancels the running turn; `/close` runs a wrap-up turn, then archives the session."
-          }
+            "behavior": "A thread holds one remote session, which the pool keeps subscribed under one stable client ID while it is open. Follow-ups start its next turn or steer the running one; replies resolve its open question; `/stop` cancels the running turn; `/close` runs a wrap-up turn, then archives the session."
+          },
+          "basedOn": ["f-active-client-subscription"]
         },
         {
           "id": "r-idempotent",
           "subject": "Safe retries",
           "change": "new",
           "values": {
-            "behavior": "Session URIs derive from the conversation and turn IDs from team message IDs, so a retried create or send never duplicates work, and each finished turn is reported once."
+            "behavior": "Session URIs derive from the conversation and turn IDs from team message IDs. Before creating a session the pool subscribes to its URI, so a retried create or send never duplicates work, and each finished turn is reported once."
           },
-          "basedOn": ["f-client-ids"]
+          "basedOn": ["f-client-ids", "f-create-conflict"]
         },
         {
           "id": "r-first-note",
@@ -328,9 +354,9 @@
           "subject": "Results",
           "change": "new",
           "values": {
-            "behavior": "Each finished turn posts its final answer as a reply to the latest team message the session received. A final answer of exactly `NO_UPDATE` posts nothing. A question posts as a message, and the next reply answers it."
+            "behavior": "Each finished turn posts its final answer, the turn's last markdown part, as a reply to the latest team message the session received. A turn with no answer, or an answer of exactly `NO_UPDATE`, posts nothing. A question posts as a message, and the next reply answers it. A session whose background work still runs stays busy after its turn ends."
           },
-          "basedOn": ["f-bryanbot-ahp"]
+          "basedOn": ["f-bryanbot-ahp", "f-background-work"]
         },
         {
           "id": "r-files-in",
@@ -692,31 +718,42 @@
           "id": "q-tunnel-ws",
           "question": "Does a Bun WebSocket reach `code agent host` through a private dev tunnel with the tunnel authorization header and the AHP token, and reconnect after a drop?",
           "answerMethod": "run-experiment",
+          "impact": "The package's `WebSocketTransport` cannot set headers, so a tunnel needs a small transport over Bun's `WebSocket`, which can.",
           "affects": ["r-pool-config", "r-thread-session"]
         },
         {
           "id": "q-ahp-client",
           "question": "Does `@microsoft/agent-host-protocol` 1.0.0 work with today's Insiders agent host, and can a turn's final answer be read reliably from chat state?",
           "answerMethod": "run-experiment",
-          "affects": ["r-thread-session", "r-results"]
+          "affects": ["r-thread-session", "r-results"],
+          "answer": "Yes. On brchen-db4 the 1.0.0 client negotiated protocol 1.0.0 with Insiders agent host 944d79c over Bun's global WebSocket. A completed turn keeps its client-chosen ID, and in autopilot its last markdown part is a \"**Task completed:**\" summary that states the answer."
         },
         {
           "id": "q-steering",
           "question": "Does a steering message land in a running turn on today's Insiders host?",
           "answerMethod": "run-experiment",
-          "affects": ["d-busy"]
+          "affects": ["d-busy"],
+          "answer": "Yes. The host accepts it mid-turn and the agent applies it at its next step; when the turn ends first, here because its shell moved to background work, the agent applies it at the start of the next turn."
         },
         {
           "id": "q-resource-attach",
           "question": "Can a file written to the node with `resourceWrite` be attached to a turn?",
           "answerMethod": "run-experiment",
-          "affects": ["r-files-in"]
+          "affects": ["r-files-in"],
+          "answer": "Yes. A file written with `resourceWrite` and attached as a resource attachment was read by the agent, which quoted its contents."
         },
         {
           "id": "q-client-tools",
           "question": "Is a client tool call made while the pool is disconnected answered after it reconnects?",
           "answerMethod": "run-experiment",
-          "affects": ["r-pool-tools"]
+          "affects": ["r-pool-tools"],
+          "answer": "Yes, for a 20-second disconnect: the host kept the client's tools and the running call, and completing it after reconnecting with the same client ID finished the turn. The protocol lets a host time out a call whose client stays away, so a longer outage can fail it."
+        },
+        {
+          "id": "q-background-wake",
+          "question": "When a session's background work ends after its turn, does the host start a turn by itself, or must the pool wake the session?",
+          "answerMethod": "run-experiment",
+          "affects": ["r-results", "r-wakes"]
         },
         {
           "id": "q-ui-concurrency",
@@ -766,7 +803,7 @@
               "id": "s-bryanbot-reply-to",
               "title": "Send `replyTo` from BryanBot",
               "doneWhen": "Every BryanBot event answering an Agent Teams message carries that message's ID, and BryanBot's connector tests pass.",
-              "status": "in-progress",
+              "status": "complete",
               "implements": ["r-bryanbot-reply-to"]
             }
           ]
