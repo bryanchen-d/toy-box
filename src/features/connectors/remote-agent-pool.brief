@@ -766,19 +766,8 @@
               "id": "s-bryanbot-reply-to",
               "title": "Send `replyTo` from BryanBot",
               "doneWhen": "Every BryanBot event answering an Agent Teams message carries that message's ID, and BryanBot's connector tests pass.",
+              "status": "in-progress",
               "implements": ["r-bryanbot-reply-to"]
-            }
-          ]
-        },
-        {
-          "id": "phase-kinds",
-          "title": "Connector kinds",
-          "steps": [
-            {
-              "id": "s-link-by-kind",
-              "title": "Let each connector kind supply its link",
-              "doneWhen": "The registry starts every link through a per-kind factory, and service connectors behave as before with their existing tests passing unchanged.",
-              "implements": ["r-link-by-kind"]
             }
           ]
         },
@@ -813,8 +802,8 @@
             {
               "id": "s-pool-config",
               "title": "Define pool connectors and their nodes",
-              "doneWhen": "A pool connector with brchen-db3 can be added and edited in the connector dialog and shows Connected over the private tunnel.",
-              "implements": ["r-pool-config", "r-pool-dialog", "d-path"]
+              "doneWhen": "The registry starts every connector's link by its kind, with service connectors' existing tests passing unchanged; a pool connector with brchen-db3 can be added and edited in the connector dialog and shows Connected over the private tunnel.",
+              "implements": ["r-link-by-kind", "r-pool-config", "r-pool-dialog", "d-path"]
             },
             {
               "id": "s-pool-sessions",
