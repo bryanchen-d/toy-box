@@ -692,7 +692,7 @@ export function publishTeamChange({ teamId, events, team }: TeamChange): void {
 
 /**
  * Delivers a wake into the agent's turn at once, then records how it landed, so the team can see
- * how often its agents are interrupted. `cause` names the message that woke it, when one did.
+ * how often new input reaches its agents mid-turn. `cause` names the message that woke it, when one did.
  */
 async function wakeTeamAgent(
   agentId: string,

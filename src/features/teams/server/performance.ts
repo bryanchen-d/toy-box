@@ -78,7 +78,7 @@ export async function readTeamPerformanceForAgent(sessionId: string, bucket: Per
     from: performance.from,
     to: performance.to,
     deliveries:
-      "started: the wake began a turn while the agent was idle. steered: it interrupted the agent's running turn with the prompt. queued: it waited for that turn to end.",
+      "started: the wake began a turn while the agent was idle. steered: it joined the agent's running turn at its next step, without stopping current work. queued: it waited for that turn to end.",
     agents: performance.agents.map(({ agentId, ...stats }) => ({
       agentId,
       name: name(agentId),

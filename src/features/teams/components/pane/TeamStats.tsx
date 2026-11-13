@@ -20,7 +20,7 @@ import { cn } from "@/shared/utils";
 import { useTeamPane } from "./TeamPaneContext";
 
 const STEERED_TITLE =
-  "Wakes that interrupted the agent's running turn with the prompt, rather than starting a turn or waiting for it to end.";
+  "Wakes that joined the agent's running turn at its next step, without stopping its current work, rather than starting a turn or waiting for it to end.";
 
 /** What a count chart stacks per agent in one bucket. */
 const COUNT_METRICS = {
@@ -319,7 +319,7 @@ function deliveryColumns<
     {
       key: "steeredShare",
       label: "Steered %",
-      title: "The share of recorded wakes that interrupted a running turn.",
+      title: "The share of recorded wakes that joined a running turn.",
       numeric: true,
       sortValue: share,
       render: (row) => {

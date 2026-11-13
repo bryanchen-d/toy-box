@@ -32,7 +32,8 @@ export type RuntimeActivity = {
 
 /**
  * How a wake reached its agent: `started` a turn while the agent was idle, `steered` the turn it was
- * running by interrupting it with the prompt, or `queued` behind that turn.
+ * running by joining it at its next step without stopping current work, or `queued` behind that
+ * turn.
  */
 export const WAKE_DELIVERIES = ["started", "steered", "queued"] as const;
 export type WakeDelivery = (typeof WAKE_DELIVERIES)[number];

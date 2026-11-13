@@ -231,8 +231,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   they don't count as answers.
 - `wakeTeamAgent` records each delivery's outcome in `team_wakes`: its cause (message, routine, or
   follow-up), the message author and sequence when a message caused it, and the Sessions
-  disposition. `started` woke an idle agent, `steered` injected the prompt into its running turn
-  (what the panel calls interrupted), and `queued` waited for that turn to end. Wakes before
+  disposition. `started` woke an idle agent, `steered` joined its running turn at the next model
+  step without stopping current work, and `queued` waited for that turn to end. No team delivery
+  aborts a turn, so there is no interrupted outcome; only the user's Stop does that. Wakes before
   recording began were backfilled by hand from provider histories; aborted turns aren't counted.
 - Advice (`model/advice.ts`) is one finding with its evidence and one typed action: `message_lead`
   tells the lead what to change, and `move_members` moves current members, never the lead, to an
