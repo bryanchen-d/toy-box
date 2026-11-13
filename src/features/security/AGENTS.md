@@ -38,7 +38,9 @@ SecurityFinding   a durable record of flagged content; open, it holds its sessio
 ## Where content is labeled
 
 - Copilot and Claude replace untrusted tool results through their post-tool hooks, so the model
-  only ever sees the envelope, and its verdict is recorded before the model acts on it.
+  only ever sees the envelope, and its verdict is recorded before the model acts on it. Copilot
+  saves a result too large to show to a file before hooks run, so its hook reads that file: the
+  judge sees the whole result, and the envelope wraps the notice the model reads.
 - Codex can't rewrite or hold tool activity through its app-server, so its connection screens
   completed root-thread commands, MCP calls, and web searches after the fact. That records attacks,
   but Codex actions are not gated, and its subagents' results aren't screened.
@@ -48,19 +50,30 @@ SecurityFinding   a durable record of flagged content; open, it holds its sessio
   screens them before dispatch, so the prompt carries the verdict and the finding exists when the
   task's session starts.
 
-`receiveUntrustedContent` screens content, records a finding for an attack with `recordScreening`,
-and returns the envelope. A finding keeps the judge's quote only when the content contains it,
-ignoring whitespace; otherwise it quotes the content's start, so the passage shown is never the
-model's invention.
-
-## Screening
-
-`server/judge.ts` asks a small model (Haiku, then mini, flash, nano, or lite) from any enabled
+`receiveUntrustedContent` screens content with `screenUntrustedContent`, records a finding for an
+attack with `recordScreening`, and retur`server/judge.ts` asks a small model (Haiku, then mini, flash, nano, or lite) from any enabled
 provider that implements `respond` for a JSON verdict. Copilot answers through a short-lived,
 tool-less session that it deletes and hides from the catalog. Because a finding holds its session,
-the instructions name ordinary work as not an attack: teammates and agents coordinating, tool, CI,
-and log output with links and status lines, and discussion of injections or safeguards. Verdicts
-are cached by content hash, at most two judgments run at once, and long content keeps its first
+each flag is confirmed by a stronger model (Sonnet) before it's recorded, and its verdict is the one
+kept; without one, the small model's flag stands. Flags are rare, so confirmation costs little, while
+every screening on the stronger model would cost a request per untrusted read.
+
+The judge is told where content came from and, for command output, the whole command. A command
+often mixes what it fetched from others with what it read locally, like the agent's saved
+`read_team` output alongside a `gh pr view` status check, so only the fetched part is untrusted:
+local files, saved tool output, git, and the team's own messages from the owner and its agents are
+context, whatever they ask for. The instructions also name ordinary work as not an attack: requests
+and reports, tool, CI, and log output with links and status lines, and discussion of injections or
+safeguards.
+
+The judge learns from the owner. `screenUntrustedContent` passes the 8 findings most recently
+closed as not attacks, one per quoted passage, as examples to skip from a similar source. They come
+from the findings record, so reopening a finding or closing it as an attack withdraws it, and only
+the owner can add one. Verdicts are cached by what was judged, including those examples, at most
+two judgments run at once, and long content keeps its first 18,000 and last 6,000 characters.
+Screening fails open: without a verdict the content is still labeled but holds nothing.
+
+cached by content hash, at most two judgments run at once, and long content keeps its first
 18,000 and last 6,000 characters. Screening fails open: without a verdict the content is still
 labeled but holds nothing.
 

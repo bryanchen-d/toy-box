@@ -21,18 +21,33 @@ import { explainFinding, screenContent } from "./judge";
 const EXCERPT_LENGTH = 2_000;
 const QUOTE_LENGTH = 300;
 const CLOSED_PAGE_SIZE = 20;
+/** How many of the owner's dismissed flags teach the judge, newest first. */
+const DISMISSED_EXAMPLES = 8;
 
 /**
  * Receive content from someone other than the owner into a session: screen it, record it when
- * it's an attack, and return the envelope the agent should read.
+ * it's an attack, and return the envelope the agent should read. When the agent reads only a
+ * notice of where the content was saved, the envelope wraps that notice.
  */
 export async function receiveUntrustedContent(
   sessionId: string,
   content: UntrustedContent,
+  notice?: string,
 ): Promise<string> {
-  const screening = await screenContent(content.text);
+  const screening = await screenUntrustedContent(content);
   await recordScreening(sessionId, content, screening);
-  return wrapUntrustedContent(content, screening);
+  return wrapUntrustedContent({ ...content, text: notice ?? content.text }, screening);
+}
+
+/** Judge content, learning from the flags the owner most recently closed as not attacks. */
+export async function screenUntrustedContent(
+  content: UntrustedContent,
+): Promise<Screening | undefined> {
+  const db = await getStateDatabase({ createIfMissing: false });
+  const dismissed = db
+    ? await new SecurityDatabase(db).listDismissedFindings(DISMISSED_EXAMPLES)
+    : [];
+  return screenContent(content, dismissed);
 }
 
 /** Record a session's screened content when the judge found an attack in it. */

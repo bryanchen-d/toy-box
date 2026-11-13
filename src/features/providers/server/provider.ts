@@ -20,8 +20,12 @@ export interface SessionToolGuard {
     action: AgentAction,
     signal?: AbortSignal,
   ): Promise<{ allowed: true } | { allowed: false; reason: string }>;
-  /** The text the model should read for a tool's result: the same, or marked untrusted. */
-  screen(action: AgentAction, result: string): Promise<string>;
+  /**
+   * The text the model should read for a tool's result: the same, or marked untrusted. When the
+   * model reads only a notice that the provider saved the full result elsewhere, `saved` is that
+   * full result, which is what gets judged.
+   */
+  screen(action: AgentAction, result: string, saved?: string): Promise<string>;
 }
 
 export type SessionConfiguration = {

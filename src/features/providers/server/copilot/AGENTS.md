@@ -30,8 +30,10 @@ only to the model (`binaryResultsForLlm`), such as `view` and screenshots, stay 
 can attach it.
 `guard.ts` applies Security's tool guard through the same hooks. `onPreToolUse` reviews every call
 and may hold it for the owner's approval; Copilot waits for the hook. `onPostToolUse` replaces an
-untrusted result's `textResultForLlm` with its envelope. Copilot names MCP tools
-`<server>-<tool>`, and none of its own tools contain a hyphen. `respond.ts` answers Security's
+untrusted result's `textResultForLlm` with its envelope. Copilot saves a result too large to show
+to a temp file before hooks run and passes the hook a notice naming it, so `onPostToolUse` reads
+that file (only Copilot's own `<n>-copilot-tool-output-<id>.txt`) for the judge. Copilot names MCP
+tools `<server>-<tool>`, and none of its own tools contain a hyphen. `respond.ts` answers Security's
 one-off prompts in a tool-less session with no config discovery, deleted afterwards and hidden from
 `listSessions()` meanwhile.
 

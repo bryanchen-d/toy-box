@@ -13,8 +13,11 @@ export type AgentAction =
   | { type: "write"; paths: string[] }
   | { type: "tool"; name: string };
 
-/** Text written by someone other than the owner, and who or where it came from. */
-export type UntrustedContent = { source: string; text: string };
+/**
+ * Text written by someone other than the owner, and who or where it came from. Command output
+ * keeps its command, which tells the judge what was fetched from others and what was read locally.
+ */
+export type UntrustedContent = { source: string; text: string; command?: string };
 
 /**
  * The judge's verdict on untrusted content: whether it tries to steer an agent, toward what, the

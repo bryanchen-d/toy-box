@@ -2,8 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { dispatchInboxTask } from "@inbox/server/functions";
 import { inboxPageContent, inboxPagePrompt, inboxPageSchema } from "@inbox/model";
-import { recordScreening } from "@security/server";
-import { screenContent } from "@security/server/judge";
+import { recordScreening, screenUntrustedContent } from "@security/server";
 import { attachmentsSchema } from "@/shared/attachments/model";
 
 const inboxInputSchema = z.object({
@@ -28,7 +27,7 @@ export const Route = createFileRoute("/api/inbox")({
         const { prompt, page, attachments } = input;
         // Screening first warns the agent in its prompt and holds risky actions from its start.
         const untrusted = page && inboxPageContent(page);
-        const screening = untrusted && (await screenContent(untrusted.text));
+        const screening = untrusted && (await screenUntrustedContent(untrusted));
         const result = await dispatchInboxTask({
           data: {
             message: {

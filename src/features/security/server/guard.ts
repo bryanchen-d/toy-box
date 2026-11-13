@@ -23,9 +23,18 @@ export function createSessionGuard(sessionId: string, ask?: ApprovalRequest): Se
         reason: refusalReason(review, review.decision === "ask" ? "declined" : "unattended"),
       };
     },
-    async screen(action, result) {
+    async screen(action, result, saved) {
       const source = untrustedSource(action);
-      return source ? receiveUntrustedContent(sessionId, { source, text: result }) : result;
+      if (!source) return result;
+      return receiveUntrustedContent(
+        sessionId,
+        {
+          source,
+          text: saved ?? result,
+          ...(action.type === "command" ? { command: action.command } : {}),
+        },
+        saved === undefined ? undefined : result,
+      );
     },
   };
 }

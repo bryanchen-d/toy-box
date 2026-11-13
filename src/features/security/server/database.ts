@@ -45,6 +45,21 @@ export class SecurityDatabase {
     return rows.map(findingFromRow);
   }
 
+  /** Findings the owner most recently closed as not attacks, one per quoted passage. */
+  async listDismissedFindings(limit: number): Promise<SecurityFinding[]> {
+    const rows = await this.db<FindingRow[]>`
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY quote ORDER BY closed_at DESC, id DESC) AS recency
+        FROM security_findings
+        WHERE outcome = 'false-positive'
+      )
+      WHERE recency = 1
+      ORDER BY closed_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+    return rows.map(findingFromRow);
+  }
+
   /** Record a finding, or return undefined when the session already recorded this content. */
   async addFinding(
     finding: Omit<SecurityFinding, "id" | "detectedAt" | "closed">,

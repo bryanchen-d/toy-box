@@ -1,4 +1,7 @@
 import { expect, mock, onTestFinished, spyOn, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SessionHooks } from "@github/copilot-sdk";
 import type { SessionToolGuard } from "@providers/server/provider";
 import * as generatedImages from "./generatedImages";
@@ -80,6 +83,37 @@ test("an untrusted result reaches the model screened; a trusted one is left alon
     modifiedResult: { textResultForLlm: "[labeled] page text", resultType: "success" },
   });
   expect(await post("view", { path: "a.ts" })).toBeUndefined();
+});
+
+test("a result Copilot saved to a file is screened in full, and no other file is read", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "copilot-guard-"));
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const saved = join(directory, "1794535376548-copilot-tool-output-33568-4f2e.txt");
+  const other = join(directory, "notes.txt");
+  await writeFile(saved, "the whole issue thread");
+  await writeFile(other, "private notes");
+  const screen = mock<SessionToolGuard["screen"]>(async (_action, result) => result);
+  const hooks = copilotGuardHooks({ review: async () => ({ allowed: true }), screen });
+  const post = (path: string) =>
+    hooks.onPostToolUse!(
+      {
+        ...base,
+        toolName: "powershell",
+        toolArgs: { command: "gh issue view 7" },
+        toolResult: {
+          textResultForLlm: `Output too large to read at once (51.7 KB). Saved to: ${path}\nPreview (first 500 chars):\n…`,
+          resultType: "success",
+        },
+      } as PostToolUseHookInput,
+      { sessionId: "native" },
+    );
+
+  await post(saved);
+  await post(other);
+  expect(screen.mock.calls.map(([, , savedResult]) => savedResult)).toEqual([
+    "the whole issue thread",
+    undefined,
+  ]);
 });
 
 test("generated images are still saved and reported to the model", async () => {
