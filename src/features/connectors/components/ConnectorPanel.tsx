@@ -29,7 +29,7 @@ export function ConnectorPanel({
         onExpandedChange={onExpandedChange}
         // An unreachable connector needs the user to restore it, even while the section is folded.
         activity={{ waiting: connectors.some(({ status }) => status.state === "unreachable") }}
-        emptyMessage="Connect an outside service, like a chat bot, that every team can talk to."
+        emptyMessage="Connect an outside service, like a chat bot, or a pool of agent nodes that every team can talk to."
         action={
           <Tooltip>
             <TooltipTrigger

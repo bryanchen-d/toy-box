@@ -847,6 +847,7 @@
               "id": "s-pool-config",
               "title": "Define pool connectors and their nodes",
               "doneWhen": "The registry starts every connector's link by its kind, with service connectors' existing tests passing unchanged; a pool connector with brchen-db3 can be added and edited in the connector dialog and shows Connected over the private tunnel.",
+              "status": "complete",
               "implements": ["r-link-by-kind", "r-pool-config", "r-pool-dialog", "d-path"]
             },
             {
