@@ -484,11 +484,11 @@
           }
         },
         {
-          "id": "r-ssh-signing",
+          "id": "r-signing",
           "subject": "Commit signing",
           "change": "new",
           "values": {
-            "behavior": "Nodes sign commits with an SSH key held by Windows ssh-agent, so no passphrase prompt blocks unattended work."
+            "behavior": "Nodes keep the owner's GPG signing. Before committing, a session checks without prompting that the passphrase is cached; when it isn't, the session asks the owner to unlock the key on the node rather than leaving a commit waiting on a prompt nobody sees. The installer's `-SshSigning` stays available for a node that should sign unattended."
           }
         },
         {
@@ -698,15 +698,17 @@
             {
               "id": "o-ssh-signing",
               "label": "An SSH key held by Windows ssh-agent",
-              "rationale": "GitHub marks the commits Verified and nobody is asked for a passphrase."
+              "rationale": "GitHub marks the commits Verified and nobody is asked for a passphrase.",
+              "tradeoff": "Replaces the owner's GPG signing on the node."
             },
             {
               "id": "o-gpg-signing",
-              "label": "GPG",
-              "tradeoff": "Unattended nodes keep asking for the passphrase."
+              "label": "The owner's GPG key, unlocked by the owner when needed",
+              "rationale": "Keeps the owner's existing key; once unlocked it stays cached for hours (8 on brchen-db3).",
+              "tradeoff": "A session that needs to commit after the cache expires waits for the owner."
             }
           ],
-          "choice": { "optionId": "o-ssh-signing", "status": "decided" }
+          "choice": { "optionId": "o-gpg-signing", "status": "decided" }
         }
       ]
     },
@@ -833,9 +835,9 @@
             {
               "id": "s-node-skill",
               "title": "Install the agent-node skill, setup record, and signing",
-              "doneWhen": "A new session on the node finds the `agent-node` skill, records a confirmed setup without secrets, and makes an SSH-signed commit that GitHub marks Verified.",
+              "doneWhen": "A new session on the node finds the `agent-node` skill, records a confirmed setup without secrets, and, finding the signing passphrase not cached, asks the owner to unlock it instead of committing, then commits signed once the owner has.",
               "status": "in-progress",
-              "implements": ["r-node-skill", "r-setup-record", "r-ssh-signing", "d-signing"]
+              "implements": ["r-node-skill", "r-setup-record", "r-signing", "d-signing"]
             }
           ]
         },
