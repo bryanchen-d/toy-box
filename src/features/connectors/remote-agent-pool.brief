@@ -442,8 +442,9 @@
           "subject": "Agent host task",
           "change": "new",
           "values": {
-            "behavior": "A logon task in the owner's desktop session runs `code-insiders agent host` on a fixed localhost port with a connection token file, behind a private dev tunnel only the owner can reach, and updates the CLI before each start."
+            "behavior": "A logon task in the owner's desktop session runs a supervisor that starts `code-insiders agent host` from a standalone CLI under `~/.agent-node`, on a fixed localhost port with a connection token file, and hosts the private owner-only dev tunnel that forwards it. It restarts either one when it exits and stops anything an earlier supervisor left running."
           },
+          "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
           "basedOn": ["f-standalone-host", "f-host-updates", "f-tunnel-host"]
         },
         {
@@ -451,8 +452,9 @@
           "subject": "Idle maintenance",
           "change": "new",
           "values": {
-            "behavior": "When no session is running, maintenance updates the CLI, pulls each listed workspace with `git pull --ff-only`, reinstalls the kit, and restarts the host."
+            "behavior": "Once the host has run for a day, the supervisor restarts it the next time no turn is running and no UI hold is taken, updating the standalone CLI first, so CLI and agent host updates apply. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
           },
+          "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
           "basedOn": ["f-host-updates"]
         },
         {
@@ -816,18 +818,21 @@
               "id": "s-node-host",
               "title": "Serve the Insiders agent host on brchen-db3",
               "doneWhen": "After logon, brchen-db3 serves the agent host on a fixed port behind a private dev tunnel, and an idle maintenance run updates the CLI and workspaces, then restarts the host.",
+              "status": "in-progress",
               "implements": ["r-node-host", "r-node-maintenance", "r-node-setup-script", "d-quality"]
             },
             {
               "id": "s-ui-slot",
               "title": "Build `ui-slot` and the RDP hold",
               "doneWhen": "Of six concurrent `ui-slot run` calls, five run and one waits; a desktop hold waits for all slots and blocks new ones; killing a holder frees its slot; an RDP connect pauses desktop holds and a disconnect returns the session to the console unlocked.",
+              "status": "in-progress",
               "implements": ["r-ui-slot", "r-rdp-hold", "d-ui-capacity"]
             },
             {
               "id": "s-node-skill",
               "title": "Install the agent-node skill, setup record, and signing",
               "doneWhen": "A new session on the node finds the `agent-node` skill, records a confirmed setup without secrets, and makes an SSH-signed commit that GitHub marks Verified.",
+              "status": "in-progress",
               "implements": ["r-node-skill", "r-setup-record", "r-ssh-signing", "d-signing"]
             }
           ]
