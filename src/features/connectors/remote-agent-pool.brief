@@ -484,14 +484,6 @@
           }
         },
         {
-          "id": "r-signing",
-          "subject": "Commit signing",
-          "change": "new",
-          "values": {
-            "behavior": "Nodes keep the owner's GPG signing. Before committing, a session checks without prompting that the passphrase is cached; when it isn't, the session asks the owner to unlock the key on the node rather than leaving a commit waiting on a prompt nobody sees. The installer's `-SshSigning` stays available for a node that should sign unattended."
-          }
-        },
-        {
           "id": "r-node-skill",
           "subject": "`agent-node` skill",
           "change": "new",
@@ -505,7 +497,7 @@
           "subject": "Setup script",
           "change": "new",
           "values": {
-            "behavior": "One script installs the host task, tunnel, kit, skill, RDP tasks, gh and signing, and power settings, so adding a node is one run."
+            "behavior": "One script installs the host task, tunnel, kit, skill, RDP tasks, gh, and power settings, so adding a node is one run."
           },
           "basedOn": ["f-tunnel-host"]
         }
@@ -516,7 +508,7 @@
       "title": "PR workflow skill",
       "purpose": "Show that the full PR lifecycle is a workflow on top of the pool, owned by the workspace it serves.",
       "kind": "markdown",
-      "body": "A `remote-pr` skill in vscode-space builds on its `github-pr`, `worktree-isolation`, and `demo-capture` skills. The requesting agent and the remote session both read it.\n\n**The handoff** is a new top-level `@pool` message carrying:\n\n- the goal and deliverable: a merged fix, a draft for review, or an investigation only;\n- the analysis so far, with evidence attached as files;\n- the suspected fix location as repo, path, and symbol at a commit SHA, never local paths;\n- acceptance criteria and required validation, including UI scenarios and whether video evidence is needed;\n- the PR's shape: linked issue, reviewers, labels;\n- the merge rule: drive to merge, stop at approval, or the conditions for closing.\n\nThe requester hands over the whole task and does not also work on it locally.\n\n**The remote session's stages** each end the turn, so waiting holds no slot:\n\n1. Start: update the vscode-space root, create a worktree from the latest upstream, and ask only if its findings contradict the handoff.\n2. Build: implement, build, and test.\n3. Validate: run UI work through `ui-slot`, and capture evidence with demo-capture.\n4. Draft PR: make signed commits, post the PR link and evidence, `set_status`, then `wake_after`.\n5. Green: fix CI and address Copilot code review threads; wakes that find nothing new end with `NO_UPDATE`; mark the PR ready and request reviewers.\n6. Approval: wake every few hours, and ask the requester only for decisions or stalled reviews.\n7. Merge, or close only with the requester's confirmation unless the handoff allows it.\n8. Clean up: remove the worktree and branch, post the outcome, and call `finish`.\n\nRemote sessions may commit and push learnings and task logs to the vscode-space root on their node. They stage only their own files and resolve conflicts themselves."
+      "body": "A `remote-pr` skill in vscode-space builds on its `github-pr`, `worktree-isolation`, and `demo-capture` skills. The requesting agent and the remote session both read it.\n\n**The handoff** is a new top-level `@pool` message carrying:\n\n- the goal and deliverable: a merged fix, a draft for review, or an investigation only;\n- the analysis so far, with evidence attached as files;\n- the suspected fix location as repo, path, and symbol at a commit SHA, never local paths;\n- acceptance criteria and required validation, including UI scenarios and whether video evidence is needed;\n- the PR's shape: linked issue, reviewers, labels;\n- the merge rule: drive to merge, stop at approval, or the conditions for closing.\n\nThe requester hands over the whole task and does not also work on it locally.\n\n**The remote session's stages** each end the turn, so waiting holds no slot:\n\n1. Start: update the vscode-space root, create a worktree from the latest upstream, and ask only if its findings contradict the handoff.\n2. Build: implement, build, and test.\n3. Validate: run UI work through `ui-slot`, and capture evidence with demo-capture.\n4. Draft PR: commit, post the PR link and evidence, `set_status`, then `wake_after`.\n5. Green: fix CI and address Copilot code review threads; wakes that find nothing new end with `NO_UPDATE`; mark the PR ready and request reviewers.\n6. Approval: wake every few hours, and ask the requester only for decisions or stalled reviews.\n7. Merge, or close only with the requester's confirmation unless the handoff allows it.\n8. Clean up: remove the worktree and branch, post the outcome, and call `finish`.\n\nRemote sessions may commit and push learnings and task logs to the vscode-space root on their node. They stage only their own files and resolve conflicts themselves."
     },
     {
       "id": "decisions",
@@ -690,25 +682,6 @@
             }
           ],
           "choice": { "optionId": "o-finish-archives", "status": "decided" }
-        },
-        {
-          "id": "d-signing",
-          "question": "How do nodes sign commits?",
-          "options": [
-            {
-              "id": "o-ssh-signing",
-              "label": "An SSH key held by Windows ssh-agent",
-              "rationale": "GitHub marks the commits Verified and nobody is asked for a passphrase.",
-              "tradeoff": "Replaces the owner's GPG signing on the node."
-            },
-            {
-              "id": "o-gpg-signing",
-              "label": "The owner's GPG key, unlocked by the owner when needed",
-              "rationale": "Keeps the owner's existing key; once unlocked it stays cached for hours (8 on brchen-db3).",
-              "tradeoff": "A session that needs to commit after the cache expires waits for the owner."
-            }
-          ],
-          "choice": { "optionId": "o-gpg-signing", "status": "decided" }
         }
       ]
     },
@@ -834,10 +807,10 @@
             },
             {
               "id": "s-node-skill",
-              "title": "Install the agent-node skill, setup record, and signing",
-              "doneWhen": "A new session on the node finds the `agent-node` skill, records a confirmed setup without secrets, and, finding the signing passphrase not cached, asks the owner to unlock it instead of committing, then commits signed once the owner has.",
+              "title": "Install the agent-node skill and setup record",
+              "doneWhen": "A new session on the node finds the `agent-node` skill and records a confirmed setup without secrets.",
               "status": "in-progress",
-              "implements": ["r-node-skill", "r-setup-record", "r-signing", "d-signing"]
+              "implements": ["r-node-skill", "r-setup-record"]
             }
           ]
         },
