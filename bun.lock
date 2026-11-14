@@ -10,6 +10,7 @@
         "@github/copilot-sdk": "^1.0.24",
         "@lostintangent/documint": "latest",
         "@lostintangent/leafnode": "^0.0.1",
+        "@microsoft/agent-host-protocol": "^1.0.0",
         "@modelcontextprotocol/sdk": "1.30.0",
         "@streamdown/code": "^1.1.1",
         "@tailwindcss/oxide": "^4.3.3",
@@ -276,6 +277,8 @@
     "@lostintangent/documint": ["@lostintangent/documint@0.1.0", "", { "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-LX86D8jDwsJu8U4mh5WcgXb9ruweTMaS3w8vvrRkmRWLIiC0PYgoXa6rmHdwB7PFaDtdX8bqbqHMDIcRG0wnLQ=="],
 
     "@lostintangent/leafnode": ["@lostintangent/leafnode@0.0.1", "", { "peerDependencies": { "@tanstack/react-store": "^0.11.0", "@tanstack/store": "^0.11.0", "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-EBCgYYKozeiZr3kk4Vh+DcyhON9HXwep7cPCpkRrJyX+YUXecsRxPktsVVUmk8zXTLLR1T9ks18Nn9w4nKAROw=="],
+
+    "@microsoft/agent-host-protocol": ["@microsoft/agent-host-protocol@1.0.0", "", {}, "sha512-swjikGoqZ/bv3Mn4vkkLzwpmS/j9tV7Aas7ruD2a/R3KVsUlokwCJNSET57mdsmZLMnrawDaCr/ctufbpjE4iA=="],
 
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.30.0", "", { "dependencies": { "@hono/node-server": "^1.19.9 || ^2.0.5", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA=="],
 

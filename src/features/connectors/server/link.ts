@@ -16,7 +16,11 @@ import {
   type ConnectorStatus,
   type ConnectorTransport,
 } from "../model";
-import type { ConnectorDatabase, ConnectorRecord, PendingConnectorMessage } from "./database";
+import type {
+  ConnectorDatabase,
+  PendingConnectorMessage,
+  ServiceConnectorRecord,
+} from "./database";
 
 /** A reachable base URL for a connector, and any headers its transport adds to each request. */
 export type ConnectorEndpoint = {
@@ -63,7 +67,7 @@ export class ConnectorLink {
   readonly #deps: Required<Omit<ConnectorLinkDependencies, "timing">>;
   readonly #timing: typeof DEFAULT_TIMING;
   readonly #abort = new AbortController();
-  #connector: ConnectorRecord;
+  #connector: ServiceConnectorRecord;
   #receivedThrough: number;
   #status: ConnectorStatus;
   /** The endpoint of the stream currently followed, which deliveries and acknowledgements use. */
@@ -78,7 +82,7 @@ export class ConnectorLink {
   #unreachableTimer: ReturnType<typeof setTimeout> | undefined;
   #directory: string | undefined;
 
-  constructor(connector: ConnectorRecord, dependencies: ConnectorLinkDependencies) {
+  constructor(connector: ServiceConnectorRecord, dependencies: ConnectorLinkDependencies) {
     this.#connector = connector;
     this.#receivedThrough = connector.receivedThrough;
     this.#deps = { fetch, now: () => new Date(), ...dependencies };

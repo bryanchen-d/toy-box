@@ -1,27 +1,39 @@
 # Connectors
 
-A connector is an app-level link to one outside service, such as a Slack bot, that every team can
-talk to. A team member or the user starts a team message with the connector's handle to send it
-that message. The connector answers later in the same thread, and it can start a conversation with any
-team on its own, for example to relay a Slack reply. Agent Teams always dials the connector and
-keeps that link open, so only the connector needs to be reachable. Messages in either direction
-survive a restart or an outage on either side for up to five days.
+A connector is an app-level link to something outside a team that every team can talk to. A team
+member or the user starts a team message with the connector's handle to send it that message. The
+connector answers later in the same thread. A connector is one of two kinds:
+
+- A **service**, such as a Slack bot, serves the connector protocol below. It can also start a
+  conversation with any team on its own, for example to relay a Slack reply. Agent Teams always
+  dials the service and keeps that link open, so only the service needs to be reachable. Messages in
+  either direction survive a restart or an outage on either side for up to five days.
+- An **agent pool** lists agent nodes, machines whose VS Code agent host Agent Teams drives directly
+  over the Agent Host Protocol (AHP), so that agents can run work in remote sessions there. Its
+  design and plan are in [remote-agent-pool.brief](remote-agent-pool.brief).
 
 ## Domain model
 
 ```text
-Connector      name (and the @handle derived from it), transport, client ID, received cursor
+Connector      name (and the @handle derived from it), kind, client ID, received cursor
+├─ service     transport
+├─ agentPool   nodes: name, transport, host token file, workspaces, scratch folder, compute slots, draining
 ├─ Status      connected, connecting, or unreachable, since when, and the last failure; live only
 ├─ Outbox      messages waiting for the connector, ordered per conversation
 └─ Conversation one exchange with the connector, mapped to one team thread by Teams
 ```
 
-- `Connector` owns its name and transport. Its `@handle` follows the agent mention grammar and is
-  unique across connectors. `transport` is `{ type: "http", url }` for a reachable base URL (the
-  same machine, the LAN, or a dev tunnel's web URL), or `{ type: "devtunnel", tunnelId, port }`.
+- `Connector` owns its name and its kind's definition, stored together as `definition`. Its
+  `@handle` follows the agent mention grammar and is unique across connectors. A transport is
+  `{ type: "http", url }` for a reachable base URL (the same machine, the LAN, or a dev tunnel's web
+  URL), or `{ type: "devtunnel", tunnelId, port }`.
+- A pool node names the file holding its agent host's connection token, which Agent Teams reads on
+  each connection, so it stores no secrets. Its workspaces map a repository, as `owner/name`, to the
+  folder holding it on the node.
 - The server keeps two private fields. `clientId` identifies this installation to the connector,
-  which routes its own outbox by it. `receivedThrough` is the last connector event applied, and the
-  stream resumes after it.
+  which routes its own outbox by it, or to each node's agent host, which keeps a client's tools
+  across reconnects. `receivedThrough` is the last service event applied, and the stream resumes
+  after it.
 - `ConnectorStatus` is never persisted: every server start begins connecting. A link that stays
   out of reach for 15 minutes becomes unreachable, keeping the time it lost the connector, until it
   reconnects, so an outage that needs someone to restore the connector can't go unnoticed.
@@ -58,7 +70,9 @@ where its team message attaches them by path.
 
 ## Link lifecycle
 
-`server/link.ts` owns one live link per connector:
+Each kind supplies its own link behind the same start, stop, deliver, and status interface, and
+`server/index.ts` starts the one a connector's kind needs. `server/link.ts` owns one live link per
+service connector:
 
 1. **Reach.** `server/devtunnel.ts` turns the transport into an endpoint: a base URL and the
    headers each request carries. A dev tunnel is reached at its port's HTTPS address with a
@@ -80,6 +94,15 @@ where its team message attaches them by path.
    jitter. Reconnecting resumes delivery.
 4. **Expire.** A message undelivered five days after it was queued is dropped, and the team that
    sent it gets a note. Reconnects back off from 1 second to 1 minute.
+
+`server/pool/` owns an agent pool's link. It holds one AHP connection per node
+(`server/pool/node.ts`), opened by `server/pool/transport.ts` over a Bun WebSocket that carries the
+dev tunnel's connect token, because the protocol package's own transport can't send headers. Each
+connection initializes under the connector's client ID, signs the host's agents in with the owner's
+GitHub token from the gh CLI, proves itself alive with pings, and reconnects with the same backoff
+and unreachable threshold as a service link. A pool is connected while any node is; otherwise its
+error names each node it can't reach. Requests to a pool wait in the outbox until the pool runs them
+as remote sessions.
 
 `server/index.ts` owns the registry of links, CRUD, and publication. Startup links every connector
 and returns cleanup that stops them. Starting a link replaces the registered one in a single step

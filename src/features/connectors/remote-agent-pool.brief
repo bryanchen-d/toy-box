@@ -827,7 +827,7 @@
               "id": "s-ui-slot",
               "title": "Build `ui-slot` and the RDP hold",
               "doneWhen": "Of six concurrent `ui-slot run` calls, five run and one waits; a desktop hold waits for all slots and blocks new ones; killing a holder frees its slot; an RDP connect pauses desktop holds and a disconnect returns the session to the console unlocked.",
-              "status": "in-progress",
+              "status": "complete",
               "implements": ["r-ui-slot", "r-rdp-hold", "d-ui-capacity"]
             },
             {

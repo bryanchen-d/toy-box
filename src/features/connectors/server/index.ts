@@ -7,10 +7,15 @@ import type { ConnectorEntry, ConnectorMessage, ConnectorOptions } from "../mode
 import { ConnectorDatabase, type ConnectorRecord } from "./database";
 import { openConnectorEndpoint } from "./devtunnel";
 import { ConnectorLink } from "./link";
+import { PoolLink } from "./pool/link";
+import { githubToken, openNodeTransport } from "./pool/transport";
 
 const DIRECTORY_SYNC_DELAY_MS = 2_000;
 
-const links = sharedMap<ConnectorLink>("connector-links");
+/** What the registry needs of a live link, whatever kind of connector it serves. */
+type Link = Pick<ConnectorLink, "status" | "start" | "stop" | "deliver" | "syncDirectory">;
+
+const links = sharedMap<Link>("connector-links");
 const published = sharedMap<string>("connector-published");
 const directorySync = getProcessValue("connector-directory-sync", () => ({
   timer: undefined as ReturnType<typeof setTimeout> | undefined,
@@ -83,20 +88,25 @@ export async function startConnectors(): Promise<VoidFunction> {
 }
 
 function startLink(database: ConnectorDatabase, record: ConnectorRecord): void {
-  const link = new ConnectorLink(record, {
-    database,
-    openEndpoint: openConnectorEndpoint,
-    applyEvent: async (connector, event) =>
-      (await import("@teams/server/connectors")).applyConnectorEvent(connector, event),
-    noteUndelivered: async (connector, message, reason) =>
-      (await import("@teams/server/connectors")).noteUndeliveredConnectorMessage(
-        connector,
-        message,
-        reason,
-      ),
-    readDirectory: async () => (await import("@teams/server/connectors")).listConnectorDirectory(),
-    onChange: (connectorId) => void publishConnector(connectorId),
-  });
+  const onChange = (connectorId: string) => void publishConnector(connectorId);
+  const link: Link =
+    record.kind === "agentPool"
+      ? new PoolLink(record, { openTransport: openNodeTransport, githubToken, onChange })
+      : new ConnectorLink(record, {
+          database,
+          openEndpoint: openConnectorEndpoint,
+          applyEvent: async (connector, event) =>
+            (await import("@teams/server/connectors")).applyConnectorEvent(connector, event),
+          noteUndelivered: async (connector, message, reason) =>
+            (await import("@teams/server/connectors")).noteUndeliveredConnectorMessage(
+              connector,
+              message,
+              reason,
+            ),
+          readDirectory: async () =>
+            (await import("@teams/server/connectors")).listConnectorDirectory(),
+          onChange,
+        });
   // Replacing is one synchronous step, so overlapping startups can't orphan a link, and nothing
   // waits on the old one to stop.
   const replaced = links.get(record.id);

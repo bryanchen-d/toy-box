@@ -32,6 +32,7 @@
     "@github/copilot-sdk": "^1.0.24",
     "@lostintangent/documint": "latest",
     "@lostintangent/leafnode": "^0.0.1",
+    "@microsoft/agent-host-protocol": "^1.0.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@streamdown/code": "^1.1.1",
     "@tailwindcss/oxide": "^4.3.3",

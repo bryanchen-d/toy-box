@@ -5,6 +5,7 @@ import { ConnectorDatabase, ConnectorNameTakenError } from "./database";
 
 const options = {
   name: "BryanBot",
+  kind: "service" as const,
   transport: { type: "http" as const, url: "http://127.0.0.1:4243" },
 };
 
@@ -34,6 +35,7 @@ describe("connector records", () => {
 
     const updated = await connectors.update(created.id, {
       name: "Bryan Bot",
+      kind: "service",
       transport: { type: "devtunnel", tunnelId: "bryanbot.usw2", port: 4243 },
     });
     expect(updated).toMatchObject({
@@ -43,6 +45,27 @@ describe("connector records", () => {
       transport: { type: "devtunnel", tunnelId: "bryanbot.usw2", port: 4243 },
     });
     expect(await connectors.list()).toEqual([updated!]);
+  });
+
+  test("a pool keeps its nodes, and becomes a service again in place", async () => {
+    const connectors = await openConnectors();
+    const nodes = [
+      {
+        name: "brchen-db3",
+        transport: { type: "devtunnel" as const, tunnelId: "brchen-db3-agent-node", port: 31790 },
+        tokenFile: "Q:/agent-teams/pool/brchen-db3.token",
+        workspaces: [{ repository: "bryanchen-d/vscode-space", folder: "C:/repos/vscode-space" }],
+        scratchFolder: "C:/Users/brchen/.agent-node/scratch",
+        computeSlots: 9_999,
+        draining: false,
+      },
+    ];
+    const pool = await connectors.create({ name: "Pool", kind: "agentPool", nodes });
+    expect(await connectors.get(pool.id)).toMatchObject({ kind: "agentPool", nodes });
+
+    const service = await connectors.update(pool.id, { ...options, name: "Pool" });
+    expect(service).toMatchObject({ kind: "service", transport: options.transport });
+    expect(service).not.toHaveProperty("nodes");
   });
 
   test("two connectors can't share a mention handle", async () => {

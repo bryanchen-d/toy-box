@@ -46,6 +46,7 @@ test("rerunning startup, even overlapping runs as dev reloads make, keeps one li
   const connector = streamingConnector();
   await new ConnectorDatabase(db).create({
     name: "BryanBot",
+    kind: "service",
     transport: { type: "http", url: connector.url },
   });
 

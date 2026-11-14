@@ -1,13 +1,16 @@
 import {
+  connectorDefinitionSchema,
   connectorHandle,
-  connectorTransportSchema,
   type Connector,
+  type ConnectorDefinition,
   type ConnectorMessage,
   type ConnectorOptions,
 } from "../model";
 
 /** A connector with the server-private state its link needs. */
 export type ConnectorRecord = Connector & { clientId: string; receivedThrough: number };
+export type ServiceConnectorRecord = Extract<ConnectorRecord, { kind: "service" }>;
+export type AgentPoolConnectorRecord = Extract<ConnectorRecord, { kind: "agentPool" }>;
 
 /** One message waiting at the head of its conversation's delivery queue. */
 export type PendingConnectorMessage = {
@@ -48,7 +51,7 @@ export class ConnectorDatabase {
       id: crypto.randomUUID(),
       name: options.name,
       handle: connectorHandle(options),
-      transport: JSON.stringify(options.transport),
+      definition: JSON.stringify(definitionOf(options)),
       client_id: crypto.randomUUID(),
       received_through: 0,
       created_at: now,
@@ -64,7 +67,7 @@ export class ConnectorDatabase {
       () => this.db<ConnectorRow[]>`
         UPDATE connectors
         SET name = ${options.name}, handle = ${connectorHandle(options)},
-            transport = ${JSON.stringify(options.transport)}, updated_at = ${new Date().toISOString()}
+            definition = ${JSON.stringify(definitionOf(options))}, updated_at = ${new Date().toISOString()}
         WHERE id = ${connectorId}
         RETURNING *
       `,
@@ -170,7 +173,7 @@ type ConnectorRow = {
   id: string;
   name: string;
   handle: string;
-  transport: string;
+  definition: string;
   client_id: string;
   received_through: number;
   created_at: string;
@@ -193,12 +196,16 @@ function recordFromRow(row: ConnectorRow): ConnectorRecord {
   return {
     id: row.id,
     name: row.name,
-    transport: connectorTransportSchema.parse(JSON.parse(row.transport)),
+    ...connectorDefinitionSchema.parse(JSON.parse(row.definition)),
     clientId: row.client_id,
     receivedThrough: row.received_through,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function definitionOf({ name: _name, ...definition }: ConnectorOptions): ConnectorDefinition {
+  return definition;
 }
 
 function pendingFromRow(row: OutboxRow): PendingConnectorMessage {

@@ -14,12 +14,18 @@ describe("connector options", () => {
     expect(
       connectorOptionsSchema.parse({
         name: " BryanBot ",
+        kind: "service",
         transport: { type: "http", url: "http://127.0.0.1:4243" },
       }),
-    ).toEqual({ name: "BryanBot", transport: { type: "http", url: "http://127.0.0.1:4243" } });
+    ).toEqual({
+      name: "BryanBot",
+      kind: "service",
+      transport: { type: "http", url: "http://127.0.0.1:4243" },
+    });
     expect(
       connectorOptionsSchema.safeParse({
         name: "BryanBot",
+        kind: "service",
         transport: { type: "devtunnel", tunnelId: "bryanbot.usw2", port: 4243 },
       }).success,
     ).toBe(true);
@@ -32,8 +38,33 @@ describe("connector options", () => {
       { type: "devtunnel", tunnelId: "bryanbot", port: 0 },
       { type: "devtunnel", tunnelId: "bryanbot", port: 70_000 },
     ]) {
-      expect(connectorOptionsSchema.safeParse({ name: "BryanBot", transport }).success).toBe(false);
+      expect(
+        connectorOptionsSchema.safeParse({ name: "BryanBot", kind: "service", transport }).success,
+      ).toBe(false);
     }
+  });
+
+  test("a pool lists uniquely named nodes with owner/name workspaces", () => {
+    const node = {
+      name: "brchen-db3",
+      transport: { type: "devtunnel", tunnelId: "brchen-db3-agent-node", port: 31790 },
+      tokenFile: "Q:/agent-teams/pool/brchen-db3.token",
+      workspaces: [
+        { repository: "bryanchen-d/vscode-space", folder: "C:/Users/brchen/repos/vscode-space" },
+      ],
+      scratchFolder: "C:/Users/brchen/.agent-node/scratch",
+      computeSlots: 9_999,
+      draining: false,
+    };
+    const pool = (nodes: unknown[]) =>
+      connectorOptionsSchema.safeParse({ name: "Pool", kind: "agentPool", nodes });
+
+    expect(pool([node]).success).toBe(true);
+    expect(pool([]).success).toBe(false);
+    expect(pool([node, { ...node, name: "BRCHEN-DB3" }]).success).toBe(false);
+    expect(
+      pool([{ ...node, workspaces: [{ repository: "vscode-space", folder: "C:/repos" }] }]).success,
+    ).toBe(false);
   });
 });
 

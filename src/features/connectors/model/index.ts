@@ -31,9 +31,71 @@ export const connectorTransportSchema = z.discriminatedUnion("type", [
 ]);
 export type ConnectorTransport = z.output<typeof connectorTransportSchema>;
 
-export const connectorOptionsSchema = z
-  .object({ name: connectorNameSchema, transport: connectorTransportSchema })
+const connectorPathSchema = z.string().trim().min(1).max(1_000);
+
+/** A machine whose VS Code agent host runs a pool's remote sessions. */
+export const poolNodeSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    /** How Agent Teams reaches the node's agent host. */
+    transport: connectorTransportSchema,
+    /** A file on this machine holding the host's connection token, read on each connection. */
+    tokenFile: connectorPathSchema,
+    /** Repositories checked out on the node, where sessions for teams working in them start. */
+    workspaces: z
+      .array(
+        z
+          .object({
+            repository: z
+              .string()
+              .trim()
+              .regex(/^[\w.-]+\/[\w.-]+$/, "A repository is owner/name"),
+            folder: connectorPathSchema,
+          })
+          .strict(),
+      )
+      .max(20),
+    /** Where sessions start for teams whose repository the node doesn't hold. */
+    scratchFolder: connectorPathSchema,
+    /** How many sessions may run a turn at once. */
+    computeSlots: z.number().int().min(1).max(9_999),
+    /** A draining node finishes its sessions but takes no new ones. */
+    draining: z.boolean(),
+  })
   .strict();
+export type PoolNode = z.output<typeof poolNodeSchema>;
+
+const serviceDefinitionSchema = z
+  .object({ kind: z.literal("service"), transport: connectorTransportSchema })
+  .strict();
+const agentPoolDefinitionSchema = z
+  .object({
+    kind: z.literal("agentPool"),
+    nodes: z
+      .array(poolNodeSchema)
+      .min(1)
+      .max(20)
+      .refine(
+        (nodes) => new Set(nodes.map(({ name }) => name.toLowerCase())).size === nodes.length,
+        "Each node needs its own name",
+      ),
+  })
+  .strict();
+
+/**
+ * What a connector is: a service that serves the connector protocol, or a pool of agent nodes
+ * whose remote sessions Agent Teams drives itself.
+ */
+export const connectorDefinitionSchema = z.discriminatedUnion("kind", [
+  serviceDefinitionSchema,
+  agentPoolDefinitionSchema,
+]);
+export type ConnectorDefinition = z.output<typeof connectorDefinitionSchema>;
+
+export const connectorOptionsSchema = z.discriminatedUnion("kind", [
+  serviceDefinitionSchema.extend({ name: connectorNameSchema }),
+  agentPoolDefinitionSchema.extend({ name: connectorNameSchema }),
+]);
 export type ConnectorOptions = z.output<typeof connectorOptionsSchema>;
 
 /** An app-level link to one external service that every team can talk to. */
@@ -57,9 +119,9 @@ export type ConnectorEntry = Connector & { status: ConnectorStatus; pending: num
 
 export const connectorIdInputSchema = z.object({ connectorId: connectorIdSchema }).strict();
 
-export const updateConnectorInputSchema = connectorOptionsSchema.extend({
-  connectorId: connectorIdSchema,
-});
+export const updateConnectorInputSchema = z
+  .object({ connectorId: connectorIdSchema, options: connectorOptionsSchema })
+  .strict();
 
 /** The @handle that addresses a connector, derived by the same grammar as agent mentions. */
 export function connectorHandle(connector: Pick<Connector, "name">): string {

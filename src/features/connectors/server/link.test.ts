@@ -6,7 +6,7 @@ import {
   type ConnectorEvent,
   type ConnectorMessage,
 } from "../model";
-import { ConnectorDatabase, type ConnectorRecord } from "./database";
+import { ConnectorDatabase, type ServiceConnectorRecord } from "./database";
 import { ConnectorLink, type ConnectorLinkDependencies } from "./link";
 
 const FAST = { min: 10, max: 20 };
@@ -113,11 +113,12 @@ async function openLink(
   const database = new ConnectorDatabase(db);
   const record = await database.create({
     name: "BryanBot",
+    kind: "service",
     transport: { type: "http", url: connector.baseUrl },
   });
   const applied: ConnectorEvent[] = [];
   const undelivered: { id: string; reason: string }[] = [];
-  const start = (current: ConnectorRecord = record) => {
+  const start = (current: ServiceConnectorRecord = record as ServiceConnectorRecord) => {
     const link = new ConnectorLink(current, {
       database,
       openEndpoint: async (transport) => ({

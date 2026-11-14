@@ -6,7 +6,8 @@ export async function initializeConnectorSchema(db: Bun.SQL): Promise<void> {
       name              TEXT NOT NULL,
       -- The @handle derived from the name; two connectors can't share one.
       handle            TEXT NOT NULL UNIQUE,
-      transport         TEXT NOT NULL CHECK (json_valid(transport)),
+      -- What the connector is: { kind: "service", transport } or { kind: "agentPool", nodes }.
+      definition        TEXT NOT NULL CHECK (json_valid(definition)),
       -- Identifies this installation to the connector, which routes its outbox by it.
       client_id         TEXT NOT NULL,
       -- The last connector event applied; the stream resumes after it.

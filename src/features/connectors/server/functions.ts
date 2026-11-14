@@ -19,10 +19,7 @@ export const createConnector = createServerFn({ method: "POST" })
 
 export const updateConnector = createServerFn({ method: "POST" })
   .validator(zodValidator(updateConnectorInputSchema))
-  .handler(({ data }) => {
-    const { connectorId, ...options } = data;
-    return lifecycle.updateConnector(connectorId, options);
-  });
+  .handler(({ data }) => lifecycle.updateConnector(data.connectorId, data.options));
 
 export const deleteConnector = createServerFn({ method: "POST" })
   .validator(zodValidator(connectorIdInputSchema))

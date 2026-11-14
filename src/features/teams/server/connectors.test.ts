@@ -58,6 +58,7 @@ async function open() {
   });
   const connector = await connectors.create({
     name: "BryanBot",
+    kind: "service",
     transport: { type: "http", url: "http://127.0.0.1:4243" },
   });
   spyOn(workspaceEvents, "broadcast").mockImplementation(() => {});

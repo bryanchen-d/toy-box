@@ -13,7 +13,8 @@ export const connectorMutations = {
 
   update: (connectorId: string) =>
     mutationOptions({
-      mutationFn: (input: ConnectorOptions) => updateConnector({ data: { connectorId, ...input } }),
+      mutationFn: (options: ConnectorOptions) =>
+        updateConnector({ data: { connectorId, options } }),
       onSuccess: (_connector, _variables, _onMutateResult, { client }) =>
         invalidateConnectorListQuery(client),
     }),
