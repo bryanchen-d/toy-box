@@ -721,7 +721,8 @@
           "question": "Does a Bun WebSocket reach `code agent host` through a private dev tunnel with the tunnel authorization header and the AHP token, and reconnect after a drop?",
           "answerMethod": "run-experiment",
           "impact": "The package's `WebSocketTransport` cannot set headers, so a tunnel needs a small transport over Bun's `WebSocket`, which can.",
-          "affects": ["r-pool-config", "r-thread-session"]
+          "affects": ["r-pool-config", "r-thread-session"],
+          "answer": "Yes. From brchen-db4, Bun's `WebSocket` with an `X-Tunnel-Authorization: tunnel <connect token>` header (from `devtunnel token <id> --scopes connect`) and `?tkn=` reached brchen-db3's host at the port's `portUri`, negotiated 1.0.0, and ran an autopilot turn to completion. The first connection took 12.8 s while the tunnel relay warmed up; later fresh connections took 130 to 210 ms. Two more things the pool relies on: `resourceWrite` needs an existing folder, so the pool creates a session's scratch folder with `resourceMkdir`, which creates parents; and `listSessions` returns the node's whole Copilot history (49 sessions on brchen-db3), so the pool knows its own sessions from its threads rather than from the listing."
         },
         {
           "id": "q-ahp-client",
