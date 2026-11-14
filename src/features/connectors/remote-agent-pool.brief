@@ -182,6 +182,15 @@
             "https://cognition.com/blog/dont-build-multi-agents",
             "https://arxiv.org/abs/2503.13657"
           ]
+        },
+        {
+          "id": "f-native-subagents",
+          "statement": "Copilot, Claude, and Codex each run their own subagents inside a turn, and Agent Teams already projects them as agent cards in the parent's transcript. They end with the parent's turn, run in its process on the same machine, take no follow-ups, and belong to one provider.",
+          "sources": [
+            "toy-box src/features/providers/server/copilot/AGENTS.md",
+            "toy-box src/features/providers/server/claude/AGENTS.md",
+            "toy-box src/features/providers/server/codex/AGENTS.md"
+          ]
         }
       ]
     },
@@ -521,6 +530,18 @@
           "values": {
             "behavior": "Closing a sub session runs an optional wrap-up turn, then deletes it, archiving a remote one on its node. A sub session left idle for a day after reporting reminds its owner once, and deleting an agent or its team closes its sub sessions."
           }
+        },
+        {
+          "id": "r-sub-guidance",
+          "subject": "When to delegate",
+          "change": "new",
+          "values": {
+            "behavior": "Agent instructions say to use the provider's own subagents for quick work within a turn, such as a parallel search or a diff review, and a sub session for a task that outlives the turn, needs another machine or the UI, or needs its own review."
+          },
+          "basedOn": [
+            "f-native-subagents",
+            "f-delegation-practice"
+          ]
         }
       ]
     },
@@ -556,14 +577,23 @@
         },
         {
           "id": "r-remote-nodes",
-          "subject": "Nodes",
+          "subject": "Pool connector",
           "change": "new",
           "values": {
-            "behavior": "Settings lists the remote nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Agent Teams stores no secrets: it reads the token file when connecting and signs each host in with the owner's GitHub token from the gh CLI. Each node keeps one AHP connection under a stable client ID."
+            "behavior": "A pool connector, added and edited in the connector dialog, lists its nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Its link keeps one AHP connection per node under a stable client ID, which the remote provider runs sub sessions over. Agent Teams stores no secrets: it reads the token file when connecting and signs each host in with the owner's GitHub token from the gh CLI."
           },
+          "source": "toy-box src/features/connectors/server/pool/link.ts",
           "basedOn": [
             "f-host-auth"
           ]
+        },
+        {
+          "id": "r-pool-location",
+          "subject": "A place, not a conversation",
+          "change": "new",
+          "values": {
+            "behavior": "A pool connector is where sub sessions run, not something a team talks to: mentions don't address it, and `create_sub_session` names a pool, or one of its nodes, as its location. `read_team` lists pools with their nodes' state."
+          }
         },
         {
           "id": "r-placement",
@@ -1066,6 +1096,60 @@
           },
           "dependsOn": [],
           "affects": []
+        },
+        {
+          "id": "d-native-subagents",
+          "question": "How do sub sessions relate to the providers' own subagents?",
+          "options": [
+            {
+              "id": "o-native-alongside",
+              "label": "Keep them for quick work within a turn, beside sub sessions",
+              "rationale": "They already work and show as agent cards; sub sessions cover what they can't: other machines, follow-ups, and review.",
+              "adds": []
+            },
+            {
+              "id": "o-native-wrap",
+              "label": "Build sub sessions on the providers' subagents",
+              "tradeoff": "They end with the parent's turn, run on the same machine, and differ by provider.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-native-alongside",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
+        },
+        {
+          "id": "d-node-registry",
+          "question": "Where are agent nodes defined?",
+          "options": [
+            {
+              "id": "o-pool-connector-nodes",
+              "label": "In a pool connector the owner adds nodes to",
+              "rationale": "Nodes are added and edited where other outside links are, and the connector's link already holds each node's connection.",
+              "adds": []
+            },
+            {
+              "id": "o-discovered-nodes",
+              "label": "Discovered from labelled dev tunnels, each node describing itself",
+              "tradeoff": "No manual entry, but node settings live on each node.",
+              "adds": []
+            },
+            {
+              "id": "o-settings-nodes",
+              "label": "Listed by hand in Settings",
+              "tradeoff": "A second place to configure outside links.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-pool-connector-nodes",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         }
       ]
     },
@@ -1276,7 +1360,9 @@
                 "r-sub-brief",
                 "r-sub-limits",
                 "r-sub-access",
-                "d-sub-access"
+                "d-sub-access",
+                "r-sub-guidance",
+                "d-native-subagents"
               ],
               "values": {}
             },
@@ -1322,7 +1408,7 @@
             {
               "id": "s-remote-provider",
               "title": "Run sub sessions on a node through the remote provider",
-              "doneWhen": "A sub session created for brchen-db3 runs there with its transcript and history in Agent Teams; a retried create makes one session; messages and steering reach it; attachments reach the node; and node definitions live in Settings, replacing the unshipped pool connector kind.",
+              "doneWhen": "A sub session created for brchen-db3's pool runs there with its transcript and history in Agent Teams; a retried create makes one session; messages and steering reach it; attachments reach the node; and mentioning the pool addresses nothing.",
               "implements": [
                 "r-remote-provider",
                 "r-remote-nodes",
@@ -1330,7 +1416,9 @@
                 "r-remote-subscription",
                 "r-files-in",
                 "d-runtime",
-                "d-path"
+                "d-path",
+                "r-pool-location",
+                "d-node-registry"
               ],
               "values": {}
             },
