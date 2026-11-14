@@ -1,34 +1,37 @@
 {
-  "title": "Remote agent pool: hand team work to remote VS Code Agent Host sessions",
+  "title": "Sub sessions: agents hand tasks to local and remote sessions they own",
   "sections": [
     {
       "id": "outcome",
       "title": "What changes",
       "purpose": "State the capability in one reading so every later section can be checked against it.",
+      "collapsed": false,
       "kind": "markdown",
-      "body": "Any team agent can address a remote agent pool connector, such as `@pool`, to get a session on a remote machine, talk with it in a team thread, and get its results back, without competing for this machine's screen, mouse, or keyboard. Remote sessions run in VS Code Insiders' standalone Agent Host on pool nodes, starting with brchen-db3, and Agent Teams reaches them directly over the Agent Host Protocol (AHP) through private dev tunnels, so BryanBot and VS Code can use the same nodes.\n\nThe pool is a general capability: it places sessions on nodes, carries conversation both ways, wakes sessions on schedule, raises human-needed requests, and reports status. Workflows such as owning a pull request from handoff to merge are skills layered on top; the pool never learns what a pull request is. A new workflow needs only a new skill.\n\nWhat stays the same: service connectors such as BryanBot keep connector protocol v1, and teams without a pool connector run nothing new."
+      "body": "Any agent, a team member included, can hand a task to a sub session it owns: a session that does that one task, reports back to its owner, and is closed when the task is done. A sub session runs locally or on a remote agent node such as brchen-db3, where UI-heavy work such as validating VS Code builds, reproducing bugs, or checking sites runs without competing for this machine's screen, mouse, or keyboard.\n\nEvery sub session is a Worker owned by its agent's session. One registry records which agent owns which sub sessions, one toolset creates, messages, lists, and closes them wherever they run, and Agent Teams shows each sub session's transcript and the sub sessions under each agent.\n\nThe owning agent is the expert. It gives each sub session a complete brief, reviews what comes back against the brief's acceptance criteria before using or reporting it, and closes the sub session afterwards. Sub sessions are not team members: only their owner messages them, and the user can open and watch any of them.\n\nRemote sub sessions run in VS Code Insiders' standalone Agent Host on each node, which a remote provider beside Copilot, Codex, and Claude reaches over the Agent Host Protocol (AHP) through a private dev tunnel. BryanBot and VS Code use the same nodes over AHP directly. Workflows such as owning a pull request through to merge are skills layered on top.\n\nWhat stays the same: service connectors such as BryanBot keep connector protocol v1, and agents that never delegate run nothing new."
     },
     {
       "id": "not-in-scope",
       "title": "Not doing",
       "purpose": "Close tempting extensions so adding any of them becomes a decision rather than drift.",
+      "collapsed": false,
       "kind": "list",
+      "style": "bullet",
       "items": [
-        "Remote transcripts inside Agent Teams; the session's own transcript stays in VS Code, and Agent Teams sees turn results.",
-        "Live progress updates in the thread between milestones.",
-        "Deleting remote sessions from Agent Teams; `finish` and `/close` archive, and permanent deletion stays manual in VS Code.",
-        "Choosing a model or folder per message, or forwarding tool approvals; remote sessions approve their own tool calls.",
-        "BryanBot reaching the pool through Agent Teams; connector messages never forward to another connector, so BryanBot talks to nodes directly.",
-        "Moving the scheduler into a separate service; it stays a pure module so that move stays cheap if BryanBot ever needs the same queue."
+        "Sub sessions owning sub sessions; each has exactly one owner, the agent that created it.",
+        "Other agents or connectors messaging a sub session; they ask its owner.",
+        "Progress in the team thread between reports; the owner hears each finished turn, and the user can open the transcript.",
+        "Forwarding a remote session's tool approvals to the user; remote sessions approve their own tool calls on the node.",
+        "BryanBot reaching nodes through Agent Teams; it talks to nodes over AHP directly.",
+        "A separate scheduler service; placement stays a pure module."
       ]
     },
     {
       "id": "findings",
       "title": "What the design builds on",
       "purpose": "Ground the shape in capabilities that already exist, so the pool extends them instead of rebuilding them.",
+      "collapsed": true,
       "kind": "findings",
       "sourcePolicy": "reference",
-      "collapsed": true,
       "items": [
         {
           "id": "f-standalone-host",
@@ -51,7 +54,9 @@
         {
           "id": "f-tunnel-host",
           "statement": "brchen-db3 already runs a supervised Insiders tunnel host from a logon task, with a dedicated CLI and data directory.",
-          "sources": ["vscode-space .github/scripts/tunnel-host/Install-TunnelHost.ps1"]
+          "sources": [
+            "vscode-space .github/scripts/tunnel-host/Install-TunnelHost.ps1"
+          ]
         },
         {
           "id": "f-client-ids",
@@ -109,7 +114,9 @@
         {
           "id": "f-vscode-space-isolation",
           "statement": "vscode-space tells agents to isolate child-repo changes in `<repo>.worktrees/<task-slug>` and to commit root changes directly to main.",
-          "sources": ["vscode-space .github/copilot-instructions.md"]
+          "sources": [
+            "vscode-space .github/copilot-instructions.md"
+          ]
         },
         {
           "id": "f-rdp-lock",
@@ -129,92 +136,211 @@
           "id": "f-host-auth",
           "statement": "A standalone agent host's Copilot provider requires the client to `authenticate` `https://api.github.com` with a GitHub token before it runs turns; the owner's gh CLI token works.",
           "whyItMatters": "The pool, not the node, supplies the owner's credential to each node connection.",
-          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+          "sources": [
+            "Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"
+          ]
         },
         {
           "id": "f-create-conflict",
           "statement": "Creating a session whose URI already exists is rejected with `-32002` (\"Conflicting chat storage identity\"), not the documented `-32003`.",
           "whyItMatters": "A retried create is detected by subscribing to the session URI, not by matching an error code.",
-          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+          "sources": [
+            "Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"
+          ]
         },
         {
           "id": "f-active-client-subscription",
           "statement": "A client's active-client role and tools last only while it holds a subscription to the session; unsubscribing removes them, while a 20-second disconnect keeps them and a pending call to the client's tool, which completes after reconnecting with the same client ID.",
           "whyItMatters": "The pool keeps every open remote session subscribed, under one stable client ID.",
-          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+          "sources": [
+            "Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"
+          ]
         },
         {
           "id": "f-background-work",
           "statement": "An autopilot turn can end while its shell keeps running as background work; that work's completion reaches the agent later as a system notification.",
           "whyItMatters": "A finished turn does not mean the session is idle.",
-          "sources": ["Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"]
+          "sources": [
+            "Probe against Insiders agent host 944d79c on brchen-db4, 2026-11-13"
+          ]
+        },
+        {
+          "id": "f-workers",
+          "statement": "Workers already records session-owned Workers with their parent session before they run, deletes them with their parent, and nests them under it in the sidebar. Standard and Hyper sessions get `spawn_worker`, `wait_for_sessions`, `deliver_message`, and `delete_session`; team agents get none of them.",
+          "sources": [
+            "toy-box src/features/workers/AGENTS.md",
+            "toy-box src/features/workers/server/tools.ts#spawnWorkerTool",
+            "toy-box src/features/teams/server/agent.ts#getTeamAgentConfiguration"
+          ]
+        },
+        {
+          "id": "f-delegation-practice",
+          "statement": "Published practice: the delegating agent keeps ownership of the answer and calls specialists as bounded tools (OpenAI Agents SDK); each delegated task needs an objective, an output format, guidance on tools and sources, and clear boundaries, with effort limits so an orchestrator doesn't spawn dozens of workers (Anthropic); workers given only a summary make conflicting implicit decisions, so share full context and keep parallel workers off shared artifacts (Cognition); and missing or superficial verification is a leading cause of multi-agent failure (MAST).",
+          "sources": [
+            "https://developers.openai.com/api/docs/guides/agents/orchestration",
+            "https://www.anthropic.com/engineering/multi-agent-research-system",
+            "https://cognition.com/blog/dont-build-multi-agents",
+            "https://arxiv.org/abs/2503.13657"
+          ]
         }
       ]
     },
     {
       "id": "flow",
-      "title": "How a request travels and comes back",
+      "title": "How a sub session is created, reports, and closes",
       "purpose": "Show the one topology every requirement below serves, and where each step runs.",
+      "collapsed": false,
       "kind": "exhibits",
       "sourcePolicy": "optional",
       "items": [
         {
-          "id": "x-pool-flow",
-          "kind": "flow",
-          "title": "A pool request, its result, and a human-needed detour",
+          "id": "x-sub-flow",
+          "title": "A sub session's task, from brief to close, with a human-needed detour",
           "change": "new",
-          "description": "Results and human-needed requests return to the same thread, so the agent that asked is woken without any extra relay turn.",
+          "description": "Every report goes to the owning agent, which reviews it before anything reaches the team or the user.",
+          "kind": "flow",
           "nodes": [
-            { "id": "ask", "title": "Team agent posts `@pool <task>` in a new thread" },
-            { "id": "outbox", "title": "Connector outbox queues it" },
-            { "id": "place", "title": "Pool places a session on a node" },
-            { "id": "host", "title": "Node Agent Host runs the turn" },
-            { "id": "ui", "title": "`ui-slot` grants UI capacity" },
-            { "id": "result", "title": "Turn result replies to the latest team message" },
-            { "id": "wake", "title": "The agent who asked wakes in the thread" },
-            { "id": "tools", "title": "Session calls a pool tool" },
-            { "id": "human", "title": "Human-needed request in the thread" },
-            { "id": "owner", "title": "Owner acts and replies `@pool done`" },
-            { "id": "resume", "title": "Waiting sessions resume" }
+            {
+              "id": "brief",
+              "title": "Agent creates a sub session with a brief"
+            },
+            {
+              "id": "register",
+              "title": "Workers records the agent as owner"
+            },
+            {
+              "id": "place",
+              "title": "Placement picks this machine or a node with capacity"
+            },
+            {
+              "id": "run",
+              "title": "The sub session runs a turn"
+            },
+            {
+              "id": "ui",
+              "title": "`ui-slot` grants UI capacity on a node"
+            },
+            {
+              "id": "report",
+              "title": "The turn ends with an answer and evidence"
+            },
+            {
+              "id": "review",
+              "title": "The owner wakes and reviews it against the brief"
+            },
+            {
+              "id": "close",
+              "title": "The owner follows up, or closes the sub session"
+            },
+            {
+              "id": "human",
+              "title": "The sub session needs a human"
+            },
+            {
+              "id": "user",
+              "title": "The user acts on the node and answers"
+            },
+            {
+              "id": "resume",
+              "title": "The sub session resumes and checks the step worked"
+            }
           ],
           "connections": [
-            { "id": "c-ask", "from": "ask", "to": "outbox", "label": "queues in" },
-            { "id": "c-place", "from": "outbox", "to": "place", "label": "delivers to" },
-            { "id": "c-run", "from": "place", "to": "host", "label": "creates a session and starts a turn on" },
-            { "id": "c-ui", "from": "host", "to": "ui", "label": "claims UI capacity from" },
-            { "id": "c-result", "from": "host", "to": "result", "label": "ends the turn with" },
-            { "id": "c-wake", "from": "result", "to": "wake", "label": "wakes" },
-            { "id": "c-tools", "from": "host", "to": "tools", "label": "lets the session call" },
-            { "id": "c-human", "from": "tools", "to": "human", "label": "raises" },
-            { "id": "c-owner", "from": "human", "to": "owner", "label": "asks" },
-            { "id": "c-resume", "from": "owner", "to": "resume", "label": "lets" }
+            {
+              "id": "c-register",
+              "from": "brief",
+              "to": "register",
+              "label": "is recorded by"
+            },
+            {
+              "id": "c-place",
+              "from": "register",
+              "to": "place",
+              "label": "is placed by"
+            },
+            {
+              "id": "c-run",
+              "from": "place",
+              "to": "run",
+              "label": "starts"
+            },
+            {
+              "id": "c-ui",
+              "from": "run",
+              "to": "ui",
+              "label": "claims UI capacity from"
+            },
+            {
+              "id": "c-report",
+              "from": "run",
+              "to": "report",
+              "label": "ends with"
+            },
+            {
+              "id": "c-review",
+              "from": "report",
+              "to": "review",
+              "label": "wakes"
+            },
+            {
+              "id": "c-close",
+              "from": "review",
+              "to": "close",
+              "label": "leads to"
+            },
+            {
+              "id": "c-human",
+              "from": "run",
+              "to": "human",
+              "label": "may stop at"
+            },
+            {
+              "id": "c-user",
+              "from": "human",
+              "to": "user",
+              "label": "asks"
+            },
+            {
+              "id": "c-resume",
+              "from": "user",
+              "to": "resume",
+              "label": "lets"
+            }
           ],
           "paths": [
             {
-              "id": "path-request",
-              "title": "Request and result",
-              "purpose": "Follow one task from the asking agent to the remote turn and back.",
-              "start": "ask",
-              "connectionIds": ["c-ask", "c-place", "c-run", "c-ui", "c-result", "c-wake"]
+              "id": "p-task",
+              "title": "A task from brief to close",
+              "purpose": "Show that every report reaches the owner, who reviews it before anything else happens.",
+              "start": "brief",
+              "connectionIds": [
+                "c-register",
+                "c-place",
+                "c-run",
+                "c-report",
+                "c-review",
+                "c-close"
+              ]
             },
             {
-              "id": "path-human",
-              "title": "Human needed",
-              "purpose": "Follow a sign-in or other human step without holding UI capacity.",
-              "start": "host",
-              "connectionIds": ["c-tools", "c-human", "c-owner", "c-resume"]
-            }
-          ],
-          "regions": [
-            {
-              "id": "region-local",
-              "title": "Agent Teams on this machine",
-              "nodeIds": ["ask", "outbox", "place", "result", "wake", "human"]
+              "id": "p-ui",
+              "title": "UI work on a node",
+              "purpose": "Show where a remote sub session gets its share of the node's desktop.",
+              "start": "run",
+              "connectionIds": [
+                "c-ui"
+              ]
             },
             {
-              "id": "region-node",
-              "title": "Pool node",
-              "nodeIds": ["host", "ui", "tools", "resume"]
+              "id": "p-human",
+              "title": "A human-needed detour",
+              "purpose": "Show that a sub session waits for the user and checks the step before carrying on.",
+              "start": "run",
+              "connectionIds": [
+                "c-human",
+                "c-user",
+                "c-resume"
+              ]
             }
           ]
         }
@@ -224,11 +350,18 @@
       "id": "reply-routing",
       "title": "Replies wake the agent who asked",
       "purpose": "Fix connector routing first: it is general, small, and every pool result depends on it.",
+      "collapsed": false,
       "kind": "records",
       "view": "table",
       "sourcePolicy": "reference",
       "subject": "Part",
-      "fields": [{ "id": "behavior", "label": "Behavior", "kind": "text" }],
+      "fields": [
+        {
+          "id": "behavior",
+          "label": "Behavior",
+          "kind": "text"
+        }
+      ],
       "items": [
         {
           "id": "r-reply-to-wire",
@@ -245,7 +378,9 @@
           "values": {
             "behavior": "Teams resolves `replyTo` to a message in the same team and stores that message's agent author as the reply's `askedBy`. A user's message, an unknown ID, or another team's message stores nothing."
           },
-          "basedOn": ["f-lead-only"]
+          "basedOn": [
+            "f-lead-only"
+          ]
         },
         {
           "id": "r-audience",
@@ -255,7 +390,9 @@
             "behavior": "An unmentioned connector message with `askedBy` wakes that agent while it is on the team, and the lead otherwise. Leading mentions still decide when present. Delivery and the transcript's addressee read the same stored input."
           },
           "source": "toy-box src/features/teams/model/index.ts#resolveTeamAudience",
-          "basedOn": ["f-lead-only"]
+          "basedOn": [
+            "f-lead-only"
+          ]
         },
         {
           "id": "r-guidance",
@@ -278,100 +415,204 @@
       ]
     },
     {
-      "id": "pool",
-      "title": "Pool connector",
-      "purpose": "Define the general remote-session capability that any workflow skill builds on.",
+      "id": "sub-sessions",
+      "title": "Sub sessions",
+      "purpose": "Let any agent own sessions that each do one task for it, wherever they run.",
+      "collapsed": false,
       "kind": "records",
       "view": "cards",
       "sourcePolicy": "reference",
       "subject": "Capability",
-      "fields": [{ "id": "behavior", "label": "Behavior", "kind": "text" }],
+      "fields": [
+        {
+          "id": "behavior",
+          "label": "Behavior",
+          "kind": "text"
+        }
+      ],
       "items": [
         {
-          "id": "r-link-by-kind",
-          "subject": "Link by kind",
+          "id": "r-sub-owner",
+          "subject": "Sub session",
           "change": "modified",
           "values": {
-            "behavior": "Each connector kind supplies its own link behind the same start, stop, deliver, and status interface. Service connectors keep the v1 link unchanged."
+            "behavior": "A sub session is a Worker owned by its agent's session. Workers records the owner before the sub session runs and removes the record when it is deleted, and deleting the agent's session deletes its sub sessions."
           },
-          "source": "toy-box src/features/connectors/server/index.ts#startLink",
-          "basedOn": ["f-connector-seam"]
+          "source": "toy-box src/features/workers/AGENTS.md",
+          "basedOn": [
+            "f-workers"
+          ]
         },
         {
-          "id": "r-pool-config",
-          "subject": "Pool definition",
+          "id": "r-sub-tools",
+          "subject": "One toolset",
+          "change": "modified",
+          "values": {
+            "behavior": "Team agents, standard sessions, and Hyper share one toolset in place of `spawn_worker`: `create_sub_session(brief, location)`, `message_sub_session(id, message)`, `list_sub_sessions()`, and `close_sub_session(id)`. Location is this machine or a node. Each acts only on the caller's own sub sessions."
+          },
+          "source": "toy-box src/features/workers/server/tools.ts#spawnWorkerTool",
+          "basedOn": [
+            "f-workers"
+          ]
+        },
+        {
+          "id": "r-sub-brief",
+          "subject": "Brief",
           "change": "new",
           "values": {
-            "behavior": "An `agentPool` connector lists its nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Agent Teams stores no secrets: it reads the token file when connecting and authenticates each node connection with the owner's GitHub token from the gh CLI."
+            "behavior": "Creating a sub session takes a brief: goal, context (findings, decisions made, references, and attached files), deliverable, acceptance criteria, boundaries, and how to report. Fixed code renders it as the first message with a note that names the owner, says results return to it automatically, and asks the sub session to ask rather than guess when the brief conflicts with what it finds."
           },
-          "basedOn": ["f-host-auth"]
+          "basedOn": [
+            "f-delegation-practice"
+          ]
+        },
+        {
+          "id": "r-sub-results",
+          "subject": "Reports",
+          "change": "new",
+          "values": {
+            "behavior": "Each finished turn wakes the owner with the sub session's final answer and its evidence, such as links, files, and test output. The owner checks it against the brief's acceptance criteria before using or reporting it. A turn with no answer, or an answer of exactly `NO_UPDATE`, wakes no one. A sub session whose background work still runs stays busy after its turn ends."
+          },
+          "basedOn": [
+            "f-delegation-practice",
+            "f-bryanbot-ahp",
+            "f-background-work"
+          ]
+        },
+        {
+          "id": "r-sub-wakes",
+          "subject": "Wakes",
+          "change": "new",
+          "values": {
+            "behavior": "A sub session waiting on something slow, such as CI or a review, calls `wake_after(minutes, reason)`. Agent Teams starts that turn when it is due, counting it against the node's compute slots for a remote one; any newer message cancels it, and overdue wakes run at startup."
+          }
+        },
+        {
+          "id": "r-sub-limits",
+          "subject": "Limits",
+          "change": "new",
+          "values": {
+            "behavior": "An agent owns at most 5 open sub sessions, and a sub session can't create sub sessions of its own."
+          },
+          "basedOn": [
+            "f-delegation-practice"
+          ]
+        },
+        {
+          "id": "r-sub-access",
+          "subject": "Access",
+          "change": "new",
+          "values": {
+            "behavior": "Only the owner messages a sub session. Other agents and connectors can't address it, and it never joins the team's conversation. The user can open, watch, and steer any sub session."
+          }
+        },
+        {
+          "id": "r-sub-view",
+          "subject": "View",
+          "change": "new",
+          "values": {
+            "behavior": "The team pane lists each agent's open sub sessions with their task, location, state, and last report; the sidebar already nests them under their owner."
+          }
+        },
+        {
+          "id": "r-sub-cleanup",
+          "subject": "Closing",
+          "change": "new",
+          "values": {
+            "behavior": "Closing a sub session runs an optional wrap-up turn, then deletes it, archiving a remote one on its node. A sub session left idle for a day after reporting reminds its owner once, and deleting an agent or its team closes its sub sessions."
+          }
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "title": "Remote sub sessions",
+      "purpose": "Run sub sessions on agent nodes as ordinary Agent Teams sessions.",
+      "collapsed": false,
+      "kind": "records",
+      "view": "cards",
+      "sourcePolicy": "reference",
+      "subject": "Capability",
+      "fields": [
+        {
+          "id": "behavior",
+          "label": "Behavior",
+          "kind": "text"
+        }
+      ],
+      "items": [
+        {
+          "id": "r-remote-provider",
+          "subject": "Remote provider",
+          "change": "new",
+          "values": {
+            "behavior": "A remote provider implements the Providers contract over AHP. A sub session placed on a node is a Session that this provider runs in the node's Agent Host, projecting its turns into session events, so Agent Teams shows its transcript and history like any other session's."
+          },
+          "source": "toy-box src/features/providers/server/provider.ts",
+          "basedOn": [
+            "f-bryanbot-ahp",
+            "f-turn-meta"
+          ]
+        },
+        {
+          "id": "r-remote-nodes",
+          "subject": "Nodes",
+          "change": "new",
+          "values": {
+            "behavior": "Settings lists the remote nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Agent Teams stores no secrets: it reads the token file when connecting and signs each host in with the owner's GitHub token from the gh CLI. Each node keeps one AHP connection under a stable client ID."
+          },
+          "basedOn": [
+            "f-host-auth"
+          ]
         },
         {
           "id": "r-placement",
           "subject": "Placement",
           "change": "new",
           "values": {
-            "behavior": "A new top-level `@pool` message creates one session on a reachable, non-draining node with a free compute slot that lists the team workspace's repository, starting in that folder; with no such node, it starts in a qualifying node's scratch folder. Requests wait in arrival order when no node qualifies."
+            "behavior": "A sub session created for a node is placed on a reachable, non-draining node with a free compute slot that lists the team workspace's repository, starting in that folder; with no such node, it starts in a qualifying node's scratch folder. Requests wait in arrival order when no node qualifies."
           }
-        },
-        {
-          "id": "r-thread-session",
-          "subject": "Thread is a session",
-          "change": "new",
-          "values": {
-            "behavior": "A thread holds one remote session, which the pool keeps subscribed under one stable client ID while it is open. Follow-ups start its next turn or steer the running one; replies resolve its open question; `/stop` cancels the running turn; `/close` runs a wrap-up turn, then archives the session."
-          },
-          "basedOn": ["f-active-client-subscription"]
         },
         {
           "id": "r-idempotent",
           "subject": "Safe retries",
           "change": "new",
           "values": {
-            "behavior": "Session URIs derive from the conversation and turn IDs from team message IDs. Before creating a session the pool subscribes to its URI, so a retried create or send never duplicates work, and each finished turn is reported once."
+            "behavior": "A remote session's URI derives from its Worker's session ID, and turn IDs from message IDs. Before creating a session the provider subscribes to its URI, so a retried create or send never duplicates work, and each finished turn is reported once."
           },
-          "basedOn": ["f-client-ids", "f-create-conflict"]
+          "basedOn": [
+            "f-client-ids",
+            "f-create-conflict"
+          ]
         },
         {
-          "id": "r-first-note",
-          "subject": "Pool note",
+          "id": "r-remote-subscription",
+          "subject": "Live session",
           "change": "new",
           "values": {
-            "behavior": "The first turn carries a pool note: who asked, that results return automatically, the pool tools, `ui-slot`, the starting folder and whether it holds the team's workspace, and the `NO_UPDATE` convention. It holds no workflow-specific instructions."
-          }
+            "behavior": "The provider keeps each open remote sub session subscribed under its node's client ID, so its tools stay registered. A message starts its next turn or steers the running one, and stopping cancels the running turn."
+          },
+          "basedOn": [
+            "f-active-client-subscription"
+          ]
         },
         {
-          "id": "r-pool-tools",
-          "subject": "Pool tools",
+          "id": "r-remote-tools",
+          "subject": "Node tools",
           "change": "new",
           "values": {
-            "behavior": "Remote sessions get pool tools as an active client: `wake_after(minutes, reason)`, `finish(summary)`, `set_status(text)`, and `request_human(key, what, steps, verify)`."
+            "behavior": "Remote sub sessions receive their Agent Teams tools as an AHP active client, including `wake_after`, `set_status`, and `request_human(key, what, steps, verify)`."
           },
-          "basedOn": ["f-host-seams"]
-        },
-        {
-          "id": "r-results",
-          "subject": "Results",
-          "change": "new",
-          "values": {
-            "behavior": "Each finished turn posts its final answer, the turn's last markdown part, as a reply to the latest team message the session received. A turn with no answer, or an answer of exactly `NO_UPDATE`, posts nothing. A question posts as a message, and the next reply answers it. A session whose background work still runs stays busy after its turn ends."
-          },
-          "basedOn": ["f-bryanbot-ahp", "f-background-work"]
+          "basedOn": [
+            "f-host-seams"
+          ]
         },
         {
           "id": "r-files-in",
           "subject": "Files in",
           "change": "new",
           "values": {
-            "behavior": "Attachments on a request are written to the node and attached to the turn."
-          }
-        },
-        {
-          "id": "r-wakes",
-          "subject": "Wakes",
-          "change": "new",
-          "values": {
-            "behavior": "The pool owns wakes: when one is due and its node has a free compute slot, it starts the wake turn and counts it against the node's limit. Any newer message cancels a pending wake, and overdue wakes run at startup."
+            "behavior": "Files attached to a brief or a message are written to the node and attached to the turn."
           }
         },
         {
@@ -379,43 +620,19 @@
           "subject": "Human needed",
           "change": "new",
           "values": {
-            "behavior": "`request_human`, and host MCP sign-in requests, post one flagged request per key and node in the thread, so Agent Teams shows Input needed. It names the node, the need, the waiting tasks, the steps, and a warning never to paste secrets. `@pool done`, `@pool skip`, or an answer resumes every waiting session, which then checks the step worked."
+            "behavior": "`request_human`, and host MCP sign-in requests, mark the sub session Input needed and tell its owner and the user once per key and node, naming the node, the need, the waiting sub sessions, the steps, and a warning never to paste secrets. The user's answer resumes every sub session waiting on that key, which then checks the step worked."
           },
-          "basedOn": ["f-host-seams"]
-        },
-        {
-          "id": "r-connector-requests",
-          "subject": "Connector requests",
-          "change": "modified",
-          "values": {
-            "behavior": "Teams lets a connector flag a message as a request to the user, as the lead can."
-          },
-          "source": "toy-box src/features/teams/server/database.ts#appendMessage"
+          "basedOn": [
+            "f-host-seams"
+          ]
         },
         {
           "id": "r-status",
           "subject": "Status",
           "change": "new",
           "values": {
-            "behavior": "`read_team` and the Connectors panel show each node's compute and UI slot use, and each open session's thread, title, last asker, host state, `set_status` text, next wake, and human requests."
+            "behavior": "Each node's connection and its compute and UI slot use show in Settings and beside its sub sessions."
           }
-        },
-        {
-          "id": "r-team-delete",
-          "subject": "Team deletion",
-          "change": "new",
-          "values": {
-            "behavior": "Deleting a team gives each of its open remote sessions the wrap-up turn, then archives it."
-          }
-        },
-        {
-          "id": "r-pool-dialog",
-          "subject": "Connector dialog",
-          "change": "modified",
-          "values": {
-            "behavior": "The connector dialog adds and edits a pool's nodes, offering the account's dev tunnels as it does for service connectors."
-          },
-          "source": "toy-box src/features/connectors/components/ConnectorDialog.tsx"
         },
         {
           "id": "r-files-out",
@@ -431,11 +648,18 @@
       "id": "node-kit",
       "title": "Node kit in vscode-space",
       "purpose": "Define what every node provides to every session on it, whoever started the session.",
+      "collapsed": false,
       "kind": "records",
       "view": "cards",
       "sourcePolicy": "reference",
       "subject": "Piece",
-      "fields": [{ "id": "behavior", "label": "Behavior", "kind": "text" }],
+      "fields": [
+        {
+          "id": "behavior",
+          "label": "Behavior",
+          "kind": "text"
+        }
+      ],
       "items": [
         {
           "id": "r-node-host",
@@ -445,7 +669,11 @@
             "behavior": "A logon task in the owner's desktop session runs a supervisor that starts `code-insiders agent host` from a standalone CLI under `~/.agent-node`, on a fixed localhost port with a connection token file, and hosts the private owner-only dev tunnel that forwards it. It restarts either one when it exits and stops anything an earlier supervisor left running."
           },
           "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
-          "basedOn": ["f-standalone-host", "f-host-updates", "f-tunnel-host"]
+          "basedOn": [
+            "f-standalone-host",
+            "f-host-updates",
+            "f-tunnel-host"
+          ]
         },
         {
           "id": "r-node-maintenance",
@@ -455,7 +683,9 @@
             "behavior": "Once the host has run for a day, the supervisor restarts it the next time no turn is running and no UI hold is taken, updating the standalone CLI first, so CLI and agent host updates apply. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
           },
           "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
-          "basedOn": ["f-host-updates"]
+          "basedOn": [
+            "f-host-updates"
+          ]
         },
         {
           "id": "r-ui-slot",
@@ -464,7 +694,9 @@
           "values": {
             "behavior": "`ui-slot run -- <command>` holds one of the node's UI slots (default 5) while the command runs. `ui-slot hold --desktop` holds all of them, for real input or screen recording, until `ui-slot release` or a time limit. Slots belong to processes, so a crash frees them. A status file lets the pool read current use."
           },
-          "basedOn": ["f-turn-meta"]
+          "basedOn": [
+            "f-turn-meta"
+          ]
         },
         {
           "id": "r-rdp-hold",
@@ -473,7 +705,9 @@
           "values": {
             "behavior": "Connecting over RDP takes a human hold that pauses desktop holds while Playwright work continues. Disconnecting releases it and moves the session to the console with `tscon`, so it stays unlocked. A Return to console shortcut on the desktop runs the same command."
           },
-          "basedOn": ["f-rdp-lock"]
+          "basedOn": [
+            "f-rdp-lock"
+          ]
         },
         {
           "id": "r-setup-record",
@@ -490,7 +724,9 @@
           "values": {
             "behavior": "A personal skill in `~/.copilot/skills` documents `ui-slot`, human-needed requests, and the setup record for every session on the node."
           },
-          "basedOn": ["f-personal-skills"]
+          "basedOn": [
+            "f-personal-skills"
+          ]
         },
         {
           "id": "r-node-setup-script",
@@ -499,7 +735,9 @@
           "values": {
             "behavior": "One script installs the host task, tunnel, kit, skill, RDP tasks, gh, and power settings, so adding a node is one run."
           },
-          "basedOn": ["f-tunnel-host"]
+          "basedOn": [
+            "f-tunnel-host"
+          ]
         }
       ]
     },
@@ -507,6 +745,7 @@
       "id": "pr-workflow",
       "title": "PR workflow skill",
       "purpose": "Show that the full PR lifecycle is a workflow on top of the pool, owned by the workspace it serves.",
+      "collapsed": false,
       "kind": "markdown",
       "body": "A `remote-pr` skill in vscode-space builds on its `github-pr`, `worktree-isolation`, and `demo-capture` skills. The requesting agent and the remote session both read it.\n\n**The handoff** is a new top-level `@pool` message carrying:\n\n- the goal and deliverable: a merged fix, a draft for review, or an investigation only;\n- the analysis so far, with evidence attached as files;\n- the suspected fix location as repo, path, and symbol at a commit SHA, never local paths;\n- acceptance criteria and required validation, including UI scenarios and whether video evidence is needed;\n- the PR's shape: linked issue, reviewers, labels;\n- the merge rule: drive to merge, stop at approval, or the conditions for closing.\n\nThe requester hands over the whole task and does not also work on it locally.\n\n**The remote session's stages** each end the turn, so waiting holds no slot:\n\n1. Start: update the vscode-space root, create a worktree from the latest upstream, and ask only if its findings contradict the handoff.\n2. Build: implement, build, and test.\n3. Validate: run UI work through `ui-slot`, and capture evidence with demo-capture.\n4. Draft PR: commit, post the PR link and evidence, `set_status`, then `wake_after`.\n5. Green: fix CI and address Copilot code review threads; wakes that find nothing new end with `NO_UPDATE`; mark the PR ready and request reviewers.\n6. Approval: wake every few hours, and ask the requester only for decisions or stalled reviews.\n7. Merge, or close only with the requester's confirmation unless the handoff allows it.\n8. Clean up: remove the worktree and branch, post the outcome, and call `finish`.\n\nRemote sessions may commit and push learnings and task logs to the vscode-space root on their node. They stage only their own files and resolve conflicts themselves."
     },
@@ -514,6 +753,7 @@
       "id": "decisions",
       "title": "Decisions",
       "purpose": "Keep the owner's choices, with the alternatives they rejected, so later changes revisit them deliberately.",
+      "collapsed": false,
       "kind": "decisions",
       "items": [
         {
@@ -524,38 +764,63 @@
               "id": "o-ahp",
               "label": "VS Code's standalone Agent Host, over AHP",
               "rationale": "Sessions, multiple clients, reconnects, approvals, providers, and server updates already exist and are used daily.",
-              "tradeoff": "The protocol moves quickly in Insiders, so a new version can need a client update."
+              "tradeoff": "The protocol moves quickly in Insiders, so a new version can need a client update.",
+              "adds": []
             },
             {
               "id": "o-sdk-broker",
               "label": "A custom Copilot SDK broker",
-              "tradeoff": "Rebuilds what AHP has, is Copilot-only, and leaves every SDK update to us."
+              "tradeoff": "Rebuilds what AHP has, is Copilot-only, and leaves every SDK update to us.",
+              "adds": []
             },
             {
               "id": "o-launcher",
               "label": "A process launcher",
-              "tradeoff": "Session management becomes SSH plus tmux rebuilt by hand, and it knows nothing about agents."
+              "tradeoff": "Session management becomes SSH plus tmux rebuilt by hand, and it knows nothing about agents.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-ahp", "status": "decided" },
-          "basedOn": ["f-standalone-host", "f-host-updates"]
+          "choice": {
+            "optionId": "o-ahp",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": [],
+          "basedOn": [
+            "f-standalone-host",
+            "f-host-updates"
+          ]
         },
         {
           "id": "d-path",
-          "question": "How do team agents reach nodes?",
+          "question": "How do agents reach nodes?",
           "options": [
+            {
+              "id": "o-remote-provider",
+              "label": "A remote provider speaking AHP, so remote sub sessions are ordinary Sessions",
+              "rationale": "One registry, toolset, and transcript view for local and remote sub sessions.",
+              "tradeoff": "Agent Teams needs a fourth provider implementation.",
+              "adds": []
+            },
             {
               "id": "o-pool-connector",
               "label": "A pool connector speaking AHP directly",
-              "rationale": "One message out and one result back, with no extra agent turn in between."
+              "tradeoff": "A second registry beside Workers, and no remote transcripts in Agent Teams.",
+              "adds": []
             },
             {
               "id": "o-bryanbot",
               "label": "Through @bryanbot",
-              "tradeoff": "Every dispatch costs a BryanBot agent turn and more messages."
+              "tradeoff": "Every dispatch costs a BryanBot agent turn and more messages.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-pool-connector", "status": "decided" }
+          "choice": {
+            "optionId": "o-remote-provider",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-quality",
@@ -565,11 +830,22 @@
               "id": "o-insiders",
               "label": "Insiders",
               "rationale": "It matches daily use and gets fixes sooner.",
-              "tradeoff": "New protocol versions occasionally need approval."
+              "tradeoff": "New protocol versions occasionally need approval.",
+              "adds": []
             },
-            { "id": "o-stable", "label": "Stable", "tradeoff": "Agent Host fixes arrive weeks later." }
+            {
+              "id": "o-stable",
+              "label": "Stable",
+              "tradeoff": "Agent Host fixes arrive weeks later.",
+              "adds": []
+            }
           ],
-          "choice": { "optionId": "o-insiders", "status": "decided" }
+          "choice": {
+            "optionId": "o-insiders",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-ui-capacity",
@@ -578,34 +854,50 @@
             {
               "id": "o-ui-slot",
               "label": "The remote agent claims slots on the node with `ui-slot`",
-              "rationale": "Only the remote agent knows when a long task starts validating, and node-side slots work for every client, including while Agent Teams is offline."
+              "rationale": "Only the remote agent knows when a long task starts validating, and node-side slots work for every client, including while Agent Teams is offline.",
+              "adds": []
             },
             {
               "id": "o-request-flags",
               "label": "The requester tags each request `/ui` or `/desktop`",
-              "tradeoff": "The requester cannot know when a multi-hour task will touch the UI."
+              "tradeoff": "The requester cannot know when a multi-hour task will touch the UI.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-ui-slot", "status": "decided" },
-          "basedOn": ["f-turn-meta"]
+          "choice": {
+            "optionId": "o-ui-slot",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": [],
+          "basedOn": [
+            "f-turn-meta"
+          ]
         },
         {
           "id": "d-wake-owner",
-          "question": "Who owns a remote session's self-wakes?",
+          "question": "Who owns a sub session's self-wakes?",
           "options": [
             {
               "id": "o-pool-wakes",
-              "label": "The pool",
-              "rationale": "Wakes count against node limits, show in status, and are cancelled by newer messages.",
-              "tradeoff": "Wakes fire only while Agent Teams runs; overdue ones fire at startup."
+              "label": "Agent Teams",
+              "rationale": "Wakes count against node limits, show beside the sub session, and are cancelled by newer messages.",
+              "tradeoff": "Wakes fire only while Agent Teams runs; overdue ones fire at startup.",
+              "adds": []
             },
             {
               "id": "o-host-schedule",
               "label": "Agent Host scheduled chats",
-              "tradeoff": "Host-started turns bypass the node's compute limit and the pool's status."
+              "tradeoff": "Host-started turns bypass the node's compute limit and the pool's status.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-pool-wakes", "status": "decided" }
+          "choice": {
+            "optionId": "o-pool-wakes",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-busy",
@@ -614,11 +906,22 @@
             {
               "id": "o-steer",
               "label": "It steers the running turn",
-              "rationale": "A correction reaches the remote agent at its next step instead of after an hour of building; `/stop` remains the hard stop."
+              "rationale": "A correction reaches the remote agent at its next step instead of after an hour of building; `/stop` remains the hard stop.",
+              "adds": []
             },
-            { "id": "o-queue", "label": "It waits for the next turn", "tradeoff": "Corrections arrive too late to matter." }
+            {
+              "id": "o-queue",
+              "label": "It waits for the next turn",
+              "tradeoff": "Corrections arrive too late to matter.",
+              "adds": []
+            }
           ],
-          "choice": { "optionId": "o-steer", "status": "decided" }
+          "choice": {
+            "optionId": "o-steer",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-reply-audience",
@@ -627,15 +930,22 @@
             {
               "id": "o-asker-only",
               "label": "Only the agent who asked",
-              "rationale": "The lead still sees the result in the transcript, and the asker reports back as usual."
+              "rationale": "The lead still sees the result in the transcript, and the asker reports back as usual.",
+              "adds": []
             },
             {
               "id": "o-asker-and-lead",
               "label": "The asker and the lead",
-              "tradeoff": "Every member's result would also wake the lead."
+              "tradeoff": "Every member's result would also wake the lead.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-asker-only", "status": "decided" }
+          "choice": {
+            "optionId": "o-asker-only",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-workflow-home",
@@ -644,15 +954,22 @@
             {
               "id": "o-workspace-skill",
               "label": "A `remote-pr` skill in vscode-space",
-              "rationale": "It builds on vscode-space's own skills and changes with that workspace without an Agent Teams release; other workspaces add their own workflow skills."
+              "rationale": "It builds on vscode-space's own skills and changes with that workspace without an Agent Teams release; other workspaces add their own workflow skills.",
+              "adds": []
             },
             {
               "id": "o-agent-teams",
               "label": "Built into Agent Teams",
-              "tradeoff": "Ties a general pool to one workspace's process."
+              "tradeoff": "Ties a general pool to one workspace's process.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-workspace-skill", "status": "decided" }
+          "choice": {
+            "optionId": "o-workspace-skill",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-pr-close",
@@ -660,28 +977,95 @@
           "options": [
             {
               "id": "o-confirm-close",
-              "label": "Only with the requester's confirmation, unless the handoff allows it"
+              "label": "Only with the requester's confirmation, unless the handoff allows it",
+              "adds": []
             },
-            { "id": "o-close-freely", "label": "Yes", "tradeoff": "Work can be abandoned without anyone agreeing." }
+            {
+              "id": "o-close-freely",
+              "label": "Yes",
+              "tradeoff": "Work can be abandoned without anyone agreeing.",
+              "adds": []
+            }
           ],
-          "choice": { "optionId": "o-confirm-close", "status": "decided" }
+          "choice": {
+            "optionId": "o-confirm-close",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         },
         {
           "id": "d-finish",
-          "question": "What does `finish` do to the remote session?",
+          "question": "What does closing a sub session do?",
           "options": [
             {
               "id": "o-finish-archives",
-              "label": "Archives it once the turn ends",
-              "rationale": "Archiving can be undone in VS Code; `/close` remains the team's way to cancel."
+              "label": "Deletes it, archiving a remote one on its node",
+              "rationale": "Archiving can be undone in VS Code; the owner closes a sub session once its task is done.",
+              "adds": []
             },
             {
               "id": "o-finish-keeps",
               "label": "Leaves it open",
-              "tradeoff": "Finished sessions accumulate on nodes."
+              "tradeoff": "Finished sessions accumulate locally and on nodes.",
+              "adds": []
             }
           ],
-          "choice": { "optionId": "o-finish-archives", "status": "decided" }
+          "choice": {
+            "optionId": "o-finish-archives",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
+        },
+        {
+          "id": "d-sub-shape",
+          "question": "How do remote sub sessions fit into Agent Teams?",
+          "options": [
+            {
+              "id": "o-sub-provider",
+              "label": "Workers run by a remote AHP provider",
+              "rationale": "Local and remote sub sessions share one registry, toolset, and transcript view.",
+              "tradeoff": "Re-plans the pool, and the AHP provider is proved first.",
+              "adds": []
+            },
+            {
+              "id": "o-sub-connector",
+              "label": "Keep the pool connector for remote work, and local sub sessions separately",
+              "tradeoff": "Two registries and two toolsets, and remote work shows only as messages.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-sub-provider",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
+        },
+        {
+          "id": "d-sub-access",
+          "question": "Who may message a sub session?",
+          "options": [
+            {
+              "id": "o-owner-only",
+              "label": "Only its owning agent; the user can open and watch it",
+              "rationale": "The owner stays the single reviewer, and the team's conversation stays quiet.",
+              "adds": []
+            },
+            {
+              "id": "o-anyone",
+              "label": "Any agent on the team, and the user",
+              "tradeoff": "Instructions conflict, and the owner no longer sees everything its sub session is told.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-owner-only",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": []
         }
       ]
     },
@@ -689,6 +1073,7 @@
       "id": "questions",
       "title": "Experiments before building on them",
       "purpose": "Name the assumptions most likely to be wrong; each is settled on a node before the work that depends on it.",
+      "collapsed": false,
       "kind": "questions",
       "items": [
         {
@@ -696,68 +1081,104 @@
           "question": "Does a Bun WebSocket reach `code agent host` through a private dev tunnel with the tunnel authorization header and the AHP token, and reconnect after a drop?",
           "answerMethod": "run-experiment",
           "impact": "The package's `WebSocketTransport` cannot set headers, so a tunnel needs a small transport over Bun's `WebSocket`, which can.",
-          "affects": ["r-pool-config", "r-thread-session"],
+          "affects": [
+            "r-remote-nodes",
+            "r-remote-subscription"
+          ],
           "answer": "Yes. From brchen-db4, Bun's `WebSocket` with an `X-Tunnel-Authorization: tunnel <connect token>` header (from `devtunnel token <id> --scopes connect`) and `?tkn=` reached brchen-db3's host at the port's `portUri`, negotiated 1.0.0, and ran an autopilot turn to completion. The first connection took 12.8 s while the tunnel relay warmed up; later fresh connections took 130 to 210 ms. Two more things the pool relies on: `resourceWrite` needs an existing folder, so the pool creates a session's scratch folder with `resourceMkdir`, which creates parents; and `listSessions` returns the node's whole Copilot history (49 sessions on brchen-db3), so the pool knows its own sessions from its threads rather than from the listing."
         },
         {
           "id": "q-ahp-client",
           "question": "Does `@microsoft/agent-host-protocol` 1.0.0 work with today's Insiders agent host, and can a turn's final answer be read reliably from chat state?",
           "answerMethod": "run-experiment",
-          "affects": ["r-thread-session", "r-results"],
+          "affects": [
+            "r-remote-provider",
+            "r-sub-results"
+          ],
           "answer": "Yes. On brchen-db4 the 1.0.0 client negotiated protocol 1.0.0 with Insiders agent host 944d79c over Bun's global WebSocket. A completed turn keeps its client-chosen ID, and in autopilot its last markdown part is a \"**Task completed:**\" summary that states the answer."
         },
         {
           "id": "q-steering",
           "question": "Does a steering message land in a running turn on today's Insiders host?",
           "answerMethod": "run-experiment",
-          "affects": ["d-busy"],
+          "affects": [
+            "d-busy"
+          ],
           "answer": "Yes. The host accepts it mid-turn and the agent applies it at its next step; when the turn ends first, here because its shell moved to background work, the agent applies it at the start of the next turn."
         },
         {
           "id": "q-resource-attach",
           "question": "Can a file written to the node with `resourceWrite` be attached to a turn?",
           "answerMethod": "run-experiment",
-          "affects": ["r-files-in"],
+          "affects": [
+            "r-files-in"
+          ],
           "answer": "Yes. A file written with `resourceWrite` and attached as a resource attachment was read by the agent, which quoted its contents."
         },
         {
           "id": "q-client-tools",
           "question": "Is a client tool call made while the pool is disconnected answered after it reconnects?",
           "answerMethod": "run-experiment",
-          "affects": ["r-pool-tools"],
+          "affects": [
+            "r-remote-tools"
+          ],
           "answer": "Yes, for a 20-second disconnect: the host kept the client's tools and the running call, and completing it after reconnecting with the same client ID finished the turn. The protocol lets a host time out a call whose client stays away, so a longer outage can fail it."
         },
         {
           "id": "q-background-wake",
-          "question": "When a session's background work ends after its turn, does the host start a turn by itself, or must the pool wake the session?",
+          "question": "When a session's background work ends after its turn, does the host start a turn by itself, or must Agent Teams wake the session?",
           "answerMethod": "run-experiment",
-          "affects": ["r-results", "r-wakes"]
+          "affects": [
+            "r-sub-results",
+            "r-sub-wakes"
+          ]
         },
         {
           "id": "q-ui-concurrency",
           "question": "Do five Playwright-driven VS Code windows and a browser run on one node without interfering, and what do they cost in CPU and memory?",
           "answerMethod": "run-experiment",
-          "affects": ["r-ui-slot"]
+          "affects": [
+            "r-ui-slot"
+          ]
         },
         {
           "id": "q-rdp-console",
           "question": "After an RDP disconnect moves the session to the console, do Playwright work and real mouse and keyboard input both keep working, and does a company screen-lock policy apply on brchen-db3?",
           "answerMethod": "run-experiment",
           "impact": "If brchen-db3 is a physical PC rather than a cloud VM, leaving its console unlocked needs a different approach.",
-          "affects": ["r-rdp-hold"],
+          "affects": [
+            "r-rdp-hold"
+          ],
           "answer": "Yes, with two kit fixes. On brchen-db3 the connect task took the human hold on reconnect and the disconnect task released it and moved the session to the console with `tscon`, both exiting 0. The console stayed unlocked, but at 1024x768. A pool session then took a desktop hold and ran headed Edge under Playwright: page screenshots and full-desktop captures both worked and streamed back over AHP within a second or two. The Edge window opened behind the window already in front, because Windows keeps a background process from taking the foreground, so the kit gained `ui-slot focus`, which brought it forward by attaching to the foreground window's input; real keyboard input and a real mouse click then reached the page. A session set the console to 1920x1080 the same way the disconnect task now does. Not yet tested: whether a screen-lock policy locks the console after a long idle."
         },
         {
           "id": "q-signins",
           "question": "Does a copied Edge profile stay signed into Lens, can local VS Code complete MCP sign-in for a pool-created session, and is device-code `az login` allowed?",
           "answerMethod": "run-experiment",
-          "affects": ["r-setup-record", "r-human-needed"]
+          "affects": [
+            "r-setup-record",
+            "r-human-needed"
+          ]
         },
         {
           "id": "q-root-worktree",
           "question": "Does a session started at the vscode-space root on brchen-db3 create its own worktree under `vscode.worktrees/` when given a child-repo change?",
           "answerMethod": "run-experiment",
-          "affects": ["pr-workflow", "r-placement"]
+          "affects": [
+            "pr-workflow",
+            "r-placement"
+          ]
+        },
+        {
+          "id": "q-ahp-provider",
+          "question": "Can a provider project a node's AHP turns into Agent Teams session events, replay them from the node's history, offer Agent Teams tools as AHP client tools, and pass their calls through Security's tool checks?",
+          "answerMethod": "run-experiment",
+          "impact": "If projection or replay loses too much, remote sub sessions fall back to reporting results without transcripts.",
+          "affects": [
+            "r-remote-provider",
+            "r-remote-tools",
+            "d-sub-shape"
+          ]
         }
       ]
     },
@@ -765,7 +1186,9 @@
       "id": "plan",
       "title": "Plan",
       "purpose": "Order the work so each step leaves the product working and the riskiest assumptions are tested before the pool depends on them.",
+      "collapsed": false,
       "kind": "plan",
+      "fields": [],
       "phases": [
         {
           "id": "phase-reply",
@@ -776,14 +1199,24 @@
               "title": "Route connector replies to the agent who asked",
               "doneWhen": "A connector event whose `replyTo` names an agent's message wakes that agent and shows it as the transcript addressee; events without it, or answering the user, wake the lead; model, database, and server tests cover each case and pass.",
               "status": "complete",
-              "implements": ["r-reply-to-wire", "r-asked-by", "r-audience", "r-guidance", "d-reply-audience"]
+              "implements": [
+                "r-reply-to-wire",
+                "r-asked-by",
+                "r-audience",
+                "r-guidance",
+                "d-reply-audience"
+              ],
+              "values": {}
             },
             {
               "id": "s-bryanbot-reply-to",
               "title": "Send `replyTo` from BryanBot",
               "doneWhen": "Every BryanBot event answering an Agent Teams message carries that message's ID, and BryanBot's connector tests pass.",
               "status": "complete",
-              "implements": ["r-bryanbot-reply-to"]
+              "implements": [
+                "r-bryanbot-reply-to"
+              ],
+              "values": {}
             }
           ]
         },
@@ -796,52 +1229,130 @@
               "title": "Serve the Insiders agent host on brchen-db3",
               "doneWhen": "After logon, brchen-db3 serves the agent host on a fixed port behind a private dev tunnel, and an idle maintenance run updates the CLI and workspaces, then restarts the host.",
               "status": "in-progress",
-              "implements": ["r-node-host", "r-node-maintenance", "r-node-setup-script", "d-quality"]
+              "implements": [
+                "r-node-host",
+                "r-node-maintenance",
+                "r-node-setup-script",
+                "d-quality"
+              ],
+              "values": {}
             },
             {
               "id": "s-ui-slot",
               "title": "Build `ui-slot` and the RDP hold",
               "doneWhen": "Of six concurrent `ui-slot run` calls, five run and one waits; a desktop hold waits for all slots and blocks new ones; killing a holder frees its slot; an RDP connect pauses desktop holds and a disconnect returns the session to the console unlocked.",
               "status": "complete",
-              "implements": ["r-ui-slot", "r-rdp-hold", "d-ui-capacity"]
+              "implements": [
+                "r-ui-slot",
+                "r-rdp-hold",
+                "d-ui-capacity"
+              ],
+              "values": {}
             },
             {
               "id": "s-node-skill",
               "title": "Install the agent-node skill and setup record",
               "doneWhen": "A new session on the node finds the `agent-node` skill and records a confirmed setup without secrets.",
               "status": "in-progress",
-              "implements": ["r-node-skill", "r-setup-record"]
+              "implements": [
+                "r-node-skill",
+                "r-setup-record"
+              ],
+              "values": {}
             }
           ]
         },
         {
-          "id": "phase-pool",
-          "title": "Pool connector",
+          "id": "phase-sub",
+          "title": "Sub sessions",
           "steps": [
             {
-              "id": "s-pool-config",
-              "title": "Define pool connectors and their nodes",
-              "doneWhen": "The registry starts every connector's link by its kind, with service connectors' existing tests passing unchanged; a pool connector with brchen-db3 can be added and edited in the connector dialog and shows Connected over the private tunnel.",
-              "status": "complete",
-              "implements": ["r-link-by-kind", "r-pool-config", "r-pool-dialog", "d-path"]
+              "id": "s-sub-tools",
+              "title": "Give every agent one sub-session toolset",
+              "doneWhen": "A team agent creates a local sub session from a brief, messages it, lists it, and closes it; a sixth open sub session is refused; another agent can't message it; and deleting the agent deletes it.",
+              "implements": [
+                "r-sub-owner",
+                "r-sub-tools",
+                "r-sub-brief",
+                "r-sub-limits",
+                "r-sub-access",
+                "d-sub-access"
+              ],
+              "values": {}
             },
             {
-              "id": "s-pool-sessions",
-              "title": "Run threads as remote sessions",
-              "doneWhen": "Against a protocol-faithful fake host, a retried create makes one session, follow-ups and steering reach it, each finished turn posts once as a reply to the latest message, `NO_UPDATE` posts nothing, and attachments reach the node; the same scenario works against brchen-db3.",
-              "implements": ["r-placement", "r-thread-session", "r-idempotent", "r-first-note", "r-results", "r-files-in", "x-pool-flow", "d-runtime", "d-busy"]
+              "id": "s-sub-results",
+              "title": "Report each finished turn to the owner",
+              "doneWhen": "Each finished turn wakes the owner once with its answer and evidence, `NO_UPDATE` wakes no one, and a `wake_after` starts a later turn that a newer message cancels.",
+              "implements": [
+                "r-sub-results",
+                "r-sub-wakes",
+                "x-sub-flow",
+                "d-wake-owner",
+                "d-busy"
+              ],
+              "values": {}
             },
             {
-              "id": "s-pool-tools",
-              "title": "Give remote sessions the pool tools",
-              "doneWhen": "A remote session can schedule a wake that starts a turn later and is cancelled by a newer message, finish and be archived, set its status, and raise a human request that the owner's `@pool done` resumes.",
-              "implements": ["r-pool-tools", "r-wakes", "r-human-needed", "r-connector-requests", "d-wake-owner", "d-finish"]
+              "id": "s-sub-view",
+              "title": "Show each agent's sub sessions and close the forgotten ones",
+              "doneWhen": "The team pane lists each agent's open sub sessions; an idle reported sub session reminds its owner once; and deleting a team closes its members' sub sessions.",
+              "implements": [
+                "r-sub-view",
+                "r-sub-cleanup",
+                "d-finish"
+              ],
+              "values": {}
+            }
+          ]
+        },
+        {
+          "id": "phase-remote",
+          "title": "Remote sub sessions",
+          "steps": [
+            {
+              "id": "s-ahp-probe",
+              "title": "Prove an AHP provider against brchen-db3",
+              "doneWhen": "A probe projects a real brchen-db3 turn into session events, replays it from the node's history, and calls an Agent Teams tool offered as an AHP client tool through Security's checks, answering q-ahp-provider.",
+              "implements": [
+                "d-sub-shape"
+              ],
+              "values": {}
             },
             {
-              "id": "s-pool-status",
-              "title": "Show pool status and close sessions with their team",
-              "doneWhen": "`read_team` and the Connectors panel show each node's compute and UI use and each open session, and deleting a team archives its sessions after their wrap-up turn.",
-              "implements": ["r-status", "r-team-delete"]
+              "id": "s-remote-provider",
+              "title": "Run sub sessions on a node through the remote provider",
+              "doneWhen": "A sub session created for brchen-db3 runs there with its transcript and history in Agent Teams; a retried create makes one session; messages and steering reach it; attachments reach the node; and node definitions live in Settings, replacing the unshipped pool connector kind.",
+              "implements": [
+                "r-remote-provider",
+                "r-remote-nodes",
+                "r-idempotent",
+                "r-remote-subscription",
+                "r-files-in",
+                "d-runtime",
+                "d-path"
+              ],
+              "values": {}
+            },
+            {
+              "id": "s-remote-placement",
+              "title": "Place remote sub sessions on nodes",
+              "doneWhen": "A sub session for a team working in a node's repository starts in that folder, another starts in a scratch folder, a draining or full node takes none, and waiting requests start in arrival order.",
+              "implements": [
+                "r-placement"
+              ],
+              "values": {}
+            },
+            {
+              "id": "s-remote-tools",
+              "title": "Give remote sub sessions their node tools",
+              "doneWhen": "A remote sub session sets its status, schedules a wake, and raises a human request that the user's answer resumes, and each node's slot use shows in Settings.",
+              "implements": [
+                "r-remote-tools",
+                "r-human-needed",
+                "r-status"
+              ],
+              "values": {}
             }
           ]
         },
@@ -853,7 +1364,12 @@
               "id": "s-remote-pr",
               "title": "Write and dogfood the `remote-pr` skill",
               "doneWhen": "One real microsoft/vscode fix goes from a team handoff through a remote session's draft PR, CI, review, merge, and worktree cleanup, and the requester hears only milestones.",
-              "implements": ["pr-workflow", "d-workflow-home", "d-pr-close"]
+              "implements": [
+                "pr-workflow",
+                "d-workflow-home",
+                "d-pr-close"
+              ],
+              "values": {}
             }
           ]
         },
@@ -865,7 +1381,10 @@
               "id": "s-files-out",
               "title": "Return files from remote sessions",
               "doneWhen": "A remote session's screenshot arrives as a thread attachment and its video as a link.",
-              "implements": ["r-files-out"]
+              "implements": [
+                "r-files-out"
+              ],
+              "values": {}
             }
           ]
         }
@@ -875,9 +1394,30 @@
   "tabs": [
     {
       "title": "Design",
-      "sections": ["outcome", "not-in-scope", "findings", "flow", "reply-routing", "pool", "node-kit", "pr-workflow"]
+      "sections": [
+        "outcome",
+        "not-in-scope",
+        "findings",
+        "flow",
+        "reply-routing",
+        "sub-sessions",
+        "remote",
+        "node-kit",
+        "pr-workflow"
+      ]
     },
-    { "title": "Decisions and experiments", "sections": ["decisions", "questions"] },
-    { "title": "Plan", "sections": ["plan"] }
+    {
+      "title": "Decisions and experiments",
+      "sections": [
+        "decisions",
+        "questions"
+      ]
+    },
+    {
+      "title": "Plan",
+      "sections": [
+        "plan"
+      ]
+    }
   ]
 }
