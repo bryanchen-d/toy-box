@@ -100,7 +100,7 @@
         },
         {
           "id": "f-ahp-holds",
-          "statement": "In autopilot with the `default` approval mode, brchen-db3's host held every external write tried (`gh api -X POST`, `gh pr comment`, `git push`, `Invoke-RestMethod -Method Post`) and every web read (`web_fetch`, `curl`, `Invoke-WebRequest`) for a client's confirmation, but ran GitHub reads (`gh issue view`, the GitHub MCP server's `issue_read`) and `git ls-remote` without asking.",
+          "statement": "In autopilot with the `default` approval mode, brchen-db3's host held every external write tried (`gh api -X POST`, `gh pr comment`, `git push`, `Invoke-RestMethod -Method Post`) and every web read (`web_fetch`, `curl`, `Invoke-WebRequest`) for a client's confirmation, but ran GitHub reads (`gh issue view`, the GitHub MCP server's `issue_read`) and `git ls-remote` without asking. The session config's `permissions` rules changed none of this: `ask` rules for `Shell(*)` and `Shell(gh *)`, and a `deny` rule for `Mcp(github-mcp-server/issue_read)`, were accepted and ignored.",
           "whyItMatters": "Agent Teams can refuse any external write a remote session makes, but issue and pull request text, the main injection source for PR work, reaches the remote model unreviewed.",
           "sources": [
             "Approval probe against Insiders agent host 944d79c on brchen-db3, 2026-11-15"
