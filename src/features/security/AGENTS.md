@@ -91,6 +91,11 @@ sessions (Teams, Automations, Inbox, Workers) can't ask, so their risky actions 
 the user closes the finding. Approval rows are live-only; a refusal reaches provider history as the
 action's result.
 
+`screen` also records each external write (a `send` action, such as a push or a pull request
+change) as it runs, and `takeExternalWrites` hands a session's list over once. Workers gives a
+sub session's to its owner to review. The lists live in memory, 50 writes for each of the 200 most
+recently active sessions, so sessions nobody takes from drop out.
+
 ## Persistence and reporting
 
 `security_findings` keeps flagged content after its session is gone, once per session and content

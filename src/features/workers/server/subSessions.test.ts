@@ -67,6 +67,7 @@ mock.module("@workers/server/cleanup", () => ({
 }));
 
 const { registerWorkerSession, unregisterWorkerSession } = await import("./database");
+const { createSessionGuard } = await import("@security/server/guard");
 const {
   closeSubSession,
   createSubSession,
@@ -249,6 +250,37 @@ describe("sub sessions", () => {
         },
       ],
     ]);
+  });
+
+  test("hand their owner the external writes they made, in a report or when closed", async () => {
+    const { sessionId } = await createSubSession("owner", { name: "Reconnect fix", brief });
+    const guard = createSessionGuard(sessionId);
+    await guard.screen({ type: "command", command: "git push origin fix" }, "");
+    await reportToOwner(sessionId, { status: "completed", response: "NO_UPDATE" });
+    await guard.screen({ type: "command", command: "gh pr comment 42 --body Done" }, "");
+
+    expect(deliverMock.mock.calls).toEqual([
+      [
+        "owner",
+        {
+          systemMessage: {
+            type: "sub_session_report",
+            sessionId,
+            name: "Reconnect fix",
+            outcome: "completed",
+            report: "It had nothing else to report.",
+            externalWrites: ["push commits to a remote: git push origin fix"],
+          },
+          immediate: true,
+        },
+      ],
+    ]);
+    expect(await closeSubSession("owner", sessionId)).toEqual({
+      closed: true,
+      unreportedExternalWrites: [
+        "change GitHub issues or pull requests: gh pr comment 42 --body Done",
+      ],
+    });
   });
 
   test("wake once when their scheduled wake falls due, unless their owner wrote first", async () => {

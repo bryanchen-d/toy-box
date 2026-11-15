@@ -192,7 +192,8 @@ function isLocalUrl(url: string): boolean {
   return host !== undefined && LOCAL_HOSTS.test(host.replace(/^[^@]*@/, ""));
 }
 
-function firstLine(text: string, length = 120): string {
+/** A text's first line, cut to `length` characters. */
+export function firstLine(text: string, length = 120): string {
   const line = text.trim().split("\n", 1)[0] ?? "";
   return line.length > length ? `${line.slice(0, length - 1)}…` : line;
 }

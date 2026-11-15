@@ -120,22 +120,32 @@ export function renderSubSessionBrief(brief: SubSessionBrief, owner: { name?: st
   ].join("\n\n");
 }
 
+type SubSessionReport = {
+  outcome: "completed" | "failed";
+  report: string;
+  externalWrites?: string[];
+};
+
 /**
- * What a sub session's finished execution tells its owner: its final answer, or its error. An
- * execution with no answer, or one of exactly `NO_UPDATE`, tells it nothing.
+ * What a sub session's finished execution tells its owner: its final answer or its error, with
+ * the external writes it made since its last report. An execution with no answer, or one of
+ * exactly `NO_UPDATE`, tells it nothing unless it made external writes, which its owner reviews.
  */
 export function subSessionReport(
   completion: SessionCompletion,
-): { outcome: "completed" | "failed"; report: string } | undefined {
+  externalWrites: readonly string[] = [],
+): SubSessionReport | undefined {
+  const writes = externalWrites.length > 0 ? { externalWrites: [...externalWrites] } : {};
   if (completion.status === "failed") {
     const report =
       completion.error?.trim() || completion.response?.trim() || "It stopped without saying why.";
-    return { outcome: "failed", report: clip(report) };
+    return { outcome: "failed", report: clip(report), ...writes };
   }
-  if (completion.status !== "completed") return undefined;
-  const report = completion.response?.trim();
-  if (!report || report === NO_UPDATE) return undefined;
-  return { outcome: "completed", report: clip(report) };
+  const answer = completion.status === "completed" ? completion.response?.trim() : undefined;
+  if (answer && answer !== NO_UPDATE)
+    return { outcome: "completed", report: clip(answer), ...writes };
+  if (externalWrites.length === 0) return undefined;
+  return { outcome: "completed", report: "It had nothing else to report.", ...writes };
 }
 
 function clip(text: string): string {

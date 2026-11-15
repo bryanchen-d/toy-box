@@ -7,6 +7,7 @@ import {
   waitForSessions,
 } from "@sessions/server/runtime";
 import type { SessionCompletion } from "@sessions/model";
+import { takeExternalWrites } from "@security/server/guard";
 import {
   dueWake,
   isReminderDue,
@@ -100,14 +101,17 @@ export async function listSubSessions(ownerSessionId: string) {
   return { subSessions: await Promise.all(workers.map(summarize)) };
 }
 
-/** Stops the sub session's work and deletes it. */
+/** Stops the sub session's work and deletes it, returning any external writes not yet reported. */
 export async function closeSubSession(
   ownerSessionId: string,
   sessionId: string,
-): Promise<{ closed: true }> {
+): Promise<{ closed: true; unreportedExternalWrites?: string[] }> {
   await requireOwned(ownerSessionId, sessionId);
   await deleteWorker(sessionId, "session");
-  return { closed: true };
+  const unreported = takeExternalWrites(sessionId);
+  return unreported.length > 0
+    ? { closed: true, unreportedExternalWrites: unreported }
+    : { closed: true };
 }
 
 /**
@@ -122,7 +126,7 @@ export async function reportToOwner(
 ): Promise<void> {
   const worker = await getPersistedWorker(sessionId);
   if (worker?.type !== "session") return;
-  const report = subSessionReport(completion);
+  const report = subSessionReport(completion, takeExternalWrites(sessionId));
   if (!report) return;
   const remindAt = new Date(now.getTime() + SUB_SESSION_REMINDER_MS).toISOString();
   await updateWorker(sessionId, {

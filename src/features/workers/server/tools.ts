@@ -11,7 +11,7 @@ You can hand a task to a sub session: a session you own that does that one task,
 - Use your provider's own subagents for quick work inside a turn, such as a parallel search or a diff review. Use a sub session for a task that outlives your turn, needs its own review, or should run alongside your other work.
 - You are the expert on the task, so brief it the way you would brief a capable colleague who knows nothing yet: the goal, the context and decisions so far, the deliverable, acceptance criteria you will actually check, and its boundaries. Vague briefs come back as duplicated or misdirected work.
 - Give parallel sub sessions separate parts of the work, and a worktree each when they change the same repository.
-- Treat each report as a claim. Check it against your acceptance criteria and its evidence before you use it or pass it on, and send a follow-up when it falls short.
+- Treat each report as a claim. Check it against your acceptance criteria and its evidence before you use it or pass it on, and send a follow-up when it falls short. A report also lists the external writes the sub session made, such as pushes and pull request or issue changes; check that each is within its brief and fits what you know.
 - Close a sub session as soon as its task is done. You can own at most ${SUB_SESSION_LIMIT} at once.
 </sub_sessions>`;
 
@@ -59,7 +59,7 @@ const listSubSessionsTool = defineTool("list_sub_sessions", {
 
 const closeSubSessionTool = defineTool("close_sub_session", {
   description:
-    "Closes one of your sub sessions once its task is done or no longer needed: stops any work it is doing and deletes it.",
+    "Closes one of your sub sessions once its task is done or no longer needed: stops any work it is doing and deletes it. The result lists any external writes it made that no report told you about yet.",
   parameters: z.object({ sessionId: sessionIdParameter }),
   handler: async ({ sessionId }, invocation) => {
     const { closeSubSession } = await import("./subSessions");

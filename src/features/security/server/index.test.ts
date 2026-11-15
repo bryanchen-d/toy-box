@@ -14,7 +14,7 @@ mock.module("@/server/database", () => ({
 
 const judge = await import("./judge");
 const security = await import(".");
-const { createSessionGuard } = await import("./guard");
+const { createSessionGuard, takeExternalWrites } = await import("./guard");
 
 const push: AgentAction = { type: "command", command: "git push origin main" };
 const issue: AgentAction = { type: "command", command: "gh issue view 7" };
@@ -251,6 +251,21 @@ test("a declined approval and an unattended session refuse with a reason for the
     reason: expect.stringContaining("nobody is available to approve actions that push commits"),
   });
   expect(await createSessionGuard("other").review(push)).toEqual({ allowed: true });
+});
+
+test("a session's external writes are kept from when they run until someone takes them", async () => {
+  await open();
+  const guard = createSessionGuard("writer");
+  await guard.screen(push, "To github.com:o/r.git");
+  await guard.screen({ type: "command", command: "gh pr create --title Fix\n--body Long" }, "#42");
+  await guard.screen({ type: "command", command: "gh auth token" }, "gho_x");
+  await guard.screen({ type: "command", command: "bun test" }, "2 pass");
+
+  expect(takeExternalWrites("writer")).toEqual([
+    "push commits to a remote: git push origin main",
+    "change GitHub issues or pull requests: gh pr create --title Fix",
+  ]);
+  expect(takeExternalWrites("writer")).toEqual([]);
 });
 
 test("the judge learns from the flags the owner most recently closed as not attacks", async () => {

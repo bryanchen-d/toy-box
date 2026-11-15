@@ -86,6 +86,25 @@ describe("sub session report", () => {
     expect(report).toStartWith("x".repeat(20_000));
     expect(report).toEndWith("(The report was cut at 20000 characters.)");
   });
+
+  test("lists its external writes, and reports them even when it has nothing else to say", () => {
+    const writes = ["push commits to a remote: git push origin fix"];
+    expect(subSessionReport({ status: "completed", response: "Opened PR 42." }, writes)).toEqual({
+      outcome: "completed",
+      report: "Opened PR 42.",
+      externalWrites: writes,
+    });
+    expect(subSessionReport({ status: "completed", response: "NO_UPDATE" }, writes)).toEqual({
+      outcome: "completed",
+      report: "It had nothing else to report.",
+      externalWrites: writes,
+    });
+    expect(subSessionReport({ status: "failed", error: "CI failed." }, writes)).toEqual({
+      outcome: "failed",
+      report: "CI failed.",
+      externalWrites: writes,
+    });
+  });
 });
 
 describe("sub session wake", () => {

@@ -531,7 +531,7 @@
           "subject": "Reports",
           "change": "new",
           "values": {
-            "behavior": "Each execution a sub session finishes, whoever prompted it, wakes the owner at once with its final answer or error. The owner checks it against the brief's acceptance criteria before using or reporting it. An answer of exactly `NO_UPDATE`, or none, wakes no one, and an aborted run reports nothing. A sub session whose background work still runs stays busy after its turn ends, and reports when that work ends."
+            "behavior": "Each execution a sub session finishes, whoever prompted it, wakes the owner at once with its final answer or error. The owner checks it against the brief's acceptance criteria before using or reporting it. An answer of exactly `NO_UPDATE`, or none, wakes no one unless the execution made external writes, and an aborted run reports nothing. A sub session whose background work still runs stays busy after its turn ends, and reports when that work ends."
           },
           "basedOn": [
             "f-delegation-practice",
@@ -544,7 +544,7 @@
           "subject": "Outcome review",
           "change": "new",
           "values": {
-            "behavior": "Each report, local or remote, lists the external writes its sub session made since the previous report, as Security classifies them: pushes, pull request and issue changes, GitHub API writes, web posts, and publishes. The owner checks the report, its artifacts, and each of those writes against the brief's scope and what it knows, looking at the resulting pull requests, issues, comments, and pages itself rather than trusting the report, and undoes or raises anything out of scope."
+            "behavior": "Each report, local or remote, lists the external writes its sub session ran since the previous report, as Security classifies them when they run: pushes, pull request and issue changes, GitHub API writes, web posts, and publishes; closing lists any no report did. The owner checks the report, its artifacts, and each of those writes against the brief's scope and what it knows, looking at the resulting pull requests, issues, comments, and pages itself rather than trusting the report, and undoes or raises anything out of scope."
           }
         },
         {
@@ -1547,6 +1547,7 @@
               "id": "s-outcome-review",
               "title": "Hand each owner its sub session's external writes",
               "doneWhen": "A sub session that pushes a branch and comments on an issue reports both writes to its owner, who checks them against the brief; a report with no external writes lists none; and the same holds for a remote sub session.",
+              "status": "in-progress",
               "implements": [
                 "r-outcome-review",
                 "d-remote-security"

@@ -78,5 +78,12 @@ describe("Session system messages", () => {
     const failure = { ...report, outcome: "failed", report: "Usage limit reached." } as const;
     expect(systemMessageLabel(failure)).toBe("Reconnect fix stopped with an error");
     expect(systemMessagePrompt(failure)).toContain("<error>\nUsage limit reached.\n</error>");
+    expect(systemMessagePrompt(report)).not.toContain("external writes");
+
+    const writes = ["push commits to a remote: git push origin fix"];
+    const reviewed = systemMessagePrompt({ ...failure, externalWrites: writes });
+    expect(reviewed).toContain(`external writes`);
+    expect(reviewed).toContain(`\n- ${writes[0]}\n`);
+    expect(reviewed).toContain("Check each against your brief's scope");
   });
 });

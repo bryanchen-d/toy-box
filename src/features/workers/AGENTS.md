@@ -71,6 +71,10 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   `sub_session_report` system message holding its final answer or error (`server/startup.ts`
   subscribes to Sessions' completions). An answer of exactly `NO_UPDATE`, or none, wakes no one,
   and an aborted run reports nothing. The owner checks the report against its brief.
+- A report also lists the external writes the sub session ran since its previous report, which
+  Security records as each one runs (`takeExternalWrites`), and a `NO_UPDATE` turn that made any
+  still reports them. The owner checks each write against the brief's scope and what it knows.
+  Closing returns any writes no report has listed yet.
 - A sub session waiting on something slow calls `wake_after(minutes, reason)`, its only tool of the
   set. The wake lives in its Worker metadata, so it survives a restart; Workers checks every 30
   seconds and at startup, clears a due wake before delivering it, and the owner's next message
