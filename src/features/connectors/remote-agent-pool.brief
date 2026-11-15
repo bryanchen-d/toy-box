@@ -1354,7 +1354,7 @@
               "id": "s-sub-tools",
               "title": "Give every agent one sub-session toolset",
               "doneWhen": "A team agent creates a local sub session from a brief, messages it, lists it, and closes it; a sixth open sub session is refused; another agent can't message it; and deleting the agent deletes it.",
-              "status": "in-progress",
+              "status": "complete",
               "implements": [
                 "r-sub-owner",
                 "r-sub-tools",
@@ -1371,7 +1371,7 @@
               "id": "s-sub-results",
               "title": "Report each finished turn to the owner",
               "doneWhen": "Each finished turn wakes the owner once with its answer and evidence, `NO_UPDATE` wakes no one, and a `wake_after` starts a later turn that a newer message cancels.",
-              "status": "in-progress",
+              "status": "complete",
               "implements": [
                 "r-sub-results",
                 "r-sub-wakes",
