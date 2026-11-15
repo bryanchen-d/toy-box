@@ -58,4 +58,25 @@ describe("Session system messages", () => {
     );
     expect(systemMessagePrompt(warning)).not.toContain("\n");
   });
+
+  test("a sub session report reaches its owner whole, as a claim to check, and never coalesces", () => {
+    const report = {
+      type: "sub_session_report",
+      sessionId: "sub-1",
+      name: "Reconnect fix",
+      outcome: "completed",
+      report: "Opened PR 42.\n\nThe test passed 50 runs in a row.",
+    } as const;
+    expect(decodeSystemMessage(encodeSystemMessage(report))).toEqual(report);
+    expect(systemMessageLabel(report)).toBe("Report from Reconnect fix");
+    expect(systemMessageCoalesceKey(report)).toBeUndefined();
+    expect(systemMessagePrompt(report)).toContain(
+      "<report>\nOpened PR 42.\n\nThe test passed 50 runs in a row.\n</report>",
+    );
+    expect(systemMessagePrompt(report)).toContain("acceptance criteria");
+
+    const failure = { ...report, outcome: "failed", report: "Usage limit reached." } as const;
+    expect(systemMessageLabel(failure)).toBe("Reconnect fix stopped with an error");
+    expect(systemMessagePrompt(failure)).toContain("<error>\nUsage limit reached.\n</error>");
+  });
 });

@@ -378,6 +378,47 @@ describe("SessionStream lifecycle", () => {
     expect(cacheSnapshot).toHaveBeenCalledTimes(0);
   });
 
+  test("reports finished and failed executions to completion observers, but not aborted ones", async () => {
+    cleanUpStreamAfterTest("session-completion-finished", { restoreMocks: true });
+    cleanUpStreamAfterTest("session-completion-failed");
+    cleanUpStreamAfterTest("session-completion-aborted");
+    mockStreamRuntimeModules();
+    const { SessionStream: ImportedSessionStream } = await import("./sessionStream");
+    const { subscribeSessionCompletions } = await import("./completions");
+    const reported: [string, unknown][] = [];
+    onTestFinished(
+      subscribeSessionCompletions((sessionId, completion) => {
+        reported.push([sessionId, completion]);
+      }),
+    );
+
+    const finished = ImportedSessionStream.getOrCreate(
+      "session-completion-finished",
+      makeFakeSession(),
+      {
+        messages: [{ role: "assistant", content: "Fixed and tested." }],
+      },
+    );
+    finished.finish();
+    const failed = ImportedSessionStream.getOrCreate(
+      "session-completion-failed",
+      makeFakeSession(),
+    );
+    await failed.deliver(userMessage("fail"));
+    failed.finish("error");
+    const aborted = ImportedSessionStream.getOrCreate(
+      "session-completion-aborted",
+      makeFakeSession(),
+    );
+    await aborted.deliver(userMessage("stop"));
+    await aborted.abort();
+
+    expect(reported).toEqual([
+      ["session-completion-finished", { status: "completed", response: "Fixed and tested." }],
+      ["session-completion-failed", expect.objectContaining({ status: "failed" })],
+    ]);
+  });
+
   test("preserves the provider error in the terminal event and transcript", async () => {
     cleanUpStreamAfterTest("session-provider-error");
 

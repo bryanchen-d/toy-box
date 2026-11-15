@@ -67,8 +67,15 @@ mock.module("@workers/server/cleanup", () => ({
 }));
 
 const { registerWorkerSession, unregisterWorkerSession } = await import("./database");
-const { closeSubSession, createSubSession, listSubSessions, messageSubSession } =
-  await import("./subSessions");
+const {
+  closeSubSession,
+  createSubSession,
+  listSubSessions,
+  messageSubSession,
+  reportToOwner,
+  scheduleWake,
+  wakeDueSubSessions,
+} = await import("./subSessions");
 
 afterAll(() => {
   mock.module("@/server/database", () => realDatabaseModule);
@@ -209,5 +216,59 @@ describe("sub sessions", () => {
     expect(subSessions[0]).not.toHaveProperty("lastReport");
     expect(subSessions[1]!.lastReport).toBe(`${"x".repeat(1_000)}… (truncated)`);
     expect(subSessions[2]).toMatchObject({ lastError: "The node went away." });
+  });
+
+  test("wake their owner at once with each report, and only their owner", async () => {
+    const { sessionId } = await createSubSession("owner", { name: "Reconnect fix", brief });
+    await registerWorkerSession({
+      type: "team",
+      sessionId: "agent-riley",
+      teamId: "team-1",
+      createdAt: new Date(0).toISOString(),
+      ephemeral: false,
+    });
+
+    await reportToOwner(sessionId, { status: "completed", response: "Opened PR 42." });
+    await reportToOwner(sessionId, { status: "completed", response: "NO_UPDATE" });
+    await reportToOwner("agent-riley", { status: "completed", response: "Not a sub session." });
+    await reportToOwner("unknown-session", { status: "completed", response: "Gone." });
+
+    expect(deliverMock.mock.calls).toEqual([
+      [
+        "owner",
+        {
+          systemMessage: {
+            type: "sub_session_report",
+            sessionId,
+            name: "Reconnect fix",
+            outcome: "completed",
+            report: "Opened PR 42.",
+          },
+          immediate: true,
+        },
+      ],
+    ]);
+  });
+
+  test("wake once when their scheduled wake falls due, unless their owner wrote first", async () => {
+    const waiting = await createSubSession("owner", { name: "Watch CI", brief });
+    const redirected = await createSubSession("owner", { name: "Watch review", brief });
+    const now = new Date("2026-11-14T10:00:00.000Z");
+    await scheduleWake(waiting.sessionId, 20, "CI on PR 42", now);
+    await scheduleWake(redirected.sessionId, 20, "a review", now);
+    await expect(scheduleWake("owner", 20, "anything", now)).rejects.toThrow(
+      "Only a sub session can schedule a wake.",
+    );
+    await messageSubSession("owner", redirected.sessionId, "Stop waiting; the review is in.");
+    deliverMock.mockClear();
+
+    await wakeDueSubSessions(new Date("2026-11-14T10:19:00.000Z"));
+    expect(deliverMock).not.toHaveBeenCalled();
+    await wakeDueSubSessions(new Date("2026-11-14T10:20:00.000Z"));
+    await wakeDueSubSessions(new Date("2026-11-14T10:21:00.000Z"));
+
+    expect(deliverMock.mock.calls).toEqual([
+      [waiting.sessionId, { systemMessage: { type: "sub_session_wake", reason: "CI on PR 42" } }],
+    ]);
   });
 });

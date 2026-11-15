@@ -25,7 +25,11 @@ import {
 } from "@sessions/server/tools";
 import type { Tool } from "@sessions/server/tools/definition";
 import { getPersistedWorker } from "@workers/server/database";
-import { SUB_SESSION_INSTRUCTIONS, subSessionTools } from "@workers/server/tools";
+import {
+  SUB_SESSION_INSTRUCTIONS,
+  subSessionSelfTools,
+  subSessionTools,
+} from "@workers/server/tools";
 import { settingsTools } from "@workspace/server/tools";
 import { getSettings } from "@workspace/server/state/settings";
 import { screenTools } from "@screens/server/tools";
@@ -130,7 +134,7 @@ function getSessionTools(
     ...(policy.screens ? screenTools : []),
     ...modelTools,
     ...(policy.hyperLifecycle ? hyperLifecycleTools : []),
-    ...(ownsSubSessions ? subSessionTools : []),
+    ...(ownsSubSessions ? subSessionTools : subSessionSelfTools),
     ...lifecycleTools,
     ...(policy.title ? sessionTitleTools : []),
     ...(policy.layout ? sessionLayoutTools : []),

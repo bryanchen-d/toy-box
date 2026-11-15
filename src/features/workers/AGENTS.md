@@ -64,9 +64,17 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   ask rather than guess. Sub sessions are retained; only their owner or its deletion removes them.
 - A session owns at most five at once. Creation is serialized per owner, so parallel calls can't
   exceed the limit.
-- A sub session never owns sub sessions: Session-owned Workers receive none of the toolset, and
-  creation refuses a caller that is one.
+- A sub session never owns sub sessions: session-owned Workers receive only `wake_after` from the
+  set, and creation refuses a caller that is one.
 - Closing cancels its work and deletes it, which also closes any pane linked to it.
+- Each execution a sub session finishes, whoever prompted it, wakes its owner at once with a
+  `sub_session_report` system message holding its final answer or error (`server/startup.ts`
+  subscribes to Sessions' completions). An answer of exactly `NO_UPDATE`, or none, wakes no one,
+  and an aborted run reports nothing. The owner checks the report against its brief.
+- A sub session waiting on something slow calls `wake_after(minutes, reason)`, its only tool of the
+  set. The wake lives in its Worker metadata, so it survives a restart; Workers checks every 30
+  seconds and at startup, clears a due wake before delivering it, and the owner's next message
+  cancels it.
 
 ## Algebra
 

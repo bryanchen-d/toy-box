@@ -480,7 +480,7 @@
           "subject": "Reports",
           "change": "new",
           "values": {
-            "behavior": "Each finished turn wakes the owner with the sub session's final answer and its evidence, such as links, files, and test output. The owner checks it against the brief's acceptance criteria before using or reporting it. A turn with no answer, or an answer of exactly `NO_UPDATE`, wakes no one. A sub session whose background work still runs stays busy after its turn ends."
+            "behavior": "Each execution a sub session finishes, whoever prompted it, wakes the owner at once with its final answer or error. The owner checks it against the brief's acceptance criteria before using or reporting it. An answer of exactly `NO_UPDATE`, or none, wakes no one, and an aborted run reports nothing. A sub session whose background work still runs stays busy after its turn ends, and reports when that work ends."
           },
           "basedOn": [
             "f-delegation-practice",
@@ -1371,6 +1371,7 @@
               "id": "s-sub-results",
               "title": "Report each finished turn to the owner",
               "doneWhen": "Each finished turn wakes the owner once with its answer and evidence, `NO_UPDATE` wakes no one, and a `wake_after` starts a later turn that a newer message cancels.",
+              "status": "in-progress",
               "implements": [
                 "r-sub-results",
                 "r-sub-wakes",

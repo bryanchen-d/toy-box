@@ -84,6 +84,8 @@ deletion, or the held call's own cancellation declines what's still pending.
 
 A delivery receipt exposes the initial `started`, `steered` (immediate input injected into the running turn), or `queued` decision and a waiter bound to that exact stream instance. Completion reports `completed`, `failed`, or `timed_out`, plus the latest substantive assistant response when available. Failed live completion also forwards the final assistant message's error, preserving partial output separately from the failure detail. Waiting by session ID also covers work announced before its stream exists and falls back to the final snapshot when no live stream remains. A timeout ends only that caller's wait; it does not abort the session or alter its supervisor's policy.
 
+A waiter observes one execution it knows about. `subscribeSessionCompletions` observes every execution that ends on its own or with an error, whoever started it, which is how Workers reports a sub session's work to its owner even when the user prompted it. An aborted or deleted execution reports nothing, because whoever stopped it wanted no result.
+
 A supervisor that retains durable history but expects little immediate reuse may call
 `releaseIdleSession` after completion. This disconnects only a session with no active execution;
 ordinary bounded provider operations independently restart the idle window when they finish.

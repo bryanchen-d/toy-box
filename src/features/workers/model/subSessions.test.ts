@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderSubSessionBrief } from "./subSessions";
+import { dueWake, renderSubSessionBrief, subSessionReport } from "./subSessions";
 
 describe("sub session brief", () => {
   test("names the owner, sets the reporting rules, then gives each part of the brief in order", () => {
@@ -49,5 +49,59 @@ describe("sub session brief", () => {
     );
     expect(message).not.toContain("## Boundaries");
     expect(message).not.toContain("## Reporting");
+  });
+});
+
+describe("sub session report", () => {
+  test("is the final answer of a finished execution", () => {
+    expect(subSessionReport({ status: "completed", response: "  Opened PR 42.  " })).toEqual({
+      outcome: "completed",
+      report: "Opened PR 42.",
+    });
+  });
+
+  test("is nothing when the execution has no answer or answers exactly NO_UPDATE", () => {
+    expect(subSessionReport({ status: "completed" })).toBeUndefined();
+    expect(subSessionReport({ status: "completed", response: "   " })).toBeUndefined();
+    expect(subSessionReport({ status: "completed", response: " NO_UPDATE\n" })).toBeUndefined();
+    expect(
+      subSessionReport({ status: "completed", response: "NO_UPDATE yet, CI is still running" }),
+    ).toMatchObject({ outcome: "completed" });
+    expect(subSessionReport({ status: "timed_out", response: "Partial" })).toBeUndefined();
+  });
+
+  test("reports a failure with its error, or says it stopped without one", () => {
+    expect(subSessionReport({ status: "failed", error: "Usage limit reached." })).toEqual({
+      outcome: "failed",
+      report: "Usage limit reached.",
+    });
+    expect(subSessionReport({ status: "failed" })).toEqual({
+      outcome: "failed",
+      report: "It stopped without saying why.",
+    });
+  });
+
+  test("cuts a very long answer and says so", () => {
+    const { report } = subSessionReport({ status: "completed", response: "x".repeat(25_000) })!;
+    expect(report).toStartWith("x".repeat(20_000));
+    expect(report).toEndWith("(The report was cut at 20000 characters.)");
+  });
+});
+
+describe("sub session wake", () => {
+  const wake = { at: "2026-11-14T10:00:00.000Z", reason: "CI on PR 42" };
+
+  test("is due from its scheduled time on", () => {
+    expect(dueWake({ wake }, new Date("2026-11-14T09:59:59.000Z"))).toBeUndefined();
+    expect(dueWake({ wake }, new Date("2026-11-14T10:00:00.000Z"))).toEqual(wake);
+    expect(dueWake({ wake }, new Date("2026-11-15T00:00:00.000Z"))).toEqual(wake);
+  });
+
+  test("is nothing when the metadata holds no readable wake", () => {
+    const now = new Date("2026-11-15T00:00:00.000Z");
+    expect(dueWake(undefined, now)).toBeUndefined();
+    expect(dueWake({}, now)).toBeUndefined();
+    expect(dueWake({ wake: { at: "soon", reason: "CI" } }, now)).toBeUndefined();
+    expect(dueWake("wake", now)).toBeUndefined();
   });
 });

@@ -33,6 +33,7 @@ import type {
 import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
 import { createSessionEventBus, type SessionStreamSubscription } from "./eventBus";
+import { publishSessionCompletion } from "./completions";
 
 /** A first message starts a turn; an immediate one steers the running turn; any other waits. */
 export type MessageDisposition = "started" | "steered" | "queued";
@@ -351,6 +352,7 @@ export class SessionStream {
     this.#bus.clearReplay();
     this.#dispose();
     releaseSession(this.sessionId);
+    if (!this.#abortRequested) publishSessionCompletion(this.sessionId, this.#completionResult);
   }
 
   /** Always finish the stream, even if the SDK abort itself fails. */

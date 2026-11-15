@@ -32,6 +32,7 @@ export type { MessageDisposition } from "./sessionStream";
 export { getSessionDirectory } from "../providers";
 export { deleteSession, deleteSessionIfExists, releaseIdleSession } from "../state/registry";
 export { isSessionNotFoundError } from "../state/registry";
+export { subscribeSessionCompletions, type SessionCompletionListener } from "./completions";
 
 type PendingSessionCompletion = {
   promise: Promise<SessionCompletion>;

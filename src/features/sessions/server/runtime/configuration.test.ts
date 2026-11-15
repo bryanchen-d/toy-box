@@ -297,7 +297,10 @@ describe("Session-owned configuration lifetime", () => {
     const subSession = await getSessionConfiguration(subSessionId, "worker");
     const names = subSession.tools.map((tool) => tool.name);
     for (const name of subSessionTools) expect(names).not.toContain(name);
+    expect(names).toContain("wake_after");
     expect(subSession.additionalInstructions).not.toContain("<sub_sessions>");
+    const owner = await getSessionConfiguration(sessionId, "standard");
+    expect(owner.tools.map((tool) => tool.name)).not.toContain("wake_after");
   });
 
   test.each(["copilot", "codex"] as const)(

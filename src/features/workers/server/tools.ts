@@ -2,7 +2,11 @@ import { defineTool } from "@sessions/server/tools/definition";
 import { z } from "zod";
 import { modelConfigurationSchema } from "@providers/model";
 import { workerNameSchema } from "../model";
-import { SUB_SESSION_LIMIT, subSessionBriefSchema } from "../model/subSessions";
+import {
+  SUB_SESSION_LIMIT,
+  SUB_SESSION_WAKE_MAX_MINUTES,
+  subSessionBriefSchema,
+} from "../model/subSessions";
 
 export const SUB_SESSION_INSTRUCTIONS = `<sub_sessions>
 You can hand a task to a sub session: a session you own that does that one task, reports each finished turn back to you, and stays open for follow-ups until you close it.
@@ -84,3 +88,25 @@ export const subSessionTools = [
   listSubSessionsTool,
   closeSubSessionTool,
 ];
+
+const wakeAfterTool = defineTool("wake_after", {
+  description:
+    "Schedules your next turn after a delay while you wait on something slow, such as CI, a review, or a deploy. " +
+    "End your turn after calling it. Calling it again replaces the earlier wake, and a message from your owner cancels it.",
+  parameters: z.object({
+    minutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(SUB_SESSION_WAKE_MAX_MINUTES)
+      .describe("How many minutes from now to wake"),
+    reason: z.string().trim().min(1).max(500).describe("What you are waiting for"),
+  }),
+  handler: async ({ minutes, reason }, invocation) => {
+    const { scheduleWake } = await import("./subSessions");
+    return JSON.stringify(await scheduleWake(invocation.sessionId, minutes, reason));
+  },
+});
+
+/** Tools a sub session uses on itself. */
+export const subSessionSelfTools = [wakeAfterTool];
