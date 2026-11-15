@@ -782,7 +782,7 @@
           "subject": "Idle maintenance",
           "change": "new",
           "values": {
-            "behavior": "Once the tunnel has run for a day, the Tunnel Host supervisor restarts it the next time no turn is running and no UI hold is taken, updating the standalone CLI first, so CLI and agent host updates apply. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
+            "behavior": "The Tunnel Host supervisor updates the standalone CLI before each start. Every 30 minutes its maintenance task checks for a CLI update; when one is waiting and no agent session has a turn running or holds UI slots, it restarts the tunnel so the update applies. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
           },
           "source": "vscode-space .github/scripts/tunnel-host/Install-TunnelHost.ps1",
           "basedOn": [
