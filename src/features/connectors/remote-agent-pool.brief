@@ -117,7 +117,7 @@
         },
         {
           "id": "f-vscode-tunnel-ahp",
-          "statement": "`code tunnel` (also `code agent host --tunnel`) forwards the machine's agent host on tunnel port 31546 beside the editor's 31545, injecting the host's connection token itself. With the owner's gh CLI token, the Dev Tunnels API lists the owner's VS Code tunnels by machine-name label and issues a connect token, and Bun's WebSocket with that token reached brchen-db3's agent host through port 31546 and negotiated AHP 1.0.0. The port denies anonymous access.",
+          "statement": "`code tunnel` (also `code agent host --tunnel`) forwards the machine's agent host on tunnel port 31546 beside the editor's 31545. With the owner's gh CLI token, the Dev Tunnels API lists the owner's VS Code tunnels by machine-name label and issues a connect token, and Bun's WebSocket with that token reaches brchen-db3's agent host through port 31546 and negotiates AHP 1.0.0. The port denies anonymous access. Its root route sticks to the agent host it picked when the tunnel started, so it answers 503 once that host exits, while `/agent-host/select` reads the machine's live hosts on each connection: it sends an inventory, takes `{\"instanceId\"}` or `{\"newDedicated\": true}`, replies `{\"ok\": true}`, and then carries AHP to the chosen host with its token injected.",
           "whyItMatters": "A node needs only its VS Code tunnel: no second dev tunnel, standalone host, token file, or dev tunnel CLI sign-in.",
           "sources": [
             "microsoft/vscode cli/src/constants.rs#AGENT_HOST_PORT",
