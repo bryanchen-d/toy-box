@@ -72,6 +72,7 @@ const {
   createSubSession,
   listSubSessions,
   messageSubSession,
+  remindOwnersOfIdleSubSessions,
   reportToOwner,
   scheduleWake,
   wakeDueSubSessions,
@@ -269,6 +270,69 @@ describe("sub sessions", () => {
 
     expect(deliverMock.mock.calls).toEqual([
       [waiting.sessionId, { systemMessage: { type: "sub_session_wake", reason: "CI on PR 42" } }],
+    ]);
+  });
+
+  test("remind their owner once when left idle a day after reporting, unless it wrote since", async () => {
+    const idle = await createSubSession("owner", { name: "Reconnect fix", brief });
+    const busy = await createSubSession("owner", { name: "Lens check", brief });
+    const answered = await createSubSession("owner", { name: "Review threads", brief });
+    const reported = new Date("2026-11-14T10:00:00.000Z");
+    for (const { sessionId } of [idle, busy, answered]) {
+      await reportToOwner(sessionId, { status: "completed", response: "Done." }, reported);
+    }
+    await messageSubSession("owner", answered.sessionId, "Also update the docs.");
+    running.add(busy.sessionId);
+    deliverMock.mockClear();
+
+    await remindOwnersOfIdleSubSessions(new Date("2026-11-15T09:59:00.000Z"));
+    expect(deliverMock).not.toHaveBeenCalled();
+    await remindOwnersOfIdleSubSessions(new Date("2026-11-15T10:00:00.000Z"));
+    await remindOwnersOfIdleSubSessions(new Date("2026-11-16T10:00:00.000Z"));
+    running.delete(busy.sessionId);
+    await remindOwnersOfIdleSubSessions(new Date("2026-11-16T10:01:00.000Z"));
+
+    expect(deliverMock.mock.calls).toEqual(
+      [idle, busy].map(({ sessionId }, index) => [
+        "owner",
+        {
+          systemMessage: {
+            type: "sub_session_idle",
+            sessionId,
+            name: ["Reconnect fix", "Lens check"][index],
+          },
+        },
+      ]),
+    );
+  });
+
+  test("remind their owner only after the wake they scheduled has run", async () => {
+    const waiting = await createSubSession("owner", { name: "Watch CI", brief });
+    const turnEnd = new Date("2026-11-14T10:00:00.000Z");
+    await scheduleWake(waiting.sessionId, 24 * 60, "CI on PR 42", turnEnd);
+    await reportToOwner(waiting.sessionId, { status: "completed", response: "Pushed." }, turnEnd);
+    deliverMock.mockClear();
+    const dayLater = new Date("2026-11-15T10:00:00.000Z");
+
+    await remindOwnersOfIdleSubSessions(dayLater);
+    await wakeDueSubSessions(dayLater);
+    running.add(waiting.sessionId);
+    await remindOwnersOfIdleSubSessions(dayLater);
+    running.delete(waiting.sessionId);
+    await remindOwnersOfIdleSubSessions(dayLater);
+
+    expect(deliverMock.mock.calls).toEqual([
+      [waiting.sessionId, { systemMessage: { type: "sub_session_wake", reason: "CI on PR 42" } }],
+      [
+        "owner",
+        {
+          systemMessage: {
+            type: "sub_session_idle",
+            sessionId: waiting.sessionId,
+            name: "Watch CI",
+          },
+        },
+      ],
     ]);
   });
 });

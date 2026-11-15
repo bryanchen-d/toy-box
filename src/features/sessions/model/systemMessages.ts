@@ -50,6 +50,13 @@ export const sessionSystemMessageSchema = z.discriminatedUnion("type", [
       reason: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("sub_session_idle"),
+      sessionId: z.string().min(1),
+      name: z.string().min(1),
+    })
+    .strict(),
 ]);
 
 export type SessionSystemMessage = z.infer<typeof sessionSystemMessageSchema>;
@@ -91,6 +98,8 @@ export function systemMessagePrompt(message: SessionSystemMessage): string {
         : `Your sub session ${JSON.stringify(message.name)} (${message.sessionId}) stopped with an error:\n\n<error>\n${message.report}\n</error>\n\nRetry or redirect it with message_sub_session, or close it with close_sub_session.`;
     case "sub_session_wake":
       return `The wake you scheduled is due. You were waiting for ${JSON.stringify(message.reason)}. Check whether it has happened and carry on. If nothing has changed that your owner needs to hear, answer with exactly NO_UPDATE.`;
+    case "sub_session_idle":
+      return `Your sub session ${JSON.stringify(message.name)} (${message.sessionId}) has been idle for a day since its last report, and it stays open until you close it. If its task is done, close it with close_sub_session. Otherwise, tell it what to do next with message_sub_session.`;
   }
 }
 
@@ -112,6 +121,8 @@ export function systemMessageLabel(message: SessionSystemMessage): string {
         : `${message.name} stopped with an error`;
     case "sub_session_wake":
       return `Wake: ${message.reason}`;
+    case "sub_session_idle":
+      return `${message.name} is idle`;
   }
 }
 
@@ -133,5 +144,7 @@ export function systemMessageCoalesceKey(message: SessionSystemMessage): string 
       return undefined;
     case "sub_session_wake":
       return "sub_session_wake";
+    case "sub_session_idle":
+      return `sub_session_idle:${message.sessionId}`;
   }
 }

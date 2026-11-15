@@ -9,9 +9,14 @@ import { teamMutations } from "@teams/mutations";
 import { formatModelConfiguration } from "@providers/model";
 import { teamQueries } from "@teams/queries";
 import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
+import type { Session } from "@sessions/model";
+import { selectSessionChildren, sessionQueries } from "@sessions/queries";
+import { useWorkspaceSessionActivity } from "@workspace/hooks/state";
+import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
+import { RelativeTime } from "@/shared/ui/relative-time";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { CopyTeamUri } from "@teams/components/CopyTeamUri";
@@ -44,6 +49,10 @@ export function TeamMembers({
     enabled: isVisible && showCredits,
   });
   const total = sumSessionUsage(agents.map((agent) => usage.data?.[agent.id]));
+  const { data: subSessionsByOwner } = useQuery({
+    ...sessionQueries.state(),
+    select: selectSessionChildren,
+  });
   const selectedRef = useRef<HTMLTableRowElement>(null);
   useLayoutEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "center" });
@@ -120,6 +129,7 @@ export function TeamMembers({
               <th scope="col">Agent</th>
               <th scope="col">State</th>
               <th scope="col">Current task</th>
+              <th scope="col">Sub sessions</th>
               <th scope="col">Pending tasks</th>
               <th scope="col">Blocking</th>
               {showModel && <th scope="col">Model</th>}
@@ -160,6 +170,9 @@ export function TeamMembers({
                       tasks={current}
                       empty={activity.state === "working" ? activity.text : undefined}
                     />
+                  </td>
+                  <td className="max-w-64">
+                    <SubSessions sessions={subSessionsByOwner?.[agent.id] ?? []} />
                   </td>
                   <td className="max-w-64">
                     <TaskTitles tasks={pending} />
@@ -288,5 +301,54 @@ function TaskTitles({ tasks, empty }: { tasks: readonly TeamTask[]; empty?: stri
     </ul>
   ) : (
     <span className="text-muted-foreground">{empty ?? "None"}</span>
+  );
+}
+
+/** The sessions an agent created to do one task each, oldest first; each opens beside the team. */
+function SubSessions({ sessions }: { sessions: readonly Session[] }) {
+  if (sessions.length === 0) return <span className="text-muted-foreground">None</span>;
+  return (
+    <ul className="space-y-1">
+      {[...sessions]
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+        .map((session) => (
+          <SubSession key={session.id} session={session} />
+        ))}
+    </ul>
+  );
+}
+
+function SubSession({ session }: { session: Session }) {
+  const { openSession } = useWorkspaceSurface();
+  const activity = useWorkspaceSessionActivity(session.id);
+  const title = session.title || "Sub session";
+  return (
+    <li>
+      {openSession ? (
+        <button
+          type="button"
+          className="text-left hover:underline"
+          title={`Open ${title}`}
+          onClick={() => openSession(session.id)}
+        >
+          {title}
+        </button>
+      ) : (
+        title
+      )}
+      <span className="block text-muted-foreground">
+        {activity.waiting ? (
+          "Waiting for input"
+        ) : activity.background ? (
+          "Background tasks running"
+        ) : activity.running ? (
+          "Working"
+        ) : (
+          <>
+            Idle · <RelativeTime date={session.updatedAt} />
+          </>
+        )}
+      </span>
+    </li>
   );
 }

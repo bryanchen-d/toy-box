@@ -75,6 +75,11 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   set. The wake lives in its Worker metadata, so it survives a restart; Workers checks every 30
   seconds and at startup, clears a due wake before delivering it, and the owner's next message
   cancels it.
+- Each report also sets a reminder in the same metadata. A sub session still open and idle a day
+  later, with no wake of its own pending, reminds its owner once with a `sub_session_idle` system
+  message that queues behind the owner's work. The owner's next message cancels it.
+- The team members table lists each agent's sub sessions with their live state, derived on the
+  client from session ownership; a standard session's nest under it in the sidebar.
 
 ## Algebra
 

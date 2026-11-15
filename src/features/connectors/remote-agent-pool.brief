@@ -520,7 +520,7 @@
           "subject": "View",
           "change": "new",
           "values": {
-            "behavior": "The team pane lists each agent's open sub sessions with their task, location, state, and last report; the sidebar already nests them under their owner."
+            "behavior": "The team members table lists each agent's open sub sessions with their task and live state, and opens one to show its reports; the sidebar nests a standard session's under it."
           }
         },
         {
@@ -528,7 +528,7 @@
           "subject": "Closing",
           "change": "new",
           "values": {
-            "behavior": "Closing a sub session runs an optional wrap-up turn, then deletes it, archiving a remote one on its node. A sub session left idle for a day after reporting reminds its owner once, and deleting an agent or its team closes its sub sessions."
+            "behavior": "Closing a sub session stops and deletes it, archiving a remote one on its node; an owner that wants a wrap-up asks for it first. A sub session left idle for a day after reporting, with no wake of its own pending, reminds its owner once, and deleting an agent or its team closes its sub sessions."
           }
         },
         {
@@ -592,7 +592,7 @@
           "subject": "A place, not a conversation",
           "change": "new",
           "values": {
-            "behavior": "A pool connector is where sub sessions run, not something a team talks to: mentions don't address it, and `create_sub_session` names a pool, or one of its nodes, as its location. `read_team` lists pools with their nodes' state."
+            "behavior": "A pool connector is where sub sessions run, not something a team talks to: mentions don't address it, and `create_sub_session` names a pool, or one of its nodes, as its location. `read_team` lists pools with their nodes' state, and the team members table shows each remote sub session's node."
           }
         },
         {
@@ -1385,6 +1385,7 @@
               "id": "s-sub-view",
               "title": "Show each agent's sub sessions and close the forgotten ones",
               "doneWhen": "The team pane lists each agent's open sub sessions; an idle reported sub session reminds its owner once; and deleting a team closes its members' sub sessions.",
+              "status": "complete",
               "implements": [
                 "r-sub-view",
                 "r-sub-cleanup",

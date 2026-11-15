@@ -1,13 +1,13 @@
 import { subscribeSessionCompletions } from "@sessions/server/runtime";
-import { reportToOwner, wakeDueSubSessions } from "./subSessions";
+import { remindOwnersOfIdleSubSessions, reportToOwner, wakeDueSubSessions } from "./subSessions";
 import { ensureWorkersSwept } from "./supervisor";
 
-const WAKE_CHECK_MS = 30_000;
+const TIMER_CHECK_MS = 30_000;
 
 /**
- * Sweeps abandoned Workers, wakes each sub session's owner with every report it finishes, and
- * starts each sub session's scheduled wake when it is due, including ones that fell due while the
- * server was down.
+ * Sweeps abandoned Workers, wakes each sub session's owner with every report it finishes, starts
+ * each sub session's scheduled wake when it is due, and reminds owners of sub sessions left idle,
+ * including any that fell due while the server was down.
  */
 export default async function startWorkers(): Promise<VoidFunction> {
   const unsubscribe = subscribeSessionCompletions((sessionId, completion) => {
@@ -15,18 +15,20 @@ export default async function startWorkers(): Promise<VoidFunction> {
       console.error(`Could not report sub session ${sessionId} to its owner:`, error),
     );
   });
-  const wakes = setInterval(() => void wakeDueSubSessions().catch(logWakeError), WAKE_CHECK_MS);
-  wakes.unref?.();
+  const timers = setInterval(runDueTimers, TIMER_CHECK_MS);
+  timers.unref?.();
   await ensureWorkersSwept().catch((error: unknown) =>
     console.error("Unable to sweep abandoned workers on startup:", error),
   );
-  void wakeDueSubSessions().catch(logWakeError);
+  runDueTimers();
   return () => {
     unsubscribe();
-    clearInterval(wakes);
+    clearInterval(timers);
   };
 }
 
-function logWakeError(error: unknown): void {
-  console.error("Failed to wake due sub sessions:", error);
+function runDueTimers(): void {
+  void wakeDueSubSessions()
+    .then(() => remindOwnersOfIdleSubSessions())
+    .catch((error: unknown) => console.error("Failed to run due sub-session timers:", error));
 }

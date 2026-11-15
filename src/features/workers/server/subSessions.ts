@@ -9,8 +9,11 @@ import {
 import type { SessionCompletion } from "@sessions/model";
 import {
   dueWake,
+  isReminderDue,
+  readSubSessionMetadata,
   renderSubSessionBrief,
   SUB_SESSION_LIMIT,
+  SUB_SESSION_REMINDER_MS,
   subSessionReport,
   type SubSessionRequest,
 } from "../model/subSessions";
@@ -107,15 +110,24 @@ export async function closeSubSession(
   return { closed: true };
 }
 
-/** Wakes a sub session's owner with what its finished execution reports, if anything. */
+/**
+ * Wakes a sub session's owner with what its finished execution reports, if anything, and sets
+ * the reminder its owner gets if the sub session then sits idle. A sub session closed in the
+ * meantime reports nothing.
+ */
 export async function reportToOwner(
   sessionId: string,
   completion: SessionCompletion,
+  now = new Date(),
 ): Promise<void> {
   const worker = await getPersistedWorker(sessionId);
   if (worker?.type !== "session") return;
   const report = subSessionReport(completion);
   if (!report) return;
+  const remindAt = new Date(now.getTime() + SUB_SESSION_REMINDER_MS).toISOString();
+  await updateWorker(sessionId, {
+    metadata: { ...readSubSessionMetadata(worker.metadata), remindAt },
+  });
   await deliverSessionMessage(worker.parentSessionId, {
     systemMessage: {
       type: "sub_session_report",
@@ -137,7 +149,9 @@ export async function scheduleWake(
   const worker = await getPersistedWorker(sessionId);
   if (worker?.type !== "session") throw new Error("Only a sub session can schedule a wake.");
   const wakeAt = new Date(now.getTime() + minutes * 60_000).toISOString();
-  await updateWorker(sessionId, { metadata: { wake: { at: wakeAt, reason } } });
+  await updateWorker(sessionId, {
+    metadata: { ...readSubSessionMetadata(worker.metadata), wake: { at: wakeAt, reason } },
+  });
   return { wakeAt };
 }
 
@@ -146,11 +160,31 @@ export async function wakeDueSubSessions(now = new Date()): Promise<void> {
   for (const worker of await listWorkers("session")) {
     const wake = dueWake(worker.metadata, now);
     if (!wake) continue;
-    await updateWorker(worker.sessionId, { metadata: undefined });
+    const { wake: _claimed, ...metadata } = readSubSessionMetadata(worker.metadata);
+    await updateWorker(worker.sessionId, { metadata });
     await deliverSessionMessage(worker.sessionId, {
       systemMessage: { type: "sub_session_wake", reason: wake.reason },
     }).catch((error: unknown) =>
       console.error(`Could not wake sub session ${worker.sessionId}:`, error),
+    );
+  }
+}
+
+/** Reminds each owner, once, of a sub session left idle since its last report. */
+export async function remindOwnersOfIdleSubSessions(now = new Date()): Promise<void> {
+  for (const worker of await listWorkers("session")) {
+    if (!isReminderDue(worker.metadata, now)) continue;
+    if (getSessionRuntimeStatus(worker.sessionId).running) continue;
+    const { remindAt: _claimed, ...metadata } = readSubSessionMetadata(worker.metadata);
+    await updateWorker(worker.sessionId, { metadata });
+    await deliverSessionMessage(worker.parentSessionId, {
+      systemMessage: {
+        type: "sub_session_idle",
+        sessionId: worker.sessionId,
+        name: worker.name ?? "Sub session",
+      },
+    }).catch((error: unknown) =>
+      console.error(`Could not remind the owner of sub session ${worker.sessionId}:`, error),
     );
   }
 }

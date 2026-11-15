@@ -664,7 +664,8 @@ presents one deleted identity everywhere.
 - The tasks panel holds the full task checklist. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
   members panel adds an agent through the composer's mention and removes members after
-  confirmation, alongside its roster table.
+  confirmation, alongside its roster table, which lists each agent's open sub sessions with their
+  live state; each opens beside the team.
 - The performance panel has two tabs. Stats charts a chosen metric (messages, notifications,
   steered, queued, woke idle, AI credits, busy hours, or tokens) per hour, day, or week, stacked by
   agent, or reply time as one line per agent under a chosen aggregation (P50, P90, mean, or max).

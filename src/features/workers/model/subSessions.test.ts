@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dueWake, renderSubSessionBrief, subSessionReport } from "./subSessions";
+import { dueWake, isReminderDue, renderSubSessionBrief, subSessionReport } from "./subSessions";
 
 describe("sub session brief", () => {
   test("names the owner, sets the reporting rules, then gives each part of the brief in order", () => {
@@ -103,5 +103,23 @@ describe("sub session wake", () => {
     expect(dueWake({}, now)).toBeUndefined();
     expect(dueWake({ wake: { at: "soon", reason: "CI" } }, now)).toBeUndefined();
     expect(dueWake("wake", now)).toBeUndefined();
+  });
+});
+
+describe("sub session reminder", () => {
+  const remindAt = "2026-11-15T10:00:00.000Z";
+
+  test("is due from its time on, unless the sub session is waiting on its own wake", () => {
+    expect(isReminderDue({ remindAt }, new Date("2026-11-15T09:59:59.000Z"))).toBe(false);
+    expect(isReminderDue({ remindAt }, new Date("2026-11-15T10:00:00.000Z"))).toBe(true);
+    const wake = { at: "2026-11-16T10:00:00.000Z", reason: "a review" };
+    expect(isReminderDue({ remindAt, wake }, new Date("2026-11-16T00:00:00.000Z"))).toBe(false);
+  });
+
+  test("is never due without a readable reminder", () => {
+    const now = new Date("2026-11-16T00:00:00.000Z");
+    expect(isReminderDue(undefined, now)).toBe(false);
+    expect(isReminderDue({}, now)).toBe(false);
+    expect(isReminderDue({ remindAt: "tomorrow" }, now)).toBe(false);
   });
 });

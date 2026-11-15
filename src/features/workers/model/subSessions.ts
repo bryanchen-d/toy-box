@@ -17,16 +17,34 @@ const REPORT_MAX_LENGTH = 20_000;
 /** The longest a sub session may sleep before checking back. */
 export const SUB_SESSION_WAKE_MAX_MINUTES = 24 * 60;
 
-/** A sub session's own Worker metadata: the wake it scheduled, if any. */
+/** How long a sub session may sit idle after reporting before its owner is reminded it's open. */
+export const SUB_SESSION_REMINDER_MS = 24 * 60 * 60_000;
+
+/**
+ * A sub session's own Worker metadata: the wake it scheduled, and when to remind its owner that
+ * it is still open after its last report.
+ */
 const subSessionMetadataSchema = z.object({
   wake: z.object({ at: z.iso.datetime(), reason: z.string().min(1) }).optional(),
+  remindAt: z.iso.datetime().optional(),
 });
-export type SubSessionWake = NonNullable<z.infer<typeof subSessionMetadataSchema>["wake"]>;
+type SubSessionMetadata = z.infer<typeof subSessionMetadataSchema>;
+export type SubSessionWake = NonNullable<SubSessionMetadata["wake"]>;
+
+export function readSubSessionMetadata(metadata: unknown): SubSessionMetadata {
+  return subSessionMetadataSchema.safeParse(metadata ?? {}).data ?? {};
+}
 
 /** The scheduled wake that is due at `now`, if the metadata holds one. */
 export function dueWake(metadata: unknown, now: Date): SubSessionWake | undefined {
-  const wake = subSessionMetadataSchema.safeParse(metadata ?? {}).data?.wake;
+  const { wake } = readSubSessionMetadata(metadata);
   return wake && new Date(wake.at) <= now ? wake : undefined;
+}
+
+/** A sub session waiting on its own wake isn't forgotten, so its owner isn't reminded yet. */
+export function isReminderDue(metadata: unknown, now: Date): boolean {
+  const { wake, remindAt } = readSubSessionMetadata(metadata);
+  return !wake && remindAt !== undefined && new Date(remindAt) <= now;
 }
 
 const briefText = z.string().trim().min(1).max(20_000);
