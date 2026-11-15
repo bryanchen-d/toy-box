@@ -107,6 +107,15 @@
           ]
         },
         {
+          "id": "f-agent-sandbox",
+          "statement": "The host's per-session `sandboxEnabled` switch didn't help on brchen-db3: it refused to start every shell command until the machine allows the sandbox's local proxy, it marks sandboxed commands as needing no confirmation, and the host's own GitHub MCP reads run outside it. A client can toggle or stop a session's MCP servers.",
+          "whyItMatters": "Neither the sandbox nor permission rules remove a session's GitHub read path; the node's environment has to.",
+          "sources": [
+            "Sandbox probe against Insiders agent host 944d79c on brchen-db3, 2026-11-15",
+            "@microsoft/agent-host-protocol 1.0.0 channels-session/actions.d.ts#SessionCustomizationToggledAction"
+          ]
+        },
+        {
           "id": "f-vscode-tunnel-ahp",
           "statement": "`code tunnel` (also `code agent host --tunnel`) forwards the machine's agent host on tunnel port 31546 beside the editor's 31545, injecting the host's connection token itself. With the owner's gh CLI token, the Dev Tunnels API lists the owner's VS Code tunnels by machine-name label and issues a connect token, and Bun's WebSocket with that token reached brchen-db3's agent host through port 31546 and negotiated AHP 1.0.0. The port denies anonymous access.",
           "whyItMatters": "A node needs only its VS Code tunnel: no second dev tunnel, standalone host, token file, or dev tunnel CLI sign-in.",
@@ -622,11 +631,12 @@
           "subject": "Pool connector",
           "change": "new",
           "values": {
-            "behavior": "A pool connector, added and edited in the connector dialog, lists its nodes: name, dev tunnel or URL, connection token file, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Its link keeps one AHP connection per node under a stable client ID, which the remote provider runs sub sessions over. Agent Teams stores no secrets: it reads the token file when connecting and signs each host in with the owner's GitHub token from the gh CLI."
+            "behavior": "A pool connector, added and edited in the connector dialog, lists its nodes: machine name, workspaces as repository → folder pairs, scratch folder, compute slots, and a draining flag. Its link keeps one AHP connection per node through the owner's VS Code tunnel for that machine, under a stable client ID, which the remote provider runs sub sessions over. Agent Teams stores no secrets: with the owner's GitHub token from the gh CLI it finds the tunnel by machine name, gets a connect token from the Dev Tunnels service, and signs the host in."
           },
           "source": "toy-box src/features/connectors/server/pool/link.ts",
           "basedOn": [
-            "f-host-auth"
+            "f-host-auth",
+            "f-vscode-tunnel-ahp"
           ]
         },
         {
@@ -735,16 +745,16 @@
       "items": [
         {
           "id": "r-node-host",
-          "subject": "Agent host task",
+          "subject": "Tunnel host task",
           "change": "new",
           "values": {
-            "behavior": "A logon task in the owner's desktop session runs a supervisor that starts `code-insiders agent host` from a standalone CLI under `~/.agent-node`, on a fixed localhost port with a connection token file, and hosts the private owner-only dev tunnel that forwards it. It restarts either one when it exits and stops anything an earlier supervisor left running."
+            "behavior": "The `VS Code Tunnel Host` logon task in the owner's desktop session runs a supervisor that starts `code-insiders tunnel --name <machine>` from a standalone CLI under `~/.vscode-tunnel-host`. That one owner-only tunnel carries the remote editor and the machine's agent host, and the supervisor restarts it when it exits. The agent-node kit adds only UI work to it: `ui-slot`, the RDP hold, and the return to the console."
           },
-          "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
+          "source": "vscode-space .github/scripts/tunnel-host/Install-TunnelHost.ps1",
           "basedOn": [
             "f-standalone-host",
             "f-host-updates",
-            "f-tunnel-host"
+            "f-vscode-tunnel-ahp"
           ]
         },
         {
@@ -752,9 +762,9 @@
           "subject": "Idle maintenance",
           "change": "new",
           "values": {
-            "behavior": "Once the host has run for a day, the supervisor restarts it the next time no turn is running and no UI hold is taken, updating the standalone CLI first, so CLI and agent host updates apply. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
+            "behavior": "Once the tunnel has run for a day, the Tunnel Host supervisor restarts it the next time no turn is running and no UI hold is taken, updating the standalone CLI first, so CLI and agent host updates apply. The `repo-sync` task keeps the vscode-space checkout current, and the kit and skill run straight from it, so a pull updates them."
           },
-          "source": "vscode-space .github/scripts/agent-node/Start-AgentNodeHost.ps1",
+          "source": "vscode-space .github/scripts/tunnel-host/Install-TunnelHost.ps1",
           "basedOn": [
             "f-host-updates"
           ]
@@ -1195,36 +1205,66 @@
         },
         {
           "id": "d-remote-security",
-          "question": "How does Security cover a remote sub session's native tools?",
+          "question": "How does Security cover what a remote sub session reads and changes outside its node?",
           "options": [
             {
-              "id": "o-boundary",
-              "label": "Refuse what the host holds, and screen what comes back",
-              "rationale": "The guard reviews every write the host holds and every Agent Teams tool call. Agent Teams screens each remote report, and each web result the node's agent read, as untrusted before its owner sees it, so a detected attack holds that sub session's risky actions.",
+              "id": "o-gateway",
+              "label": "A sandboxed node whose only door is Agent Teams",
+              "rationale": "The owner's brief and attached files carry the context in. During the work the remote agent reads GitHub and the web only through Agent Teams client tools, which run with the owner's token and screen each result as a local session does, so the remote model sees marked, judged content. The guard reviews every external write the host holds by the same rules as local sessions, and Agent Teams also judges untrusted content that reaches the transcript another way. Security's judge has no tools or memory, so an injection can at worst mislead its verdict.",
               "adds": []
             },
             {
-              "id": "o-hold-everything",
-              "label": "Hold every native call for Agent Teams' review",
-              "tradeoff": "The host has no mode that holds reads, so this needs an upstream change, and every call would wait on the tunnel.",
+              "id": "o-detect-only",
+              "label": "Judge the remote transcript and review held writes",
+              "tradeoff": "The remote model reads GitHub text unscreened, and only after the fact is it judged.",
               "adds": []
             },
             {
-              "id": "o-local-untrusted",
-              "label": "Keep work that reads untrusted content local",
-              "tradeoff": "Remote sub sessions lose browsing, which UI validation needs.",
+              "id": "o-node-auditor",
+              "label": "An audit agent session on the node",
+              "tradeoff": "It reads attacker-written content while the host can't take its tools away, and its GitHub reads run unasked, so a hijacked auditor could leak data or pass content.",
               "adds": []
             }
           ],
           "choice": {
-            "optionId": "o-boundary",
+            "optionId": "o-gateway",
             "status": "provisional"
           },
           "dependsOn": [],
           "affects": [],
           "basedOn": [
             "f-ahp-approvals",
-            "f-ahp-client-tools"
+            "f-ahp-holds",
+            "f-ahp-client-tools",
+            "f-agent-sandbox"
+          ]
+        },
+        {
+          "id": "d-node-stack",
+          "question": "What runs and exposes a node's agent host?",
+          "options": [
+            {
+              "id": "o-tunnel-host",
+              "label": "The owner's VS Code Tunnel Host, with the agent-node kit adding UI work",
+              "rationale": "One tunnel and one agent host serve the editor, VS Code, and Agent Teams; the Tunnel Host gains idle updates, and the kit keeps `ui-slot` and the RDP hold.",
+              "tradeoff": "Agent Teams relies on the tunnel's forwarded agent-host port, which VS Code could change.",
+              "adds": []
+            },
+            {
+              "id": "o-agent-node",
+              "label": "The agent-node kit's own dev tunnel and agent host",
+              "tradeoff": "A second tunnel and a second agent host on the same Copilot history, with a dev tunnel sign-in and a token file to copy.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-tunnel-host",
+            "status": "decided"
+          },
+          "dependsOn": [],
+          "affects": [],
+          "basedOn": [
+            "f-vscode-tunnel-ahp"
           ]
         }
       ]
@@ -1340,6 +1380,15 @@
             "d-sub-shape"
           ],
           "answer": "Yes for transcripts and Agent Teams tools, and partly for Security. On brchen-db3 a probe projected a live autopilot turn's chat actions into session events, and a fresh connection's history replayed into the identical transcript, shell output included. An Agent Teams tool offered as a client tool ran through the guard's review and screen and returned its result to the model. The guard refused a write the host held for confirmation, but the host ran reads without asking and can't let a client rewrite native results (f-ahp-approvals), which d-remote-security settles."
+        },
+        {
+          "id": "q-node-read-path",
+          "question": "Can a pool session lose the node's own GitHub read path, through the `gh` CLI and the GitHub MCP server, while `git push` keeps working and the owner's own sessions on the same machine keep theirs?",
+          "answerMethod": "run-experiment",
+          "impact": "Without it, the sandbox in d-remote-security is advisory: GitHub text the remote agent reads itself reaches its model unscreened, and only the transcript backstop judges it.",
+          "affects": [
+            "d-remote-security"
+          ]
         }
       ]
     },
@@ -1388,13 +1437,14 @@
             {
               "id": "s-node-host",
               "title": "Serve the Insiders agent host on brchen-db3",
-              "doneWhen": "After logon, brchen-db3 serves the agent host on a fixed port behind a private dev tunnel, and an idle maintenance run updates the CLI and workspaces, then restarts the host.",
+              "doneWhen": "After logon, brchen-db3's Tunnel Host serves the editor and the agent host through one owner-only VS Code tunnel, the agent-node kit's own dev tunnel and agent host are gone, and an idle maintenance run updates the CLI and workspaces, then restarts the tunnel.",
               "status": "in-progress",
               "implements": [
                 "r-node-host",
                 "r-node-maintenance",
                 "r-node-setup-script",
-                "d-quality"
+                "d-quality",
+                "d-node-stack"
               ],
               "values": {}
             },
