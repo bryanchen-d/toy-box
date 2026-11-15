@@ -322,6 +322,11 @@ envelope, screened for injections. A detected attack holds the reading agent's a
 data out, read credentials, delete work, or change agent instructions until the user reviews it;
 reading such content alone restricts nothing. They send conversational
 messages through the connector so replies route back, never directly with service tokens or scripts.
+The sending tool reports connector messages that remain queued rather than claiming delivery.
+An unreachable connector adds one `connector_unreachable` system notice per affected sender and
+outage and wakes that sender to reconsider blocked work. The notice identifies its thread and
+keeps the message queued for automatic retry. Members escalate to the lead, which flags one
+actionable user request to restore the connector rather than repeating alerts or bypassing it.
 Read-only Slack analysis and bulk retrieval may use the user's configured skills or authorized APIs
 and scripts with existing authorized credentials, including messages, history, threads, permalinks,
 attachments, files, and canvases, without a connector conversation or a working link. Credentials stay

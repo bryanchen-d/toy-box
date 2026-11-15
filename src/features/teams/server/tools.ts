@@ -251,7 +251,9 @@ const sendTeamMessageTool = defineTool("send_team_message", {
       request: args.request,
       threadSequence: args.threadSequence,
     });
-    return { sequence: message.sequence };
+    const { queuedConnectorsForMessage } = await import("./connectors");
+    const connectors = await queuedConnectorsForMessage(message);
+    return { sequence: message.sequence, ...(connectors.length ? { connectors } : {}) };
   },
 });
 

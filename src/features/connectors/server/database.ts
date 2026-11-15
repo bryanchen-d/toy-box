@@ -138,6 +138,22 @@ export class ConnectorDatabase {
     return row?.count ?? 0;
   }
 
+  async isPending(connectorId: string, messageId: string): Promise<boolean> {
+    const [row] = await this.db<{ found: number }[]>`
+      SELECT 1 AS found FROM connector_outbox WHERE connector_id = ${connectorId} AND id = ${messageId}
+    `;
+    return !!row;
+  }
+
+  /** Queued messages for outage notifications; their attachment bytes stay in the outbox. */
+  async pendingMessages(connectorId: string): Promise<ConnectorMessage[]> {
+    const rows = await this.db<{ message: string }[]>`
+      SELECT json_remove(message, '$.attachments') AS message FROM connector_outbox
+      WHERE connector_id = ${connectorId} ORDER BY position
+    `;
+    return rows.map(({ message }) => JSON.parse(message) as ConnectorMessage);
+  }
+
   async recordFailure(
     connectorId: string,
     id: string,

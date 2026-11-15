@@ -103,6 +103,12 @@ function startLink(database: ConnectorDatabase, record: ConnectorRecord): void {
               message,
               reason,
             ),
+          noteUnreachable: async (connector, message, since) =>
+            (await import("@teams/server/connectors")).noteUnreachableConnectorMessage(
+              connector,
+              message,
+              since,
+            ),
           readDirectory: async () =>
             (await import("@teams/server/connectors")).listConnectorDirectory(),
           onChange,

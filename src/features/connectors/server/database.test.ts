@@ -106,6 +106,23 @@ describe("connector outbox", () => {
     expect(await connectors.countPending(id)).toBe(1);
   });
 
+  test("outage inspection includes queued followers without reading attachment bytes or waiting for retries", async () => {
+    const connectors = await openConnectors();
+    const { id } = await connectors.create(options);
+    const first = {
+      ...message("first"),
+      attachments: [{ name: "notes.md", mimeType: "text/markdown" as const, base64: "bm90ZXM=" }],
+    };
+    await connectors.enqueue(id, first);
+    await connectors.enqueue(id, message("second"));
+    await connectors.recordFailure(id, "first", "offline", new Date(Date.now() + 60_000));
+    expect(await connectors.pendingMessages(id)).toEqual([message("first"), message("second")]);
+    expect(await connectors.isPending(id, "first")).toBe(true);
+    await connectors.remove(id, "first");
+    expect(await connectors.isPending(id, "first")).toBe(false);
+    expect((await connectors.dueMessages(id))[0]?.message.id).toBe("second");
+  });
+
   test("offers only the head of each conversation, so a retry never reorders it", async () => {
     const connectors = await openConnectors();
     const { id } = await connectors.create(options);

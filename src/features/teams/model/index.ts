@@ -407,6 +407,16 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("member_left"), member: teamMemberSchema }).strict(),
   z
     .object({
+      type: z.literal("connector_unreachable"),
+      connectorId: durableIdSchema,
+      agentId: durableIdSchema,
+      since: z.string(),
+      threadSequence: z.number().int().positive(),
+      excerpt: z.string(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("connector_undelivered"),
       connectorId: durableIdSchema,
       /** The thread whose message the connector never received. */

@@ -118,6 +118,7 @@ async function openLink(
   });
   const applied: ConnectorEvent[] = [];
   const undelivered: { id: string; reason: string }[] = [];
+  const unreachable: { id: string; since: string }[] = [];
   const start = (current: ServiceConnectorRecord = record as ServiceConnectorRecord) => {
     const link = new ConnectorLink(current, {
       database,
@@ -129,6 +130,9 @@ async function openLink(
       },
       noteUndelivered: async (_connector, message, reason) => {
         undelivered.push({ id: message.id, reason });
+      },
+      noteUnreachable: async (_connector, message, since) => {
+        unreachable.push({ id: message.id, since });
       },
       readDirectory: async () => [{ id: "team-1", name: "Docs" }],
       onChange: () => {},
@@ -145,7 +149,7 @@ async function openLink(
     onTestFinished(() => link.stop());
     return link;
   };
-  return { database, record, applied, undelivered, start };
+  return { database, record, applied, undelivered, unreachable, start };
 }
 
 function message(id: string, conversationId = "conversation-1"): ConnectorMessage {
@@ -317,6 +321,47 @@ describe("following a connector's stream", () => {
 });
 
 describe("delivering to a connector", () => {
+  test("reports queued work after the unreachable threshold, including backed-off messages, then drains it on reconnect", async () => {
+    const connector = fakeConnector();
+    let reachable = false;
+    const { database, record, unreachable, undelivered, start } = await openLink(connector, {
+      openEndpoint: async () => {
+        if (!reachable) throw new Error("connect ECONNREFUSED");
+        return { baseUrl: connector.baseUrl };
+      },
+      timing: { unreachableAfterMs: 100 },
+    });
+    await database.enqueue(record.id, message("waiting"));
+    await database.enqueue(record.id, message("backed-off", "another-conversation"));
+    await database.recordFailure(
+      record.id,
+      "backed-off",
+      "HTTP 503",
+      new Date(Date.now() + 60_000),
+    );
+    const link = start();
+    await Bun.sleep(30);
+    expect(unreachable).toEqual([]);
+    await until(() => unreachable.length === 2);
+    expect(unreachable).toEqual([
+      { id: "waiting", since: link.status.since },
+      { id: "backed-off", since: link.status.since },
+    ]);
+    expect(await database.countPending(record.id)).toBe(2);
+    expect(undelivered).toEqual([]);
+
+    await database.enqueue(record.id, message("late"));
+    await link.deliver();
+    expect(unreachable.at(-1)).toEqual({ id: "late", since: link.status.since });
+    const notices = unreachable.length;
+    await database.remove(record.id, "backed-off");
+    reachable = true;
+    await until(async () => (await database.countPending(record.id)) === 0);
+    expect(connector.received.map(({ body }) => body.id)).toEqual(["waiting", "late"]);
+    expect(unreachable).toHaveLength(notices);
+    expect(undelivered).toEqual([]);
+  });
+
   test("posts queued messages once connected and removes them", async () => {
     const connector = fakeConnector();
     const { database, record, start } = await openLink(connector);
@@ -328,6 +373,32 @@ describe("delivering to a connector", () => {
     expect(connector.received.map(({ body }) => body.id)).toEqual(["m1", "m2"]);
     expect(connector.received[0]?.client).toBe(record.clientId);
     await until(async () => (await database.countPending(record.id)) === 0);
+  });
+
+  test("a slow outage notification cannot hold delivery after reconnection", async () => {
+    const connector = fakeConnector();
+    let reachable = false;
+    let notifying = false;
+    const notification = Promise.withResolvers<void>();
+    const { database, record, start } = await openLink(connector, {
+      openEndpoint: async () => {
+        if (!reachable) throw new Error("offline");
+        return { baseUrl: connector.baseUrl };
+      },
+      noteUnreachable: async () => {
+        notifying = true;
+        await notification.promise;
+      },
+      timing: { unreachableAfterMs: 30 },
+    });
+    onTestFinished(() => notification.resolve());
+    await database.enqueue(record.id, message("waiting"));
+    start();
+    await until(() => notifying);
+    reachable = true;
+    await until(async () => (await database.countPending(record.id)) === 0);
+    expect(connector.received.map(({ body }) => body.id)).toEqual(["waiting"]);
+    notification.resolve();
   });
 
   test("retries an unavailable connector and notes a rejected message", async () => {

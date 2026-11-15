@@ -41,6 +41,11 @@ export type ConnectorLinkDependencies = {
     message: ConnectorMessage,
     reason: "expired" | "rejected",
   ) => Promise<void>;
+  noteUnreachable: (
+    connector: Connector,
+    message: ConnectorMessage,
+    since: string,
+  ) => Promise<void>;
   readDirectory: () => Promise<ConnectorDirectoryTeam[]>;
   /** The link's status or pending count changed. */
   onChange: (connectorId: string) => void;
@@ -131,6 +136,7 @@ export class ConnectorLink {
     }
     this.#deps.onChange(this.#connector.id);
     await this.#scheduleDelivery();
+    await this.#notifyUnreachable();
   }
 
   /** Tells the connector which teams it can address, when that list changed. */
@@ -271,7 +277,10 @@ export class ConnectorLink {
     clearTimeout(this.#unreachableTimer);
     this.#unreachableTimer = setTimeout(() => {
       const status = this.#status;
-      if (status.state === "connecting") this.#setStatus({ ...status, state: "unreachable" });
+      if (status.state === "connecting") {
+        this.#setStatus({ ...status, state: "unreachable" });
+        void this.deliver();
+      }
     }, this.#timing.unreachableAfterMs);
     this.#unreachableTimer.unref?.();
   }
@@ -366,6 +375,27 @@ export class ConnectorLink {
       await this.#deps
         .noteUndelivered(this.#connector, expired.message, "expired")
         .catch((error) => console.error("Failed to note an expired connector message:", error));
+    }
+  }
+
+  async #notifyUnreachable(): Promise<void> {
+    const { state, since } = this.#status;
+    if (state !== "unreachable") return;
+    for (const message of await this.#deps.database.pendingMessages(this.#connector.id)) {
+      if (
+        this.#abort.signal.aborted ||
+        this.#status.state !== "unreachable" ||
+        this.#status.since !== since
+      )
+        return;
+      await this.#deps
+        .noteUnreachable(this.#connector, message, since)
+        .catch((error) =>
+          console.error(
+            `Failed to notify the sender of connector ${this.#connector.name}'s outage:`,
+            error,
+          ),
+        );
     }
   }
 

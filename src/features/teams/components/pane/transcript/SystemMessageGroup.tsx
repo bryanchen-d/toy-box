@@ -166,6 +166,19 @@ const SYSTEM_MESSAGES: {
     icon: <UserMinus className="size-3.5 shrink-0" />,
     present: (contents) => membershipContent(contents, "left"),
   },
+  connector_unreachable: {
+    icon: <Unplug className="size-3.5 shrink-0" />,
+    present: ([{ connectorId, agentId, excerpt }], { agent }) => ({
+      content: (
+        <>
+          {agent(connectorId).name} is unreachable. {agent(agentId).name}'s message is still queued:{" "}
+          <Value text={excerpt} />
+        </>
+      ),
+      tooltip:
+        "Agent Teams notified the sender. Delivery will retry automatically; do not resend the message.",
+    }),
+  },
   connector_undelivered: {
     icon: <Unplug className="size-3.5 shrink-0" />,
     present: ([{ connectorId, reason, excerpt }], { agent }) => ({

@@ -21,9 +21,13 @@ mock.module("@/server/database", () => ({
 const { TeamDatabase } = await import("./database");
 const { ConnectorDatabase } = await import("@connectors/server/database");
 const { postTeamMessage, sendTeamMessageFromAgent } = await import("./index");
-const { applyConnectorEvent, noteUndeliveredConnectorMessage, listConnectorDirectory } =
-  await import("./connectors");
-const { teamTools } = await import("./tools");
+const {
+  applyConnectorEvent,
+  noteUndeliveredConnectorMessage,
+  noteUnreachableConnectorMessage,
+  listConnectorDirectory,
+} = await import("./connectors");
+const { teamTools, teamMemberTools } = await import("./tools");
 const judge = await import("@security/server/judge");
 
 /** What an ordinary session reads from read_team. */
@@ -135,6 +139,96 @@ test("talking about a connector sends it nothing, and the message routes as if u
   });
   expect(wakes).toHaveBeenCalledTimes(1);
   expect(await queued(connectors, connector.id)).toEqual([]);
+});
+
+test("the sending tool reports an offline message as queued, never delivered", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  const tool = teamMemberTools.find(({ name }) => name === "send_team_message") as Tool;
+  const args = { content: "@bryanbot post the release notes" };
+  const result = await tool.handler(tool.parameters!.parse(args), {
+    sessionId: "builder",
+    toolCallId: "send",
+    toolName: tool.name,
+    arguments: args,
+  });
+  expect(result).toEqual({
+    sequence: expect.any(Number),
+    connectors: [
+      {
+        connectorId: connector.id,
+        name: "BryanBot",
+        delivery: "queued",
+        connection: "connecting",
+        since: expect.any(String),
+        note: expect.stringContaining("Do not resend or bypass"),
+      },
+    ],
+  });
+  expect(await connectors.countPending(connector.id)).toBe(1);
+  expect(wakes).not.toHaveBeenCalled();
+});
+
+test("an outage wakes each affected sender once, retains queued work, and can report a later outage", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  await teams.createMember(teamAgent(team.id, "reviewer", "Reviewer"));
+  const ask = await sendTeamMessageFromAgent("builder", { content: "@bryanbot first post" });
+  await sendTeamMessageFromAgent("builder", { content: "@bryanbot another post" });
+  await sendTeamMessageFromAgent("reviewer", { content: "@bryanbot review post" });
+  const pending = await queued(connectors, connector.id);
+  const since = "2026-11-14T23:00:00.000Z";
+  await Promise.all(
+    pending.map((message) => noteUnreachableConnectorMessage(connector, message, since)),
+  );
+  await Promise.all(
+    pending.map((message) => noteUnreachableConnectorMessage(connector, message, since)),
+  );
+  const notes = (await teams.listMessagesAfter(team.id)).filter(
+    ({ content }) => typeof content !== "string" && content.type === "connector_unreachable",
+  );
+  expect(notes).toHaveLength(2);
+  expect(notes[0]).toMatchObject({
+    sender: { type: "system" },
+    content: {
+      type: "connector_unreachable",
+      connectorId: connector.id,
+      agentId: "builder",
+      since,
+      threadSequence: ask.sequence,
+      excerpt: "@bryanbot first post",
+    },
+  });
+  expect(wakes.mock.calls.map(([id]) => id).sort()).toEqual(["builder", "reviewer"]);
+  expect(wakes.mock.calls[0]?.[1]).toEqual({
+    systemMessage: { type: "team_message", senderName: "Agent Teams" },
+    immediate: true,
+  });
+  expect(await connectors.countPending(connector.id)).toBe(3);
+  expect((await teams.getTeam(team.id))?.requestSequence).toBeNull();
+  expect((await readTeam(team.id)).messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        content: expect.objectContaining({ type: "connector_unreachable", agentId: "builder" }),
+      }),
+    ]),
+  );
+
+  await noteUnreachableConnectorMessage(connector, pending[0]!, "2026-11-15T01:00:00.000Z");
+  expect(wakes).toHaveBeenCalledTimes(3);
+});
+
+test("an outage affecting a user or a removed sender notifies the lead", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  await sendTeamMessageFromAgent("builder", { content: "@bryanbot builder's post" });
+  await teams.deleteMember("builder");
+  await postTeamMessage({ id: "owner", teamId: team.id, content: "@bryanbot owner's post" });
+  const pending = await queued(connectors, connector.id);
+  wakes.mockClear();
+  for (const message of pending)
+    await noteUnreachableConnectorMessage(connector, message, "outage");
+  expect(wakes.mock.calls.map(([id]) => id)).toEqual([team.id]);
 });
 
 test("a connector's reply lands once in its thread as the connector, and wakes the lead", async () => {

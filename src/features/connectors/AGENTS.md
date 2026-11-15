@@ -38,6 +38,8 @@ Connector      name (and the @handle derived from it), kind, client ID, received
   out of reach for 15 minutes becomes unreachable, keeping the time it lost the connector, until it
   reconnects, so an outage that needs someone to restore the connector can't go unnoticed.
   `ConnectorEntry` adds it and the count of undelivered messages for clients.
+  At that threshold, Agent Teams notes queued work in the team and wakes each affected sender
+  once per outage, including senders whose messages join an already-unreachable connector.
 - A conversation has a `conversationId` minted by whichever side starts it. Each side maps it to
   its own state, and neither interprets the other's identifiers. Teams owns the
   `team_connector_threads` map from a conversation to its team thread.
@@ -144,6 +146,13 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   do not routinely ask for receipts or wait for one. Failed, queued, refused, or
   uncertain sends and substantive answers still need a response. Protocol acknowledgements
   and durable retries are unchanged.
+- `send_team_message` reports each addressed connector whose message remains queued, its current
+  connection state, and the instruction not to resend or bypass it. A queue entry is not delivery.
+  `connector_unreachable` is an Agent Teams system notice, not an answer from the offline service;
+  it retains the original thread and deduplicates per sender and outage. The sender can ask the
+  lead for help, and the lead flags one actionable user request to restore the connector.
+  Reconnection drains queued work normally without a success receipt. Connection state is live,
+  so restarting the server begins a new reachability interval.
 - Agents send conversational messages through the connector so replies can route back to the team,
   never directly with service tokens or scripts. Read-only Slack analysis and bulk retrieval may use
   the user's configured skills or authorized APIs and scripts with existing authorized credentials:

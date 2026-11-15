@@ -690,6 +690,23 @@ export class TeamDatabase {
     });
   }
 
+  /** One actionable outage notice per sender, even when several of its messages are queued. */
+  async noteConnectorUnreachable(
+    teamId: string,
+    content: Extract<TeamSystemMessageContent, { type: "connector_unreachable" }>,
+  ) {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireTeam(db, teamId);
+      const id = `connector-unreachable:${content.connectorId}:${content.since}:${content.agentId}`;
+      const [existing] = await db`SELECT id FROM team_messages WHERE id = ${id}`;
+      return recordTeamChange(
+        db,
+        team,
+        existing ? [] : [await appendSystemMessage(db, teamId, content, id)],
+      );
+    });
+  }
+
   async setMessageReaction(input: {
     teamId: string;
     sequence: number;
@@ -1105,10 +1122,15 @@ function teamColumns(
   };
 }
 
-function appendSystemMessage(db: Bun.SQL, teamId: string, content: TeamSystemMessageContent) {
+function appendSystemMessage(
+  db: Bun.SQL,
+  teamId: string,
+  content: TeamSystemMessageContent,
+  id: string = crypto.randomUUID(),
+) {
   return appendMessage(db, teamId, (position) => ({
     ...position,
-    id: crypto.randomUUID(),
+    id,
     sender: { type: "system" },
     content,
   }));

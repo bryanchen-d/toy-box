@@ -31,6 +31,32 @@ const HOUR_MS = 60 * 60_000;
 // A fuse rather than a quota: it resets when the server restarts.
 const agentForwards = sharedMap<number[]>("connector-agent-forwards");
 
+/** A queued tool send is not a delivery receipt, even while the stream is connected. */
+export async function queuedConnectorsForMessage(message: StoredTeamMessage) {
+  if (isTeamSystemMessage(message)) return [];
+  const { listConnectors } = await import("@connectors/server");
+  const { ConnectorDatabase } = await import("@connectors/server/database");
+  const database = new ConnectorDatabase(await getStateDatabase());
+  const addressed = connectorsAddressedBy(message.content, await listConnectors());
+  const pending = await Promise.all(
+    addressed.map(async (connector) => {
+      if (!(await database.isPending(connector.id, message.id))) return [];
+      return [
+        {
+          connectorId: connector.id,
+          name: connector.name,
+          delivery: "queued" as const,
+          connection: connector.status.state,
+          since: connector.status.since,
+          ...("error" in connector.status ? { error: connector.status.error } : {}),
+          note: "Not confirmed delivered. Automatic delivery resumes when reachable. Do not resend or bypass the connector.",
+        },
+      ];
+    }),
+  );
+  return pending.flat();
+}
+
 /** Sends a user or Agent message to every connector it opens by addressing. */
 export async function forwardToAddressedConnectors(
   team: Team,
@@ -208,6 +234,33 @@ export async function noteUndeliveredConnectorMessage(
     reason,
     content: message.content,
   });
+}
+
+/** Agent Teams, not the offline connector, reports an outage and wakes the affected sender. */
+export async function noteUnreachableConnectorMessage(
+  connector: Connector,
+  message: ConnectorMessage,
+  since: string,
+): Promise<void> {
+  const database = new TeamDatabase(await getStateDatabase());
+  const thread = await database.getConnectorThread(connector.id, message.conversationId);
+  if (!thread || !(await database.getTeam(thread.teamId))) return;
+  const author = await database.agentAuthorOf(thread.teamId, message.id);
+  const agent = author ? await database.getAgent(author) : undefined;
+  const agentId = agent?.teamId === thread.teamId ? agent.id : thread.teamId;
+  const change = await database.noteConnectorUnreachable(thread.teamId, {
+    type: "connector_unreachable",
+    connectorId: connector.id,
+    agentId,
+    since,
+    threadSequence: thread.threadSequence,
+    excerpt: excerpt(message.content),
+  });
+  const { publishTeamChange, wakeTeamAgent } = await import("./index");
+  publishTeamChange(change);
+  if (change.events.length) {
+    await wakeTeamAgent(agentId, { type: "team_message", senderName: "Agent Teams" });
+  }
 }
 
 async function noteUndelivered(
