@@ -1,11 +1,9 @@
 import { defineTool } from "@sessions/server/tools/definition";
 import { z } from "zod";
-import { modelConfigurationSchema } from "@providers/model";
-import { workerNameSchema } from "../model";
 import {
   SUB_SESSION_LIMIT,
   SUB_SESSION_WAKE_MAX_MINUTES,
-  subSessionBriefSchema,
+  subSessionRequestSchema,
 } from "../model/subSessions";
 
 export const SUB_SESSION_INSTRUCTIONS = `<sub_sessions>
@@ -26,20 +24,7 @@ const createSubSessionTool = defineTool("create_sub_session", {
     "Creates a sub session you own to do one task, starting it with your brief. " +
     "Each finished turn reports back to you; send follow-ups with message_sub_session and close it with close_sub_session when the task is done. " +
     `It inherits your model and directory unless you set them. You can own at most ${SUB_SESSION_LIMIT} at once.`,
-  parameters: z.object({
-    name: workerNameSchema.describe(
-      "A short label for the task, shown wherever the sub session is listed.",
-    ),
-    brief: subSessionBriefSchema,
-    model: modelConfigurationSchema
-      .optional()
-      .describe("Optional model and reasoning configuration for the sub session."),
-    directory: z.string().optional().describe("Optional working directory for the sub session."),
-    useWorktree: z
-      .boolean()
-      .optional()
-      .describe("Whether to isolate the sub session in its own git worktree. Defaults to false."),
-  }),
+  parameters: subSessionRequestSchema,
   handler: async (request, invocation) => {
     const { createSubSession } = await import("./subSessions");
     return JSON.stringify(await createSubSession(invocation.sessionId, request));
@@ -82,7 +67,8 @@ const closeSubSessionTool = defineTool("close_sub_session", {
   },
 });
 
-export const subSessionTools = [
+/** Tools an agent uses on the sub sessions it owns. */
+export const subSessionOwnerTools = [
   createSubSessionTool,
   messageSubSessionTool,
   listSubSessionsTool,
@@ -109,4 +95,4 @@ const wakeAfterTool = defineTool("wake_after", {
 });
 
 /** Tools a sub session uses on itself. */
-export const subSessionSelfTools = [wakeAfterTool];
+export const subSessionTools = [wakeAfterTool];

@@ -2,7 +2,9 @@
 // reports back to it. The owner briefs it, reviews each report, and closes it when the task is done.
 
 import { z } from "zod";
+import { modelConfigurationSchema } from "@providers/model";
 import type { SessionCompletion } from "@sessions/model";
+import { workerNameSchema } from ".";
 
 /** The most sub sessions one session may own at once. */
 export const SUB_SESSION_LIMIT = 5;
@@ -54,6 +56,23 @@ export const subSessionBriefSchema = z
   })
   .strict();
 export type SubSessionBrief = z.infer<typeof subSessionBriefSchema>;
+
+/** What an owner asks for when it creates a sub session. */
+export const subSessionRequestSchema = z.object({
+  name: workerNameSchema.describe(
+    "A short label for the task, shown wherever the sub session is listed.",
+  ),
+  brief: subSessionBriefSchema,
+  model: modelConfigurationSchema
+    .optional()
+    .describe("Optional model and reasoning configuration for the sub session."),
+  directory: z.string().optional().describe("Optional working directory for the sub session."),
+  useWorktree: z
+    .boolean()
+    .optional()
+    .describe("Whether to isolate the sub session in its own git worktree. Defaults to false."),
+});
+export type SubSessionRequest = z.infer<typeof subSessionRequestSchema>;
 
 /** The sub session's first message: who it works for, how it reports, and its brief. */
 export function renderSubSessionBrief(brief: SubSessionBrief, owner: { name?: string }): string {

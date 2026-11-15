@@ -181,7 +181,7 @@ describe("sub sessions", () => {
     await expect(closeSubSession("other-agent", sessionId)).rejects.toThrow(
       "is not one of your sub sessions",
     );
-    expect(await listSubSessions("other-agent")).toEqual({ subSessions: [], limit: 5 });
+    expect(await listSubSessions("other-agent")).toEqual({ subSessions: [] });
     expect(deliverMock).not.toHaveBeenCalled();
     expect(deleteWorkerMock).not.toHaveBeenCalled();
 

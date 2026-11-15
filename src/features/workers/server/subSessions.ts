@@ -1,7 +1,6 @@
 // Sub sessions: the session-owned Workers an agent creates, messages, lists, and closes. Every
 // operation acts only on the caller's own sub sessions.
 
-import type { ModelConfiguration } from "@providers/model";
 import {
   deliverSessionMessage,
   getSessionRuntimeStatus,
@@ -13,7 +12,7 @@ import {
   renderSubSessionBrief,
   SUB_SESSION_LIMIT,
   subSessionReport,
-  type SubSessionBrief,
+  type SubSessionRequest,
 } from "../model/subSessions";
 import type { Worker } from "../model";
 import { spawnSessionWorker } from "./admission";
@@ -23,15 +22,7 @@ import { getWorker, listWorkers, updateWorker } from "./index";
 
 const REPORT_PREVIEW_LENGTH = 1_000;
 
-export type SubSessionRequest = {
-  name: string;
-  brief: SubSessionBrief;
-  model?: ModelConfiguration;
-  directory?: string;
-  useWorktree?: boolean;
-};
-
-export type SubSessionSummary = {
+type SubSessionSummary = {
   sessionId: string;
   name?: string;
   createdAt: string;
@@ -101,13 +92,9 @@ export async function messageSubSession(
   return { disposition };
 }
 
-export async function listSubSessions(ownerSessionId: string): Promise<{
-  subSessions: SubSessionSummary[];
-  limit: number;
-}> {
+export async function listSubSessions(ownerSessionId: string) {
   const workers = await ownedSubSessions(ownerSessionId);
-  const subSessions = await Promise.all(workers.map(summarize));
-  return { subSessions, limit: SUB_SESSION_LIMIT };
+  return { subSessions: await Promise.all(workers.map(summarize)) };
 }
 
 /** Stops the sub session's work and deletes it. */
