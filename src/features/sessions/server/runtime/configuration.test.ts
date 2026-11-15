@@ -270,6 +270,36 @@ describe("Session-owned configuration lifetime", () => {
     expect(worker).not.toContain("open_file");
   });
 
+  test("every agent can own sub sessions except a sub session itself", async () => {
+    const { sessionId, db } = await setup(false);
+    const subSessionId = `${sessionId}-sub`;
+    await new WorkerDatabase(db).create({
+      createdAt: new Date(0).toISOString(),
+      type: "session",
+      parentSessionId: sessionId,
+      sessionId: subSessionId,
+      ephemeral: false,
+    });
+    const subSessionTools = [
+      "create_sub_session",
+      "message_sub_session",
+      "list_sub_sessions",
+      "close_sub_session",
+    ];
+
+    for (const sessionType of ["standard", "hyper", "automation"] as const) {
+      const configuration = await getSessionConfiguration(sessionId, sessionType);
+      expect(configuration.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(subSessionTools),
+      );
+      expect(configuration.additionalInstructions).toContain("<sub_sessions>");
+    }
+    const subSession = await getSessionConfiguration(subSessionId, "worker");
+    const names = subSession.tools.map((tool) => tool.name);
+    for (const name of subSessionTools) expect(names).not.toContain(name);
+    expect(subSession.additionalInstructions).not.toContain("<sub_sessions>");
+  });
+
   test.each(["copilot", "codex"] as const)(
     "inherited Team agent models preserve an existing %s provider when the workspace default changes",
     async (providerId) => {

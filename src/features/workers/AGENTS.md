@@ -18,7 +18,7 @@ policy. Trusted owners may supply a shared Session ID. Teams uses its own ID for
 
 - A session-owned Worker inherits its parent's model and directory unless overridden and is retained
   by default. Spawning does not open a pane; children are discoverable under their parent in the
-  sidebar, and `open_session` explicitly opens them.
+  sidebar, and `open_session` explicitly opens them. Agents call them sub sessions (below).
 - A file-owned Worker belongs to one exact session file and is always ephemeral.
 - An app-owned Worker belongs to one saved app and is ephemeral by default.
 - A team-owned Worker is durable until member or Team deletion. Teams interprets its name
@@ -47,6 +47,26 @@ The Worker model deliberately knows no Agent role, Team status, file editor task
 Owners validate and interpret metadata at their own boundary. This is the same pattern used by
 `useFile`: Files selects its Workers by owner, presents their names and metadata, and invokes generic
 spawn or cancel operations.
+
+## Sub sessions
+
+A sub session is a session-owned Worker that does one task for the agent that created it, reports
+back to it, and is closed by it when the task is done. The Workers table is the only record of
+which agent owns which sub sessions. Standard, Hyper, automation, inbox, file, and app sessions and
+team agents share one toolset, `create_sub_session`, `message_sub_session`, `list_sub_sessions`,
+and `close_sub_session` (`server/tools.ts`), with guidance on when to use a provider's own
+subagents instead. Each tool acts only on the invoking session's own sub sessions
+(`server/subSessions.ts`), whatever IDs its arguments name.
+
+- Creating one takes a brief (`model/subSessions.ts`): goal, context, deliverable, acceptance
+  criteria, and optional boundaries and reporting. It renders as the first message, after a note
+  that names the owner, says each turn's final answer goes back to it, and asks the sub session to
+  ask rather than guess. Sub sessions are retained; only their owner or its deletion removes them.
+- A session owns at most five at once. Creation is serialized per owner, so parallel calls can't
+  exceed the limit.
+- A sub session never owns sub sessions: Session-owned Workers receive none of the toolset, and
+  creation refuses a caller that is one.
+- Closing cancels its work and deletes it, which also closes any pane linked to it.
 
 ## Algebra
 

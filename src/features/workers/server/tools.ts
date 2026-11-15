@@ -2,47 +2,85 @@ import { defineTool } from "@sessions/server/tools/definition";
 import { z } from "zod";
 import { modelConfigurationSchema } from "@providers/model";
 import { workerNameSchema } from "../model";
+import { SUB_SESSION_LIMIT, subSessionBriefSchema } from "../model/subSessions";
 
-const spawnWorkerTool = defineTool("spawn_worker", {
+export const SUB_SESSION_INSTRUCTIONS = `<sub_sessions>
+You can hand a task to a sub session: a session you own that does that one task, reports each finished turn back to you, and stays open for follow-ups until you close it.
+- Use your provider's own subagents for quick work inside a turn, such as a parallel search or a diff review. Use a sub session for a task that outlives your turn, needs its own review, or should run alongside your other work.
+- You are the expert on the task, so brief it the way you would brief a capable colleague who knows nothing yet: the goal, the context and decisions so far, the deliverable, acceptance criteria you will actually check, and its boundaries. Vague briefs come back as duplicated or misdirected work.
+- Give parallel sub sessions separate parts of the work, and a worktree each when they change the same repository.
+- Treat each report as a claim. Check it against your acceptance criteria and its evidence before you use it or pass it on, and send a follow-up when it falls short.
+- Close a sub session as soon as its task is done. You can own at most ${SUB_SESSION_LIMIT} at once.
+</sub_sessions>`;
+
+const sessionIdParameter = z
+  .string()
+  .describe("The sub session's ID, from create_sub_session or list_sub_sessions");
+
+const createSubSessionTool = defineTool("create_sub_session", {
   description:
-    "Spawns an anonymous worker owned by the current session for delegated or parallel work. " +
-    "It inherits the current model and directory by default. Children appear beneath their parent in the sidebar without opening a pane; use open_session to open one explicitly. " +
-    "Retained children remain available for follow-up. Ephemeral children are deleted after their initial execution. " +
-    "Every child is deleted with the current session.",
+    "Creates a sub session you own to do one task, starting it with your brief. " +
+    "Each finished turn reports back to you; send follow-ups with message_sub_session and close it with close_sub_session when the task is done. " +
+    `It inherits your model and directory unless you set them. You can own at most ${SUB_SESSION_LIMIT} at once.`,
   parameters: z.object({
-    task: z.string().describe("The task to delegate to the new worker"),
-    name: workerNameSchema
-      .optional()
-      .describe("A concise local label for the worker's role or assignment."),
+    name: workerNameSchema.describe(
+      "A short label for the task, shown wherever the sub session is listed.",
+    ),
+    brief: subSessionBriefSchema,
     model: modelConfigurationSchema
       .optional()
-      .describe("Optional model and reasoning configuration for the new session."),
-    directory: z.string().optional().describe("Optional working directory for the new session."),
+      .describe("Optional model and reasoning configuration for the sub session."),
+    directory: z.string().optional().describe("Optional working directory for the sub session."),
     useWorktree: z
       .boolean()
       .optional()
-      .describe(
-        "Whether to isolate the worker in a git worktree. An ephemeral worker's worktree is discarded with it. Defaults to false.",
-      ),
-    ephemeral: z
-      .boolean()
-      .optional()
-      .describe(
-        "Delete the worker, transcript, and any worktree after its initial execution. Defaults to false.",
-      ),
+      .describe("Whether to isolate the sub session in its own git worktree. Defaults to false."),
   }),
-  handler: async (args, invocation) => {
-    const { spawnSessionWorker } = await import("@workers/server");
-    const { sessionId } = await spawnSessionWorker({
-      parentSessionId: invocation.sessionId,
-      ephemeral: args.ephemeral ?? false,
-      ...(args.name === undefined ? {} : { name: args.name }),
-      message: { content: args.task, model: args.model },
-      location: { directory: args.directory, useWorktree: args.useWorktree },
-    });
-
-    return JSON.stringify({ sessionId });
+  handler: async (request, invocation) => {
+    const { createSubSession } = await import("./subSessions");
+    return JSON.stringify(await createSubSession(invocation.sessionId, request));
   },
 });
 
-export const workerTools = [spawnWorkerTool];
+const messageSubSessionTool = defineTool("message_sub_session", {
+  description:
+    "Sends one of your sub sessions a follow-up, such as a correction, an answer to its question, or the next step. " +
+    "It starts the sub session's next turn, or waits behind the turn it is running.",
+  parameters: z.object({
+    sessionId: sessionIdParameter,
+    message: z.string().trim().min(1).describe("The message to send"),
+  }),
+  handler: async ({ sessionId, message }, invocation) => {
+    const { messageSubSession } = await import("./subSessions");
+    return JSON.stringify(
+      await messageSubSession(invocation.sessionId, sessionId, message, invocation.toolCallId),
+    );
+  },
+});
+
+const listSubSessionsTool = defineTool("list_sub_sessions", {
+  description:
+    "Lists the sub sessions you own: each one's task, whether it is working or idle, and a preview of its last report.",
+  parameters: z.object({}),
+  handler: async (_args, invocation) => {
+    const { listSubSessions } = await import("./subSessions");
+    return JSON.stringify(await listSubSessions(invocation.sessionId));
+  },
+});
+
+const closeSubSessionTool = defineTool("close_sub_session", {
+  description:
+    "Closes one of your sub sessions once its task is done or no longer needed: stops any work it is doing and deletes it.",
+  parameters: z.object({ sessionId: sessionIdParameter }),
+  handler: async ({ sessionId }, invocation) => {
+    const { closeSubSession } = await import("./subSessions");
+    return JSON.stringify(await closeSubSession(invocation.sessionId, sessionId));
+  },
+});
+
+export const subSessionTools = [
+  createSubSessionTool,
+  messageSubSessionTool,
+  listSubSessionsTool,
+  closeSubSessionTool,
+];

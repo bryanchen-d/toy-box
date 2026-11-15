@@ -25,7 +25,7 @@ import {
 } from "@sessions/server/tools";
 import type { Tool } from "@sessions/server/tools/definition";
 import { getPersistedWorker } from "@workers/server/database";
-import { workerTools } from "@workers/server/tools";
+import { SUB_SESSION_INSTRUCTIONS, subSessionTools } from "@workers/server/tools";
 import { settingsTools } from "@workspace/server/tools";
 import { getSettings } from "@workspace/server/state/settings";
 import { screenTools } from "@screens/server/tools";
@@ -108,26 +108,29 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
 
   const policy = worker?.type === "inbox" ? inboxPolicy : sessionTypePolicies[sessionType];
   const appId = worker?.type === "app" ? worker.appId : undefined;
+  // A sub session reports to its owner; it never owns sub sessions of its own.
+  const ownsSubSessions = worker?.type !== "session";
   return {
     configurationKey: undefined,
-    tools: getSessionTools(policy, { appId }),
+    tools: getSessionTools(policy, { appId, ownsSubSessions }),
     additionalInstructions: [
       ...policy.instructions,
       ...(policy.teams ? [TEAM_REFERENCE_INSTRUCTIONS] : []),
+      ...(ownsSubSessions ? [SUB_SESSION_INSTRUCTIONS] : []),
     ].join("\n\n"),
   };
 }
 
 function getSessionTools(
   policy: SessionTypePolicy,
-  { appId }: { appId?: string } = {},
+  { appId, ownsSubSessions }: { appId?: string; ownsSubSessions: boolean },
 ): SessionTool[] {
   return [
     ...sessionHistoryTools,
     ...(policy.screens ? screenTools : []),
     ...modelTools,
     ...(policy.hyperLifecycle ? hyperLifecycleTools : []),
-    ...workerTools,
+    ...(ownsSubSessions ? subSessionTools : []),
     ...lifecycleTools,
     ...(policy.title ? sessionTitleTools : []),
     ...(policy.layout ? sessionLayoutTools : []),

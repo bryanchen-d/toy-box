@@ -47,6 +47,10 @@ const TOOL_CALL_POLICIES: Record<string, ToolCallPolicyEntry | undefined> = {
     kind: "translated",
     projectOnStart: projectLinkedSessionEvent(args, "linked_session_removed"),
   }),
+  close_sub_session: (args) => ({
+    kind: "translated",
+    projectOnStart: projectLinkedSessionEvent(args, "linked_session_removed"),
+  }),
   delete_session: (args) => ({
     kind: "translated",
     projectOnStart: projectLinkedSessionEvent(args, "linked_session_removed"),

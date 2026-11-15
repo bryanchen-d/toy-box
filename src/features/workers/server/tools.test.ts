@@ -1,64 +1,54 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ToolInvocation } from "@github/copilot-sdk";
-import * as workersModule from "./index";
+import * as subSessionsModule from "./subSessions";
 
-const realWorkersModule = { ...workersModule };
-type SpawnWorkerInput = Parameters<typeof workersModule.spawnSessionWorker>[0];
+const realSubSessionsModule = { ...subSessionsModule };
+const createMock = mock(async (_owner: string, _request: subSessionsModule.SubSessionRequest) => ({
+  sessionId: "sub-1",
+}));
+const closeMock = mock(async (_owner: string, _sessionId: string) => ({ closed: true as const }));
 
-const spawnWorkerMock = mock(async (_input: SpawnWorkerInput) => ({
-  sessionId: "agent-teams-worker",
+mock.module("@workers/server/subSessions", () => ({
+  ...realSubSessionsModule,
+  createSubSession: createMock,
+  closeSubSession: closeMock,
 }));
 
-mock.module("@workers/server", () => ({
-  ...realWorkersModule,
-  spawnSessionWorker: spawnWorkerMock,
-}));
-
-const { workerTools } = await import("./tools");
+const { subSessionTools } = await import("./tools");
 
 afterAll(() => {
-  mock.module("@workers/server", () => realWorkersModule);
+  mock.module("@workers/server/subSessions", () => realSubSessionsModule);
 });
 
 beforeEach(() => {
-  spawnWorkerMock.mockClear();
+  createMock.mockClear();
+  closeMock.mockClear();
 });
 
-describe("worker SDK tool", () => {
-  test("spawns a retained child owned by the caller without opening it", async () => {
-    const tool = workerTools.find((candidate) => candidate.name === "spawn_worker");
-    const model = { provider: "copilot", name: "claude-sonnet-4.5" };
-
-    const result = await tool?.handler?.(
-      {
-        task: "Review the runtime",
-        name: "Runtime reviewer",
-        model,
-        directory: "/workspace",
-        useWorktree: true,
+describe("sub session tools", () => {
+  test("act for the invoking session, never an owner named in the arguments", async () => {
+    const handler = (name: string) =>
+      subSessionTools.find((candidate) => candidate.name === name)!.handler as (
+        args: unknown,
+        invocation: ToolInvocation,
+      ) => Promise<unknown>;
+    const request = {
+      name: "Reconnect fix",
+      brief: {
+        goal: "Fix it.",
+        context: "Flaky.",
+        deliverable: "A PR.",
+        acceptanceCriteria: ["Passes"],
       },
-      invocation(),
-    );
+      parentSessionId: "someone-else",
+    };
 
-    expect(JSON.parse(String(result))).toEqual({ sessionId: "agent-teams-worker" });
-    expect(spawnWorkerMock).toHaveBeenCalledWith({
-      parentSessionId: "agent-teams-caller",
-      ephemeral: false,
-      name: "Runtime reviewer",
-      message: { content: "Review the runtime", model },
-      location: { directory: "/workspace", useWorktree: true },
-    });
-  });
+    const created = await handler("create_sub_session")(request, invocation());
+    await handler("close_sub_session")({ sessionId: "sub-1" }, invocation());
 
-  test("can make a child ephemeral", async () => {
-    const tool = workerTools.find((candidate) => candidate.name === "spawn_worker");
-
-    const result = await tool?.handler?.({ task: "Run once", ephemeral: true }, invocation());
-
-    expect(JSON.parse(String(result))).toEqual({
-      sessionId: "agent-teams-worker",
-    });
-    expect(spawnWorkerMock.mock.calls[0]?.[0].ephemeral).toBe(true);
+    expect(JSON.parse(String(created))).toEqual({ sessionId: "sub-1" });
+    expect(createMock.mock.calls[0]?.[0]).toBe("agent-teams-caller");
+    expect(closeMock).toHaveBeenCalledWith("agent-teams-caller", "sub-1");
   });
 });
 
@@ -66,7 +56,7 @@ function invocation(): ToolInvocation {
   return {
     sessionId: "agent-teams-caller",
     toolCallId: "tool-call",
-    toolName: "spawn_worker",
+    toolName: "create_sub_session",
     arguments: {},
   };
 }

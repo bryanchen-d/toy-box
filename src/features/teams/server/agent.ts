@@ -3,11 +3,16 @@ import { appLifecycleTools, artifactAppTools, createAppStateTools } from "@apps/
 import { automationTools } from "@automations/server/tools";
 import { modelTools } from "@sessions/server/tools";
 import type { Worker } from "@workers/model";
+import { SUB_SESSION_INSTRUCTIONS, subSessionTools } from "@workers/server/tools";
 import { getStateDatabase } from "@/server/database";
 import { teamAgentFromWorker, type TeamAgentContext } from "@teams/model/worker";
 import { TeamDatabase } from "./database";
 import { TEAM_REFERENCE_INSTRUCTIONS, teamLeadTools, teamMemberTools } from "./tools";
 import { screenTools } from "@screens/server/tools";
+
+const TEAM_SUB_SESSION_INSTRUCTIONS = `<team_sub_sessions>
+Your sub sessions are your private helpers, not team members: no one else on the team can message them, and their reports reach only you. A member is a lasting role on the team, while a sub session does one task for you, so don't create a member for a single task you can hand to a sub session. After you review a report, share what the team needs from it in a team message, and mention your sub session's work as your own responsibility.
+</team_sub_sessions>`;
 
 export async function getTeamAgentConfiguration(worker: Extract<Worker, { type: "team" }>) {
   const team = await new TeamDatabase(await getStateDatabase()).getTeam(worker.teamId);
@@ -23,10 +28,16 @@ export async function getTeamAgentConfiguration(worker: Extract<Worker, { type: 
       ...automationTools,
       ...createAppStateTools(),
       ...modelTools,
+      ...subSessionTools,
       ...(agent.isLead ? teamLeadTools : teamMemberTools),
     ],
     directory: team.directory,
-    additionalInstructions: `${buildTeamAgentInstructions(agent, team)}\n\n${TEAM_REFERENCE_INSTRUCTIONS}`,
+    additionalInstructions: [
+      buildTeamAgentInstructions(agent, team),
+      TEAM_REFERENCE_INSTRUCTIONS,
+      SUB_SESSION_INSTRUCTIONS,
+      TEAM_SUB_SESSION_INSTRUCTIONS,
+    ].join("\n\n"),
     disableMemory: true as const,
     ...(model ? { model } : {}),
   };

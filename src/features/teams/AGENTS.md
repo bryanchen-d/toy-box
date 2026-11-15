@@ -270,6 +270,11 @@ policy; optional team tools retain native discovery. Tool names and availability
 the configuration key, so a changed policy reconnects an idle agent on its next wake without
 recreating its Session, membership, or read position.
 
+Every lead and member also owns [sub sessions](../workers/AGENTS.md#sub-sessions): private helpers
+that each do one task for that agent and report only to it. They are not members, never join the
+team's conversation, and are deleted with the agent's Session. The agent reviews a report before
+sharing what the team needs from it.
+
 All Team agents also receive `list_teams` and `inspect_team`. Inspection accepts a
 `team:ID` URI, optionally followed by `/members`, `/agents/AGENT_ID`, or `/messages/SEQUENCE`.
 IDs are URL-escaped, stable identities, never names or mention handles. A message reference reads

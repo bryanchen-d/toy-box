@@ -457,7 +457,7 @@
           "subject": "One toolset",
           "change": "modified",
           "values": {
-            "behavior": "Team agents, standard sessions, and Hyper share one toolset in place of `spawn_worker`: `create_sub_session(brief, location)`, `message_sub_session(id, message)`, `list_sub_sessions()`, and `close_sub_session(id)`. Location is this machine or a node. Each acts only on the caller's own sub sessions."
+            "behavior": "Every agent except a sub session, team agents included, shares one toolset in place of `spawn_worker`: `create_sub_session(name, brief, location)`, `message_sub_session(id, message)`, `list_sub_sessions()`, and `close_sub_session(id)`. Location is this machine or a pool. Each acts only on the caller's own sub sessions."
           },
           "source": "toy-box src/features/workers/server/tools.ts#spawnWorkerTool",
           "basedOn": [
@@ -1354,6 +1354,7 @@
               "id": "s-sub-tools",
               "title": "Give every agent one sub-session toolset",
               "doneWhen": "A team agent creates a local sub session from a brief, messages it, lists it, and closes it; a sixth open sub session is refused; another agent can't message it; and deleting the agent deletes it.",
+              "status": "in-progress",
               "implements": [
                 "r-sub-owner",
                 "r-sub-tools",

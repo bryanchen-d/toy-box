@@ -1,0 +1,213 @@
+import { afterAll, beforeEach, describe, expect, mock, onTestFinished, test } from "bun:test";
+import type { SessionCompletion } from "@sessions/model";
+import * as databaseModule from "@/server/database";
+import * as sessionRuntimeModule from "@sessions/server/runtime";
+import * as admissionModule from "./admission";
+import * as cleanupModule from "./cleanup";
+import type { Worker } from "../model";
+
+const realDatabaseModule = { ...databaseModule };
+const realSessionRuntimeModule = { ...sessionRuntimeModule };
+const realAdmissionModule = { ...admissionModule };
+const realCleanupModule = { ...cleanupModule };
+
+let currentDb: Bun.SQL | undefined;
+let nextSessionId = 0;
+const running = new Set<string>();
+const completions = new Map<string, SessionCompletion>();
+
+type SpawnInput = Parameters<typeof admissionModule.spawnSessionWorker>[0];
+const spawnMock = mock(async (input: SpawnInput) => {
+  // Admission persists ownership before it returns its receipt.
+  await Bun.sleep(5);
+  const sessionId = `sub-${++nextSessionId}`;
+  await registerWorkerSession({
+    type: "session",
+    sessionId,
+    parentSessionId: input.parentSessionId,
+    createdAt: new Date(nextSessionId * 1000).toISOString(),
+    ephemeral: false,
+    ...(input.name ? { name: input.name } : {}),
+  });
+  return { sessionId };
+});
+const deliverMock = mock(async (_sessionId: string, _message: unknown) => ({
+  disposition: "started",
+  waitForCompletion: async () => ({ status: "completed" as const }),
+}));
+const deleteWorkerMock = mock(async (sessionId: string, _type?: Worker["type"]) =>
+  unregisterWorkerSession(sessionId),
+);
+
+mock.module("@/server/database", () => ({
+  ...realDatabaseModule,
+  getStateDatabase: async (options?: { createIfMissing?: boolean }) => {
+    if (!currentDb && options?.createIfMissing === false) return null;
+    if (!currentDb) throw new Error("Test database has not been opened.");
+    return currentDb;
+  },
+}));
+mock.module("@sessions/server/runtime", () => ({
+  ...realSessionRuntimeModule,
+  deliverSessionMessage: deliverMock,
+  getSessionRuntimeStatus: (sessionId: string) => ({
+    running: running.has(sessionId),
+    queuedCount: running.has(sessionId) ? 1 : 0,
+  }),
+  waitForSessions: async (sessionIds: string[]) =>
+    sessionIds.map((sessionId) => completions.get(sessionId) ?? { status: "completed" }),
+}));
+mock.module("@workers/server/admission", () => ({
+  ...realAdmissionModule,
+  spawnSessionWorker: spawnMock,
+}));
+mock.module("@workers/server/cleanup", () => ({
+  ...realCleanupModule,
+  deleteWorker: deleteWorkerMock,
+}));
+
+const { registerWorkerSession, unregisterWorkerSession } = await import("./database");
+const { closeSubSession, createSubSession, listSubSessions, messageSubSession } =
+  await import("./subSessions");
+
+afterAll(() => {
+  mock.module("@/server/database", () => realDatabaseModule);
+  mock.module("@sessions/server/runtime", () => realSessionRuntimeModule);
+  mock.module("@workers/server/admission", () => realAdmissionModule);
+  mock.module("@workers/server/cleanup", () => realCleanupModule);
+});
+
+beforeEach(async () => {
+  currentDb = await databaseModule.createTestDatabase();
+  onTestFinished(async () => {
+    await currentDb?.close();
+    currentDb = undefined;
+  });
+  nextSessionId = 0;
+  running.clear();
+  completions.clear();
+  spawnMock.mockClear();
+  deliverMock.mockClear();
+  deleteWorkerMock.mockClear();
+});
+
+const brief = {
+  goal: "Fix the flaky reconnect test.",
+  context: "It fails one run in ten.",
+  deliverable: "A draft pull request link.",
+  acceptanceCriteria: ["The test passes 50 runs in a row"],
+};
+
+describe("sub sessions", () => {
+  test("start as retained Workers owned by the caller, with the brief as their first message", async () => {
+    await registerWorkerSession({
+      type: "team",
+      sessionId: "agent-riley",
+      teamId: "team-1",
+      createdAt: new Date(0).toISOString(),
+      ephemeral: false,
+      name: "Riley",
+    });
+    const model = { provider: "copilot", name: "gpt-5.5" } as const;
+
+    const result = await createSubSession("agent-riley", {
+      name: "Reconnect fix",
+      brief,
+      model,
+      directory: "C:/repos/toy-box",
+      useWorktree: true,
+    });
+
+    expect(result).toEqual({ sessionId: "sub-1" });
+    const [input] = spawnMock.mock.calls[0]!;
+    expect(input).toMatchObject({
+      parentSessionId: "agent-riley",
+      name: "Reconnect fix",
+      message: { model },
+      location: { directory: "C:/repos/toy-box", useWorktree: true },
+    });
+    expect(input.ephemeral).toBeUndefined();
+    expect(input.message.content).toStartWith("You are a sub session doing one task for Riley,");
+    expect(input.message.content).toContain("## Goal\nFix the flaky reconnect test.");
+  });
+
+  test("refuse a sixth open sub session, even when requested all at once", async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, index) =>
+        createSubSession("owner", { name: `Task ${index + 1}`, brief }),
+      ),
+    );
+
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(5);
+    const [refused] = results.filter((result) => result.status === "rejected");
+    expect(String((refused as PromiseRejectedResult).reason)).toContain(
+      "You already own 5 sub sessions (Task 1, Task 2, Task 3, Task 4, Task 5)",
+    );
+
+    await closeSubSession("owner", "sub-1");
+    await expect(createSubSession("owner", { name: "Task 7", brief })).resolves.toEqual({
+      sessionId: "sub-6",
+    });
+  });
+
+  test("can't create sub sessions of their own", async () => {
+    await registerWorkerSession({
+      type: "session",
+      sessionId: "sub-of-owner",
+      parentSessionId: "owner",
+      createdAt: new Date(0).toISOString(),
+      ephemeral: false,
+    });
+
+    await expect(createSubSession("sub-of-owner", { name: "Nested", brief })).rejects.toThrow(
+      "A sub session can't create sub sessions of its own",
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  test("answer only to their owner", async () => {
+    const { sessionId } = await createSubSession("owner", { name: "Reconnect fix", brief });
+
+    await expect(messageSubSession("other-agent", sessionId, "Stop")).rejects.toThrow(
+      "is not one of your sub sessions",
+    );
+    await expect(closeSubSession("other-agent", sessionId)).rejects.toThrow(
+      "is not one of your sub sessions",
+    );
+    expect(await listSubSessions("other-agent")).toEqual({ subSessions: [], limit: 5 });
+    expect(deliverMock).not.toHaveBeenCalled();
+    expect(deleteWorkerMock).not.toHaveBeenCalled();
+
+    expect(await messageSubSession("owner", sessionId, "Also check macOS", "call-1")).toEqual({
+      disposition: "started",
+    });
+    expect(deliverMock).toHaveBeenCalledWith(sessionId, {
+      content: "Also check macOS",
+      clientId: "call-1",
+    });
+    expect(await closeSubSession("owner", sessionId)).toEqual({ closed: true });
+    expect(deleteWorkerMock).toHaveBeenCalledWith(sessionId, "session");
+    expect((await listSubSessions("owner")).subSessions).toEqual([]);
+  });
+
+  test("list each one's state, oldest first, with a preview of an idle one's last report", async () => {
+    const first = await createSubSession("owner", { name: "Reconnect fix", brief });
+    const second = await createSubSession("owner", { name: "Review threads", brief });
+    const third = await createSubSession("owner", { name: "Lens check", brief });
+    running.add(first.sessionId);
+    completions.set(second.sessionId, { status: "completed", response: "x".repeat(1_200) });
+    completions.set(third.sessionId, { status: "failed", error: "The node went away." });
+
+    const { subSessions } = await listSubSessions("owner");
+
+    expect(subSessions.map(({ name, state }) => [name, state])).toEqual([
+      ["Reconnect fix", "working"],
+      ["Review threads", "idle"],
+      ["Lens check", "idle"],
+    ]);
+    expect(subSessions[0]).toMatchObject({ queuedMessages: 1 });
+    expect(subSessions[0]).not.toHaveProperty("lastReport");
+    expect(subSessions[1]!.lastReport).toBe(`${"x".repeat(1_000)}… (truncated)`);
+    expect(subSessions[2]).toMatchObject({ lastError: "The node went away." });
+  });
+});

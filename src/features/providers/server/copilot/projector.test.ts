@@ -329,12 +329,12 @@ describe("projector", () => {
     test.each([
       { sessionId: "agent-teams-created-1" },
       { sessionId: "agent-teams-created-1", opened: true },
-    ])("spawn_worker stays visible without opening a pane for result %j", (result) => {
+    ])("create_sub_session stays visible without opening a pane for result %j", (result) => {
       expectVisibleToolLifecycle(createStreamingContext(), {
-        toolName: "spawn_worker",
-        toolCallId: "tool-spawn-worker",
-        argumentsRecord: { task: "Review the auth flow" },
-        progressMessage: "Creating worker",
+        toolName: "create_sub_session",
+        toolCallId: "tool-create-sub-session",
+        argumentsRecord: { name: "Review the auth flow" },
+        progressMessage: "Creating sub session",
         resultContent: JSON.stringify(result),
       });
     });
@@ -746,17 +746,20 @@ describe("projector", () => {
       });
     });
 
-    test("delete_session removes linked sessions immediately and is omitted", () => {
-      const context = createStreamingContext();
+    test.each(["delete_session", "close_sub_session"])(
+      "%s removes linked sessions immediately and is omitted",
+      (toolName) => {
+        const context = createStreamingContext();
 
-      expectOmittedToolLifecycle(context, {
-        toolName: "delete_session",
-        toolCallId: "tool-delete-session",
-        argumentsRecord: { sessionId: "agent-teams-created-1" },
-        startEvents: [{ type: "linked_session_removed", sessionId: "agent-teams-created-1" }],
-        completionResultContent: '{"deleted":true}',
-      });
-    });
+        expectOmittedToolLifecycle(context, {
+          toolName,
+          toolCallId: `tool-${toolName}`,
+          argumentsRecord: { sessionId: "agent-teams-created-1" },
+          startEvents: [{ type: "linked_session_removed", sessionId: "agent-teams-created-1" }],
+          completionResultContent: '{"deleted":true}',
+        });
+      },
+    );
 
     test("create stays hidden without publishing artifact membership", () => {
       const context = createStreamingContext();
