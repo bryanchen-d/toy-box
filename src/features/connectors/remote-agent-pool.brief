@@ -540,6 +540,14 @@
           ]
         },
         {
+          "id": "r-outcome-review",
+          "subject": "Outcome review",
+          "change": "new",
+          "values": {
+            "behavior": "Each report, local or remote, lists the external writes its sub session made since the previous report, as Security classifies them: pushes, pull request and issue changes, GitHub API writes, web posts, and publishes. The owner checks the report, its artifacts, and each of those writes against the brief's scope and what it knows, looking at the resulting pull requests, issues, comments, and pages itself rather than trusting the report, and undoes or raises anything out of scope."
+          }
+        },
+        {
           "id": "r-sub-wakes",
           "subject": "Wakes",
           "change": "new",
@@ -723,6 +731,18 @@
           "values": {
             "behavior": "Later: a remote session's screenshots return as thread attachments, and its videos as links."
           }
+        },
+        {
+          "id": "r-node-sandbox",
+          "subject": "Sandbox and node auditor",
+          "change": "new",
+          "values": {
+            "behavior": "Later: a remote session runs sandboxed on its node without its own path to outside content, and an auditor on the same node screens what it reads, so large content is judged where it lives instead of crossing the tunnel."
+          },
+          "basedOn": [
+            "f-agent-sandbox",
+            "f-ahp-holds"
+          ]
         }
       ]
     },
@@ -1208,27 +1228,30 @@
           "question": "How does Security cover what a remote sub session reads and changes outside its node?",
           "options": [
             {
-              "id": "o-gateway",
-              "label": "A sandboxed node whose only door is Agent Teams",
-              "rationale": "The owner's brief and attached files carry the context in. During the work the remote agent reads GitHub and the web only through Agent Teams client tools, which run with the owner's token and screen each result as a local session does, so the remote model sees marked, judged content. The guard reviews every external write the host holds by the same rules as local sessions, and Agent Teams also judges untrusted content that reaches the transcript another way. Security's judge has no tools or memory, so an injection can at worst mislead its verdict.",
+              "id": "o-open-review",
+              "label": "For now, the node's own access, with every outcome reviewed",
+              "rationale": "Remote sessions work with the node's access, the guard still reviews every external write the host holds, and each report lists the sub session's external writes for its owner to check against scope and context. Nothing large crosses the tunnel to be judged, and the sandbox with a node auditor can come later.",
+              "tradeoff": "GitHub text the remote agent reads reaches its model unscreened until the node sandbox exists.",
               "adds": []
             },
             {
-              "id": "o-detect-only",
-              "label": "Judge the remote transcript and review held writes",
-              "tradeoff": "The remote model reads GitHub text unscreened, and only after the fact is it judged.",
+              "id": "o-gateway",
+              "label": "A sandboxed node whose only door is Agent Teams",
+              "rationale": "The remote agent reads GitHub and the web only through Agent Teams client tools, which screen each result as a local session does.",
+              "tradeoff": "Large content crosses the tunnel to be judged, and the node's own GitHub read path has to be removed first.",
               "adds": []
             },
             {
               "id": "o-node-auditor",
-              "label": "An audit agent session on the node",
-              "tradeoff": "It reads attacker-written content while the host can't take its tools away, and its GitHub reads run unasked, so a hijacked auditor could leak data or pass content.",
+              "label": "A sandboxed session judged by an auditor on its own node",
+              "rationale": "Content is judged where it lives, with no large payloads crossing the tunnel.",
+              "tradeoff": "Needs a session sandbox the host can't run yet; until then an auditor would read attacker content with tools it can't be denied.",
               "adds": []
             }
           ],
           "choice": {
-            "optionId": "o-gateway",
-            "status": "provisional"
+            "optionId": "o-open-review",
+            "status": "decided"
           },
           "dependsOn": [],
           "affects": [],
@@ -1385,9 +1408,9 @@
           "id": "q-node-read-path",
           "question": "Can a pool session lose the node's own GitHub read path, through the `gh` CLI and the GitHub MCP server, while `git push` keeps working and the owner's own sessions on the same machine keep theirs?",
           "answerMethod": "run-experiment",
-          "impact": "Without it, the sandbox in d-remote-security is advisory: GitHub text the remote agent reads itself reaches its model unscreened, and only the transcript backstop judges it.",
+          "impact": "Without it, the later node sandbox (r-node-sandbox) is advisory: GitHub text a remote agent reads itself reaches its model unscreened.",
           "affects": [
-            "d-remote-security"
+            "r-node-sandbox"
           ]
         }
       ]
@@ -1519,6 +1542,16 @@
                 "d-finish"
               ],
               "values": {}
+            },
+            {
+              "id": "s-outcome-review",
+              "title": "Hand each owner its sub session's external writes",
+              "doneWhen": "A sub session that pushes a branch and comments on an issue reports both writes to its owner, who checks them against the brief; a report with no external writes lists none; and the same holds for a remote sub session.",
+              "implements": [
+                "r-outcome-review",
+                "d-remote-security"
+              ],
+              "values": {}
             }
           ]
         },
@@ -1602,6 +1635,15 @@
               "doneWhen": "A remote session's screenshot arrives as a thread attachment and its video as a link.",
               "implements": [
                 "r-files-out"
+              ],
+              "values": {}
+            },
+            {
+              "id": "s-node-sandbox",
+              "title": "Sandbox remote sessions behind a node auditor",
+              "doneWhen": "A remote session on brchen-db3 reads GitHub and the web only through its node's auditor, which screens each result on the node, while the owner's own sessions there keep their access.",
+              "implements": [
+                "r-node-sandbox"
               ],
               "values": {}
             }
