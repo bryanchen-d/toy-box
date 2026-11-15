@@ -75,6 +75,30 @@
           ]
         },
         {
+          "id": "f-ahp-replay",
+          "statement": "A fresh connection's chat snapshot holds a session's completed turns with every response part, including tool inputs, results, and shell output previews, so a turn projected live from chat actions and the same turn replayed from history build the same Agent Teams transcript.",
+          "whyItMatters": "A remote provider can serve history from the node without keeping its own copy.",
+          "sources": [
+            "Provider probe against Insiders agent host 944d79c on brchen-db3, 2026-11-15"
+          ]
+        },
+        {
+          "id": "f-ahp-client-tools",
+          "statement": "The host asks the owning client to confirm each call to a tool that client contributed, then waits for its result, so Agent Teams' guard reviews and screens its own tools on a node as it does locally.",
+          "sources": [
+            "Provider probe against Insiders agent host 944d79c on brchen-db3, 2026-11-15"
+          ]
+        },
+        {
+          "id": "f-ahp-approvals",
+          "statement": "In autopilot with the host's `default` approval mode, Copilot runs reads such as `Get-Date` without asking and holds writes such as `New-Item` for a client's confirmation. A client's denial cancels the call, but the model reads only the host's fixed \"The user rejected this tool call\" text, whatever reason or suggestion the client sends. No approval mode holds every call, and a client can't rewrite a native tool's result.",
+          "whyItMatters": "Security can refuse only the native calls the host holds, and can't mark untrusted content that a node's agent reads.",
+          "sources": [
+            "Provider probe against Insiders agent host 944d79c on brchen-db3, 2026-11-15",
+            "resolveSessionConfig on brchen-db3: availableApprovalModes default, assisted, autoApprove"
+          ]
+        },
+        {
           "id": "f-host-seams",
           "statement": "AHP lets a client add tools to a session as one of several active clients, steer a running turn, read and write node files, and see MCP sign-in as a session input request.",
           "sources": [
@@ -1150,6 +1174,40 @@
           },
           "dependsOn": [],
           "affects": []
+        },
+        {
+          "id": "d-remote-security",
+          "question": "How does Security cover a remote sub session's native tools?",
+          "options": [
+            {
+              "id": "o-boundary",
+              "label": "Refuse what the host holds, and screen what comes back",
+              "rationale": "The guard reviews every write the host holds and every Agent Teams tool call. Agent Teams screens each remote report, and each web result the node's agent read, as untrusted before its owner sees it, so a detected attack holds that sub session's risky actions.",
+              "adds": []
+            },
+            {
+              "id": "o-hold-everything",
+              "label": "Hold every native call for Agent Teams' review",
+              "tradeoff": "The host has no mode that holds reads, so this needs an upstream change, and every call would wait on the tunnel.",
+              "adds": []
+            },
+            {
+              "id": "o-local-untrusted",
+              "label": "Keep work that reads untrusted content local",
+              "tradeoff": "Remote sub sessions lose browsing, which UI validation needs.",
+              "adds": []
+            }
+          ],
+          "choice": {
+            "optionId": "o-boundary",
+            "status": "provisional"
+          },
+          "dependsOn": [],
+          "affects": [],
+          "basedOn": [
+            "f-ahp-approvals",
+            "f-ahp-client-tools"
+          ]
         }
       ]
     },
@@ -1262,7 +1320,8 @@
             "r-remote-provider",
             "r-remote-tools",
             "d-sub-shape"
-          ]
+          ],
+          "answer": "Yes for transcripts and Agent Teams tools, and partly for Security. On brchen-db3 a probe projected a live autopilot turn's chat actions into session events, and a fresh connection's history replayed into the identical transcript, shell output included. An Agent Teams tool offered as a client tool ran through the guard's review and screen and returned its result to the model. The guard refused a write the host held for confirmation, but the host ran reads without asking and can't let a client rewrite native results (f-ahp-approvals), which d-remote-security settles."
         }
       ]
     },
@@ -1403,6 +1462,7 @@
               "id": "s-ahp-probe",
               "title": "Prove an AHP provider against brchen-db3",
               "doneWhen": "A probe projects a real brchen-db3 turn into session events, replays it from the node's history, and calls an Agent Teams tool offered as an AHP client tool through Security's checks, answering q-ahp-provider.",
+              "status": "complete",
               "implements": [
                 "d-sub-shape"
               ],
