@@ -14,7 +14,8 @@ import { githubToken, openNodeTransport } from "./pool/transport";
 const DIRECTORY_SYNC_DELAY_MS = 2_000;
 
 /** What the registry needs of a live link, whatever kind of connector it serves. */
-type Link = Pick<ConnectorLink, "status" | "start" | "stop" | "deliver" | "syncDirectory">;
+type Link = Pick<ConnectorLink, "status" | "start" | "stop" | "deliver" | "syncDirectory"> &
+  Partial<Pick<PoolLink, "nodeStates">>;
 
 const links = sharedMap<Link>("connector-links");
 const published = sharedMap<string>("connector-published");
@@ -94,6 +95,10 @@ function startLink(database: ConnectorDatabase, record: ConnectorRecord): void {
     record.kind === "agentPool"
       ? new PoolLink(record, {
           openTransport: openNodeTransport,
+          hosts: {
+            read: (node) => database.nodeHost(record.id, node),
+            remember: (node, host) => database.setNodeHost(record.id, node, host),
+          },
           githubToken,
           serveNode: registerNodeProvider,
           onChange,
@@ -167,9 +172,11 @@ async function entryFor(
   database: ConnectorDatabase,
   { clientId: _clientId, receivedThrough: _receivedThrough, ...connector }: ConnectorRecord,
 ): Promise<ConnectorEntry> {
+  const link = links.get(connector.id);
   return {
     ...connector,
-    status: links.get(connector.id)?.status ?? { state: "connecting", since: connector.updatedAt },
+    status: link?.status ?? { state: "connecting", since: connector.updatedAt },
+    ...(link?.nodeStates ? { nodeStates: link.nodeStates } : {}),
     pending: await database.countPending(connector.id),
   };
 }

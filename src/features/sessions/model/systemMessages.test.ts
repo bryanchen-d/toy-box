@@ -85,5 +85,20 @@ describe("Session system messages", () => {
     expect(reviewed).toContain(`external writes`);
     expect(reviewed).toContain(`\n- ${writes[0]}\n`);
     expect(reviewed).toContain("Check each against your brief's scope");
+
+    const interrupted = {
+      ...report,
+      outcome: "interrupted",
+      report: "Agent Teams restarted while it was working.",
+      brief: "## Goal\nFix the reconnect test.",
+    } as const;
+    expect(decodeSystemMessage(encodeSystemMessage(interrupted))).toEqual(interrupted);
+    expect(systemMessageLabel(interrupted)).toBe("Reconnect fix was interrupted");
+    expect(systemMessagePrompt(interrupted)).toContain(
+      "<interruption>\nAgent Teams restarted while it was working.\n</interruption>",
+    );
+    expect(systemMessagePrompt(interrupted)).toContain(
+      "<brief>\n## Goal\nFix the reconnect test.\n</brief>",
+    );
   });
 });

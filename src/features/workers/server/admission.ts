@@ -20,6 +20,7 @@ import type { SessionLaunch } from "@sessions/model";
 type SessionWorkerInput = SessionLaunch & {
   parentSessionId: string;
   name?: Worker["name"];
+  metadata?: unknown;
   ephemeral?: boolean;
 };
 
@@ -91,6 +92,7 @@ export async function spawnSessionWorker(
     owner: { type: "session", parentSessionId: input.parentSessionId },
     retention: input.ephemeral ? "ephemeral" : "durable",
     ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
     message: input.message,
     location: input.location,
   });

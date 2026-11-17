@@ -1,13 +1,18 @@
 import { afterAll, beforeEach, describe, expect, mock, onTestFinished, test } from "bun:test";
 import type { SessionCompletion } from "@sessions/model";
+import type { ConnectorEntry } from "@connectors/model";
 import * as databaseModule from "@/server/database";
 import * as sessionRuntimeModule from "@sessions/server/runtime";
+import * as sessionRecordsModule from "@sessions/server/state/sessions";
+import * as connectorsModule from "@connectors/server";
 import * as admissionModule from "./admission";
 import * as cleanupModule from "./cleanup";
 import type { Worker } from "../model";
 
 const realDatabaseModule = { ...databaseModule };
 const realSessionRuntimeModule = { ...sessionRuntimeModule };
+const realSessionRecordsModule = { ...sessionRecordsModule };
+const realConnectorsModule = { ...connectorsModule };
 const realAdmissionModule = { ...admissionModule };
 const realCleanupModule = { ...cleanupModule };
 
@@ -15,6 +20,9 @@ let currentDb: Bun.SQL | undefined;
 let nextSessionId = 0;
 const running = new Set<string>();
 const completions = new Map<string, SessionCompletion>();
+/** The provider each session runs on, by session ID. */
+const providers = new Map<string, string>();
+let pools: ConnectorEntry[] = [];
 
 type SpawnInput = Parameters<typeof admissionModule.spawnSessionWorker>[0];
 const spawnMock = mock(async (input: SpawnInput) => {
@@ -28,7 +36,9 @@ const spawnMock = mock(async (input: SpawnInput) => {
     createdAt: new Date(nextSessionId * 1000).toISOString(),
     ephemeral: false,
     ...(input.name ? { name: input.name } : {}),
+    ...(input.metadata === undefined ? {} : { metadata: input.metadata as Worker["metadata"] }),
   });
+  if (input.message.model) providers.set(sessionId, input.message.model.provider);
   return { sessionId };
 });
 const deliverMock = mock(async (_sessionId: string, _message: unknown) => ({
@@ -65,15 +75,27 @@ mock.module("@workers/server/cleanup", () => ({
   ...realCleanupModule,
   deleteWorker: deleteWorkerMock,
 }));
+mock.module("@sessions/server/state/sessions", () => ({
+  ...realSessionRecordsModule,
+  readSession: async (id: string) =>
+    providers.has(id) ? { id, provider: { id: providers.get(id) } } : undefined,
+}));
+mock.module("@connectors/server", () => ({
+  ...realConnectorsModule,
+  listConnectors: async () => pools,
+}));
 
-const { registerWorkerSession, unregisterWorkerSession } = await import("./database");
+const { registerWorkerSession, unregisterWorkerSession, getPersistedWorker } =
+  await import("./database");
 const { createSessionGuard } = await import("@security/server/guard");
 const {
   closeSubSession,
   createSubSession,
   listSubSessions,
   messageSubSession,
+  noteWorking,
   remindOwnersOfIdleSubSessions,
+  reportInterruptedSubSessions,
   reportToOwner,
   scheduleWake,
   wakeDueSubSessions,
@@ -82,6 +104,8 @@ const {
 afterAll(() => {
   mock.module("@/server/database", () => realDatabaseModule);
   mock.module("@sessions/server/runtime", () => realSessionRuntimeModule);
+  mock.module("@sessions/server/state/sessions", () => realSessionRecordsModule);
+  mock.module("@connectors/server", () => realConnectorsModule);
   mock.module("@workers/server/admission", () => realAdmissionModule);
   mock.module("@workers/server/cleanup", () => realCleanupModule);
 });
@@ -95,6 +119,8 @@ beforeEach(async () => {
   nextSessionId = 0;
   running.clear();
   completions.clear();
+  providers.clear();
+  pools = [];
   spawnMock.mockClear();
   deliverMock.mockClear();
   deleteWorkerMock.mockClear();
@@ -182,6 +208,8 @@ describe("sub sessions", () => {
         client: undefined,
         clientId: "client-1",
         agents: [],
+        whenConnected: async () => undefined,
+        onConnected: () => () => {},
       }),
     );
     const model = { provider: "copilot", name: "gpt-5.5" };
@@ -319,6 +347,8 @@ describe("sub sessions", () => {
       "Only a sub session can schedule a wake.",
     );
     await messageSubSession("owner", redirected.sessionId, "Stop waiting; the review is in.");
+    // The owner's message cancels the wake but keeps the brief.
+    expect((await getPersistedWorker(redirected.sessionId))?.metadata).toEqual({ brief });
     deliverMock.mockClear();
 
     await wakeDueSubSessions(new Date("2026-11-14T10:19:00.000Z"));
@@ -391,6 +421,135 @@ describe("sub sessions", () => {
           },
         },
       ],
+    ]);
+  });
+});
+
+describe("sub sessions on nodes and cut-short runs", () => {
+  const renderedBrief =
+    "## Goal\nFix the flaky reconnect test.\n\n## Context\nIt fails one run in ten.\n\n## Deliverable\nA draft pull request link.\n\n## Acceptance criteria\n- The test passes 50 runs in a row";
+
+  /** A pool listing brchen-db3 in the given state and brchen-db4 draining. */
+  async function useNode(state: "connected" | "unreachable" = "connected") {
+    const { registerNodeProvider } = await import("@providers/server");
+    onTestFinished(
+      registerNodeProvider({
+        node: { name: "brchen-db3", scratchFolder: "C:/scratch" },
+        client: undefined,
+        clientId: "client-1",
+        agents: [],
+        whenConnected: async () => undefined,
+        onConnected: () => () => {},
+      }),
+    );
+    const node = (name: string, draining: boolean) => ({
+      name,
+      workspaces: [],
+      scratchFolder: "C:/scratch",
+      computeSlots: 9_999,
+      draining,
+    });
+    pools = [
+      {
+        id: "pool-1",
+        name: "Remote pool",
+        kind: "agentPool",
+        nodes: [node("brchen-db3", false), node("brchen-db4", true)],
+        status: { state: "connected", since: "2026-11-17T00:00:00.000Z" },
+        nodeStates: { "brchen-db3": state, "brchen-db4": "connected" },
+        pending: 0,
+        createdAt: "2026-11-17T00:00:00.000Z",
+        updatedAt: "2026-11-17T00:00:00.000Z",
+      },
+    ];
+  }
+
+  const reports = () =>
+    deliverMock.mock.calls.map(([owner, message]): [string, Record<string, unknown>] => [
+      owner,
+      (message as { systemMessage: Record<string, unknown> }).systemMessage,
+    ]);
+
+  test("list the nodes they can run on, and the node each one runs on", async () => {
+    await useNode();
+    await createSubSession("owner", { name: "UI check", brief, node: "brchen-db3" });
+    await createSubSession("owner", { name: "Local fix", brief });
+
+    const { subSessions, nodes } = await listSubSessions("owner");
+
+    expect(nodes).toEqual([
+      { name: "brchen-db3", state: "connected" },
+      { name: "brchen-db4", state: "connected", draining: true },
+    ]);
+    expect(subSessions.map(({ name, node }) => [name, node])).toEqual([
+      ["UI check", "brchen-db3"],
+      ["Local fix", undefined],
+    ]);
+  });
+
+  test("a restart tells each owner which runs it interrupted, with their briefs", async () => {
+    await useNode();
+    const local = await createSubSession("owner", { name: "Local fix", brief });
+    const remote = await createSubSession("owner", { name: "UI check", brief, node: "brchen-db3" });
+    const live = await createSubSession("owner", { name: "Still running", brief });
+    await createSubSession("owner", { name: "Idle", brief });
+    for (const { sessionId } of [local, remote, live]) await noteWorking(sessionId, true);
+    running.add(live.sessionId);
+    deliverMock.mockClear();
+
+    await reportInterruptedSubSessions();
+    await reportInterruptedSubSessions();
+
+    const interrupted = {
+      type: "sub_session_report",
+      outcome: "interrupted",
+      brief: renderedBrief,
+    };
+    expect(
+      reports().sort(([, left], [, right]) =>
+        String(left.sessionId).localeCompare(String(right.sessionId)),
+      ),
+    ).toEqual([
+      [
+        "owner",
+        {
+          ...interrupted,
+          sessionId: local.sessionId,
+          name: "Local fix",
+          report: "Agent Teams restarted while it was working, which stopped its run.",
+        },
+      ],
+      [
+        "owner",
+        {
+          ...interrupted,
+          sessionId: remote.sessionId,
+          name: "UI check",
+          report:
+            "Agent Teams restarted while it was working on brchen-db3, where its run may have gone on.",
+        },
+      ],
+    ]);
+    expect((await getPersistedWorker(live.sessionId))?.metadata).toMatchObject({ working: true });
+  });
+
+  test("a run that failed while its node was out of reach comes back interrupted", async () => {
+    await useNode("unreachable");
+    const { sessionId } = await createSubSession("owner", {
+      name: "UI check",
+      brief,
+      node: "brchen-db3",
+    });
+
+    await reportToOwner(sessionId, { status: "failed", error: "brchen-db3 is out of reach." });
+    pools = pools.map((pool) => ({ ...pool, nodeStates: { "brchen-db3": "connected" } }));
+    await reportToOwner(sessionId, { status: "failed", error: "The model refused." });
+
+    expect(
+      reports().map(([, message]) => [message.outcome, message.report, message.brief]),
+    ).toEqual([
+      ["interrupted", "brchen-db3 is out of reach.", renderedBrief],
+      ["failed", "The model refused.", undefined],
     ]);
   });
 });

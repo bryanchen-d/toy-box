@@ -1,5 +1,5 @@
 import type { Session } from "@sessions/model";
-import type { ModelInfo, ProviderCatalog } from "@providers/model";
+import { providerNode, type ModelInfo, type ProviderCatalog } from "@providers/model";
 import { getSettings } from "@workspace/server/state/settings";
 import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
@@ -8,7 +8,7 @@ import * as cli from "./cli";
 import { copilotProvider } from "./copilot/provider";
 import { codexProvider } from "./codex/provider";
 import { claudeProvider } from "./claude/provider";
-import { createNodeProvider, nodeProviderId, type AgentHost } from "./agentHost/provider";
+import { createNodeProvider, type AgentHost } from "./agentHost/provider";
 
 export const sessionProviders: readonly SessionProvider[] = [
   copilotProvider,
@@ -27,10 +27,9 @@ export function getSessionProvider(id: string): SessionProvider {
     sessionProviders.find((candidate) => candidate.id === id) ?? nodeProviders.get(id);
   if (provider) return provider;
   // A node's sessions outlive its pool listing; they can still be closed without it.
-  if (id.startsWith(nodeProviderId(""))) {
-    throw new SessionConnectionUnavailableError(
-      `No agent pool lists the node ${id.slice(nodeProviderId("").length)}.`,
-    );
+  const node = providerNode(id);
+  if (node !== undefined) {
+    throw new SessionConnectionUnavailableError(`No agent pool lists the node ${node}.`);
   }
   throw new Error(`Unknown session provider: ${id}.`);
 }
@@ -41,6 +40,7 @@ export function registerNodeProvider(host: AgentHost): () => void {
   nodeProviders.set(provider.id, provider);
   return () => {
     if (nodeProviders.get(provider.id) === provider) nodeProviders.delete(provider.id);
+    void provider.stop();
   };
 }
 

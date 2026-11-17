@@ -107,6 +107,14 @@
           ]
         },
         {
+          "id": "f-ahp-host-binding",
+          "statement": "On brchen-db3, a remote session opens only on the agent host process that created it: another host that was already running lists it but refuses it with `-32001` (\"No agent for session\"), even after the first host exits, while a host started after that one exited reopens it with its history and context. A standalone host that holds sessions never exits on its own, even with no client connected.",
+          "whyItMatters": "A node must keep using one host across Agent Teams restarts, replace a lost host with a newly started one rather than another running one, and expect hosts to accumulate unless something retires them.",
+          "sources": [
+            "Host restart probe against Insiders agent host 944d79c on brchen-db3, 2026-11-17"
+          ]
+        },
+        {
           "id": "f-ahp-turns",
           "statement": "On brchen-db3's host, a steering message ends the running turn, and the host starts the next turn from it with `queuedMessageId` naming it. Autopilot appends a `**Task completed:**` summary part after the model's own answer, which interactive mode doesn't. The host echoes a client tool's completion and then reports it again. Subscribing to a session that doesn't exist fails with `-32001` (\"No agent for session\"), and a message's `_meta` survives into history.",
           "whyItMatters": "A steered turn and its successor are one Agent Teams turn; remote sessions run in interactive mode so a sub session's final answer, including `NO_UPDATE`, is its own; and subscribing first detects a retried create.",
@@ -653,6 +661,17 @@
           "basedOn": [
             "f-host-auth",
             "f-vscode-tunnel-ahp"
+          ]
+        },
+        {
+          "id": "r-remote-recovery",
+          "subject": "Lost runs",
+          "change": "new",
+          "values": {
+            "behavior": "A remote run outlives its connection: each node keeps one agent host across restarts and replaces a lost one with a new host, which reopens its sessions; a dropped connection waits for the node and catches the transcript up. A run that can't finish — its node out of reach past the link's threshold, or Agent Teams restarted under it, locally or remotely — reports `interrupted` to its owner with its brief, and the owner messages it to carry on or closes it and continues from its brief and last pushed branch, itself or in another sub session. Closing a remote sub session while its node is away stops and archives it there once the node is back. Remote briefs ask for each milestone pushed to the sub session's branch."
+          },
+          "basedOn": [
+            "f-ahp-host-binding"
           ]
         },
         {
@@ -1588,6 +1607,7 @@
                 "r-remote-nodes",
                 "r-idempotent",
                 "r-remote-subscription",
+                "r-remote-recovery",
                 "r-files-in",
                 "d-runtime",
                 "d-path",

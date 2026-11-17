@@ -55,6 +55,20 @@ export type ProviderSubscription = {
   limits: { name: string; usedPercent: number; resetsAt?: number }[];
 };
 
+const NODE_PROVIDER_PREFIX = "node:";
+
+/** The provider that runs sessions on a pool node, named for the node's machine. */
+export function nodeProviderId(node: string): string {
+  return `${NODE_PROVIDER_PREFIX}${node}`;
+}
+
+/** The pool node a provider runs sessions on, if it is a node's provider. */
+export function providerNode(providerId: string | undefined): string | undefined {
+  return providerId?.startsWith(NODE_PROVIDER_PREFIX)
+    ? providerId.slice(NODE_PROVIDER_PREFIX.length)
+    : undefined;
+}
+
 type ModelCatalogInfo = ModelOptionInfo & { id: string; provider: string };
 /** Native model names are unique only within their provider. */
 export function modelCatalogKey(model: { id: string; provider: string }): string {

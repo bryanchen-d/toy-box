@@ -1,12 +1,16 @@
 // A pool connector's live link: one connection per node, and the pool's status derived from them.
 
-import type { AhpTransport } from "@microsoft/agent-host-protocol/client";
-import type { ConnectorStatus, PoolNode } from "../../model";
+import type { ConnectorStatus } from "../../model";
 import type { AgentPoolConnectorRecord } from "../database";
 import { NodeLink, type NodeLinkDependencies } from "./node";
 
 export type PoolLinkDependencies = {
-  openTransport: (node: PoolNode) => Promise<AhpTransport>;
+  openTransport: NodeLinkDependencies["openTransport"];
+  /** The agent host each node's sessions live on, kept across restarts. */
+  hosts: {
+    read: (node: string) => Promise<string | undefined>;
+    remember: (node: string, host: string) => Promise<void>;
+  };
   githubToken: () => Promise<string>;
   /** Runs sessions on a node while the pool lists it; the returned function stops that. */
   serveNode: (node: NodeLink) => () => void;
@@ -28,6 +32,10 @@ export class PoolLink {
         new NodeLink(node, {
           clientId: connector.clientId,
           openTransport: dependencies.openTransport,
+          hosts: {
+            read: () => dependencies.hosts.read(node.name),
+            remember: (host) => dependencies.hosts.remember(node.name, host),
+          },
           githubToken: dependencies.githubToken,
           onChange: () => dependencies.onChange(connector.id),
           now: dependencies.now,
@@ -38,6 +46,11 @@ export class PoolLink {
 
   get status(): ConnectorStatus {
     return poolStatus(this.#nodes.map(({ node, status }) => ({ name: node.name, status })));
+  }
+
+  /** Each node's connection state, by node name. */
+  get nodeStates(): Record<string, ConnectorStatus["state"]> {
+    return Object.fromEntries(this.#nodes.map(({ node, status }) => [node.name, status.state]));
   }
 
   start(): void {

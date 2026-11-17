@@ -66,7 +66,12 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   exceed the limit.
 - Naming a `node` runs it on that pool node as the node's provider
   ([Providers](../providers/AGENTS.md#node-providers)), in a fresh folder there, so it takes no
-  directory or worktree. A model it names applies only if the node offers it.
+  directory or worktree. A model it names applies only if the node offers it. Its brief asks it to
+  push its work to its own branch at each milestone and name the branch in every report, which is
+  how anyone takes the task over if the session is lost. `list_sub_sessions` shows each sub
+  session's node and, with an agent pool, every node and its state; the instructions tell owners to
+  prefer a connected node for work that doesn't need this machine.
+- The brief is kept in the sub session's Worker metadata, so an interrupted report can return it.
 - A sub session never owns sub sessions: session-owned Workers receive only `wake_after` from the
   set, and creation refuses a caller that is one.
 - Closing cancels its work and deletes it, which also closes any pane linked to it.
@@ -74,6 +79,12 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   `sub_session_report` system message holding its final answer or error (`server/startup.ts`
   subscribes to Sessions' completions). An answer of exactly `NO_UPDATE`, or none, wakes no one,
   and an aborted run reports nothing. The owner checks the report against its brief.
+- A run that stopped before it could finish reports `interrupted`, with its brief: one that failed
+  while its node was out of reach, and, at startup, one under way when the server stopped. Workers
+  notes each sub session's runs in its metadata (`working`) from the workspace's running and idle
+  transitions, so a restart can tell which were under way. The owner messages it to carry on, or
+  closes it and continues the task from its brief and last pushed branch, here or on another node.
+  Metadata edits to one sub session run in turn, since each rewrites it whole.
 - A report also lists the external writes the sub session ran since its previous report, which
   Security records as each one runs (`takeExternalWrites`), and a `NO_UPDATE` turn that made any
   still reports them. The owner checks each write against the brief's scope and what it knows.

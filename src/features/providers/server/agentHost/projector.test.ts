@@ -110,7 +110,7 @@ function emptyChat(): ChatState {
 }
 
 function playLive(actions: readonly object[]) {
-  const project = createChatProjector();
+  const { project } = createChatProjector();
   let chat = emptyChat();
   const events: SessionEvent[] = [];
   for (const action of actions) {

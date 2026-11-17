@@ -111,8 +111,27 @@ export type ConnectorStatus =
   | { state: "connected"; since: string }
   | { state: "connecting" | "unreachable"; since: string; error?: string };
 
-/** A connector with its live status and the count of messages waiting to be delivered to it. */
-export type ConnectorEntry = Connector & { status: ConnectorStatus; pending: number };
+/**
+ * A connector with its live status and the count of messages waiting to be delivered to it. A
+ * pool also has each node's connection state, by node name.
+ */
+export type ConnectorEntry = Connector & {
+  status: ConnectorStatus;
+  nodeStates?: Record<string, ConnectorStatus["state"]>;
+  pending: number;
+};
+
+/** A pool's nodes with each one's connection state, as agents choosing where to run see them. */
+export function poolNodes(
+  connector: ConnectorEntry,
+): { name: string; state: ConnectorStatus["state"]; draining?: true }[] {
+  if (connector.kind !== "agentPool") return [];
+  return connector.nodes.map(({ name, draining }) => ({
+    name,
+    state: connector.nodeStates?.[name] ?? "connecting",
+    ...(draining ? { draining: true as const } : {}),
+  }));
+}
 
 export const connectorIdInputSchema = z.object({ connectorId: connectorIdSchema }).strict();
 

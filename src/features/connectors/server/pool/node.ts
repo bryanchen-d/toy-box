@@ -1,6 +1,7 @@
-// One node's live connection to its agent host. It connects, signs the host's agents in with the
-// owner's GitHub token, proves the connection alive with pings, and reconnects when it drops. The
-// pool runs remote sessions through its client while it is connected.
+// One node's live connection to its agent host. It returns to the host the node's sessions live
+// on, signs the host's agents in with the owner's GitHub token, proves the connection alive with
+// pings, and reconnects when it drops. The pool runs remote sessions through its client while it is
+// connected.
 
 import { SUPPORTED_PROTOCOL_VERSIONS, type RootState } from "@microsoft/agent-host-protocol";
 import { AhpClient, type AhpTransport } from "@microsoft/agent-host-protocol/client";
@@ -11,7 +12,13 @@ export const ROOT_CHANNEL = "ahp-root://";
 export type NodeLinkDependencies = {
   /** Identifies this installation to the host, which keeps a client's tools across reconnects. */
   clientId: string;
-  openTransport: (node: PoolNode) => Promise<AhpTransport>;
+  /** Opens a transport to the node's agent host, returning to `host` while it is live. */
+  openTransport: (
+    node: PoolNode,
+    host: string | undefined,
+  ) => Promise<{ transport: AhpTransport; host: string }>;
+  /** The agent host the node's sessions live on, kept across restarts. */
+  hosts: { read: () => Promise<string | undefined>; remember: (host: string) => Promise<void> };
   githubToken: () => Promise<string>;
   onChange: () => void;
   now?: () => Date;
@@ -34,6 +41,9 @@ export class NodeLink {
   #status: ConnectorStatus;
   #client: AhpClient | undefined;
   #agents: RootState["agents"] = [];
+  #host: string | undefined;
+  readonly #waiting = new Set<(client: AhpClient | undefined) => void>();
+  readonly #connectedListeners = new Set<(client: AhpClient) => void>();
   #failures = 0;
   #running: Promise<void> | undefined;
   #unreachableTimer: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +74,33 @@ export class NodeLink {
     return this.#agents;
   }
 
+  /**
+   * The connected client, once the node is connected; undefined once it is unreachable or the
+   * link stops, or when `signal` aborts first.
+   */
+  whenConnected(signal?: AbortSignal): Promise<AhpClient | undefined> {
+    if (this.#client) return Promise.resolve(this.#client);
+    if (this.#abort.signal.aborted || this.#status.state === "unreachable" || signal?.aborted) {
+      return Promise.resolve(undefined);
+    }
+    return new Promise((resolve) => {
+      const settle = (client: AhpClient | undefined) => {
+        this.#waiting.delete(settle);
+        signal?.removeEventListener("abort", abandon);
+        resolve(client);
+      };
+      const abandon = () => settle(undefined);
+      this.#waiting.add(settle);
+      signal?.addEventListener("abort", abandon, { once: true });
+    });
+  }
+
+  /** Calls `listener` with the client each time the node connects, until it unsubscribes. */
+  onConnected(listener: (client: AhpClient) => void): () => void {
+    this.#connectedListeners.add(listener);
+    return () => this.#connectedListeners.delete(listener);
+  }
+
   start(): void {
     this.#running ??= this.#run();
     this.#watchReachability();
@@ -72,6 +109,7 @@ export class NodeLink {
   async stop(): Promise<void> {
     this.#abort.abort();
     clearTimeout(this.#unreachableTimer);
+    this.#settleWaiting(undefined);
     await this.#client?.shutdown().catch(() => {});
     await this.#running;
   }
@@ -91,7 +129,15 @@ export class NodeLink {
 
   /** Holds one connection until it fails or the link stops. */
   async #connect(signal: AbortSignal): Promise<void> {
-    const client = new AhpClient(await this.#deps.openTransport(this.node), {
+    this.#host ??= await this.#deps.hosts.read();
+    const { transport, host } = await this.#deps.openTransport(this.node, this.#host);
+    if (host !== this.#host) {
+      this.#host = host;
+      await this.#deps.hosts
+        .remember(host)
+        .catch((error) => console.error(`Couldn't record ${this.node.name}'s agent host:`, error));
+    }
+    const client = new AhpClient(transport, {
       requestTimeoutMs: this.#timing.requestTimeoutMs,
     });
     client.connect();
@@ -109,6 +155,8 @@ export class NodeLink {
       this.#agents = root?.agents ?? [];
       this.#client = client;
       this.#connected();
+      this.#settleWaiting(client);
+      for (const listener of [...this.#connectedListeners]) listener(client);
       for (;;) {
         await sleep(this.#timing.pingIntervalMs, signal);
         if (signal.aborted) return;
@@ -167,7 +215,12 @@ export class NodeLink {
 
   #setStatus(status: ConnectorStatus): void {
     this.#status = status;
+    if (status.state === "unreachable") this.#settleWaiting(undefined);
     this.#deps.onChange();
+  }
+
+  #settleWaiting(client: AhpClient | undefined): void {
+    for (const settle of [...this.#waiting]) settle(client);
   }
 }
 

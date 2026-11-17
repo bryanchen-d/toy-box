@@ -107,7 +107,9 @@ lists it. Node providers stay out of the catalog: a sub session asks for one by 
   (`copilotcli`), each in its own folder under the node's scratch folder, in interactive mode, whose
   final answer is the model's own (autopilot appends a task summary after it). Creating subscribes
   to the session URI first, so a retried create reuses the session it made. History pages every
-  turn in with `fetchTurns`. Deleting archives the session on the node. A node out of reach throws
+  turn in with `fetchTurns`. Deleting cancels a running turn and archives the session on the node,
+  so an old attempt never works beside its replacement; while the node is out of reach, it does so
+  once the node connects again. Otherwise a node out of reach throws
   `SessionConnectionUnavailableError`.
 - `connection.ts` holds a session's subscription, which keeps Agent Teams the session's active
   client with its tools registered. A new session's first message carries Agent Teams' instructions
@@ -116,13 +118,18 @@ lists it. Node providers stay out of the catalog: a sub session asks for one by 
   this client, which approves them and runs them; it holds native calls the guard then reviews,
   choosing the host's matching option. Completed native calls are screened, which records external
   writes; the host can't take a replaced result. Input requests are declined, since nobody watches
-  a remote session to answer. A dropped node connection ends the turn with an error and makes the
-  next send reacquire the connection.
+  a remote session to answer.
+- A run goes on at the node when its connection drops, so the connection waits for the node link
+  to reconnect, registers its tools again, resubscribes, catches the transcript up from the chat's
+  state, and resends any answer the host still waits on. Sends in the meantime are
+  `SessionConnectionUnavailableError`. It gives up once the link marks the node unreachable, ending
+  the turn with an error that says the run may have gone on there.
 - `projector.ts` translates chat actions live, read against the chat state they produced, and a
   chat's turns from history, into the same transcript. System messages ride in the native message's
   `_meta`. The host ends a steered turn and starts the next from its steering message, so a turn
   ends only when no steering message is pending, and the next turn takes that message's client ID.
-  The host echoes a client tool's completion before reporting its own; one ends the call.
+  The host echoes a client tool's completion before reporting its own; one ends the call. After a
+  gap, `catchUp` emits the replies and tool calls the transcript is missing and the turn's end.
 
 ## Native workarounds
 

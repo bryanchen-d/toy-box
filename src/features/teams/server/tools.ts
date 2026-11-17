@@ -29,7 +29,7 @@ import { teamAgentPresence } from "@teams/model/presence";
 import { getSessionState } from "@workspace/server/state/sessions";
 import { teamUri, parseTeamUri } from "@teams/model/references";
 import type { ModelConfiguration } from "@providers/model";
-import { connectorHandle } from "@connectors/model";
+import { connectorHandle, poolNodes } from "@connectors/model";
 import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
 import { proposeTeamAdviceInputSchema } from "@teams/model/advice";
 
@@ -459,12 +459,7 @@ async function toTeamReadToolResult(
     name: connector.name,
     // A pool isn't addressed; its nodes are where create_sub_session can run a sub session.
     ...(connector.kind === "agentPool"
-      ? {
-          nodes: connector.nodes.map(({ name, draining }) => ({
-            name,
-            ...(draining ? { draining } : {}),
-          })),
-        }
+      ? { nodes: poolNodes(connector) }
       : { mention: `@${connectorHandle(connector)}` }),
     status: connector.status.state,
     ...(connector.status.state === "unreachable"

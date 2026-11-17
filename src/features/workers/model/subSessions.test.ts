@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { dueWake, isReminderDue, renderSubSessionBrief, subSessionReport } from "./subSessions";
+import {
+  dueWake,
+  interruptedReport,
+  isReminderDue,
+  renderSubSessionBrief,
+  subSessionReport,
+} from "./subSessions";
 
 describe("sub session brief", () => {
   test("names the owner, sets the reporting rules, then gives each part of the brief in order", () => {
@@ -49,6 +55,51 @@ describe("sub session brief", () => {
     );
     expect(message).not.toContain("## Boundaries");
     expect(message).not.toContain("## Reporting");
+    expect(message).not.toContain("separate machine");
+  });
+
+  test("on a node, asks for its work on its own branch, pushed at each milestone and reported", () => {
+    const message = renderSubSessionBrief(
+      {
+        goal: "Check the Settings page renders.",
+        context: "bryanchen-d/toy-box main.",
+        deliverable: "A screenshot path.",
+        acceptanceCriteria: ["The page shows every section"],
+      },
+      { name: "Riley", node: "brchen-db3" },
+    );
+
+    expect(message).toContain("You run on brchen-db3, a separate machine, in an empty folder");
+    expect(message).toContain(
+      "commit and push at each milestone, naming the branch and its last pushed commit in every report",
+    );
+  });
+});
+
+describe("interrupted report", () => {
+  test("gives the owner its reason and the brief, to redo the task elsewhere", () => {
+    expect(
+      interruptedReport(
+        "brchen-db3 is out of reach.",
+        {
+          goal: "Check the Settings page.",
+          context: "main.",
+          deliverable: "A screenshot.",
+          acceptanceCriteria: ["Every section shows"],
+        },
+        ["push commits to a remote: git push origin check"],
+      ),
+    ).toEqual({
+      outcome: "interrupted",
+      report: "brchen-db3 is out of reach.",
+      externalWrites: ["push commits to a remote: git push origin check"],
+      brief:
+        "## Goal\nCheck the Settings page.\n\n## Context\nmain.\n\n## Deliverable\nA screenshot.\n\n## Acceptance criteria\n- Every section shows",
+    });
+    expect(interruptedReport("Agent Teams restarted.", undefined)).toEqual({
+      outcome: "interrupted",
+      report: "Agent Teams restarted.",
+    });
   });
 });
 

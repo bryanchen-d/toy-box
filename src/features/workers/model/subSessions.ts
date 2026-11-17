@@ -21,14 +21,18 @@ export const SUB_SESSION_WAKE_MAX_MINUTES = 24 * 60;
 export const SUB_SESSION_REMINDER_MS = 24 * 60 * 60_000;
 
 /**
- * A sub session's own Worker metadata: the wake it scheduled, and when to remind its owner that
- * it is still open after its last report.
+ * A sub session's own Worker metadata: the brief it was created with, which its owner gets back
+ * if its run is interrupted; whether a run is under way, so a restart can tell its owner it
+ * stopped; the wake it scheduled; and when to remind its owner that it is still open after its
+ * last report.
  */
 const subSessionMetadataSchema = z.object({
+  brief: z.lazy(() => subSessionBriefSchema).optional(),
+  working: z.literal(true).optional(),
   wake: z.object({ at: z.iso.datetime(), reason: z.string().min(1) }).optional(),
   remindAt: z.iso.datetime().optional(),
 });
-type SubSessionMetadata = z.infer<typeof subSessionMetadataSchema>;
+export type SubSessionMetadata = z.infer<typeof subSessionMetadataSchema>;
 export type SubSessionWake = NonNullable<SubSessionMetadata["wake"]>;
 
 export function readSubSessionMetadata(metadata: unknown): SubSessionMetadata {
@@ -101,9 +105,32 @@ export const subSessionRequestSchema = z.object({
 export type SubSessionRequest = z.infer<typeof subSessionRequestSchema>;
 
 /** The sub session's first message: who it works for, how it reports, and its brief. */
-export function renderSubSessionBrief(brief: SubSessionBrief, owner: { name?: string }): string {
+export function renderSubSessionBrief(
+  brief: SubSessionBrief,
+  owner: { name?: string; node?: string },
+): string {
   const ownerName = owner.name?.trim() || "the agent that created you";
-  const sections = [
+  return [
+    `You are a sub session doing one task for ${ownerName}, who reviews what you report and closes you when the task is done.`,
+    [
+      `- Your final answer at the end of each turn goes to ${ownerName} automatically, so make it a report: what you did, the deliverable, and the evidence for each acceptance criterion.`,
+      "- When this brief conflicts with what you find, or you need a decision, end your turn with the question instead of guessing.",
+      `- When a turn has nothing ${ownerName} needs to hear, answer with exactly ${NO_UPDATE}.`,
+      "- When you are waiting on something slow, such as CI or a review, call wake_after and end your turn instead of waiting in it.",
+      "- Work only on this task. You can't create sub sessions of your own; use your provider's own subagents for parallel work within a turn.",
+      ...(owner.node
+        ? [
+            `- You run on ${owner.node}, a separate machine, in an empty folder of your own. Work on your own branch of the repository the brief names, and commit and push at each milestone, naming the branch and its last pushed commit in every report, so your work survives if this session is lost.`,
+          ]
+        : []),
+    ].join("\n"),
+    renderBriefSections(brief),
+  ].join("\n\n");
+}
+
+/** The brief's own sections, as its sub session and an owner taking the task over read them. */
+export function renderBriefSections(brief: SubSessionBrief): string {
+  return [
     ["Goal", brief.goal],
     ["Context", brief.context],
     ["Deliverable", brief.deliverable],
@@ -113,25 +140,18 @@ export function renderSubSessionBrief(brief: SubSessionBrief, owner: { name?: st
     ],
     ["Boundaries", brief.boundaries],
     ["Reporting", brief.reporting],
-  ].filter((section): section is [string, string] => Boolean(section[1]));
-
-  return [
-    `You are a sub session doing one task for ${ownerName}, who reviews what you report and closes you when the task is done.`,
-    [
-      `- Your final answer at the end of each turn goes to ${ownerName} automatically, so make it a report: what you did, the deliverable, and the evidence for each acceptance criterion.`,
-      "- When this brief conflicts with what you find, or you need a decision, end your turn with the question instead of guessing.",
-      `- When a turn has nothing ${ownerName} needs to hear, answer with exactly ${NO_UPDATE}.`,
-      "- When you are waiting on something slow, such as CI or a review, call wake_after and end your turn instead of waiting in it.",
-      "- Work only on this task. You can't create sub sessions of your own; use your provider's own subagents for parallel work within a turn.",
-    ].join("\n"),
-    ...sections.map(([title, body]) => `## ${title}\n${body}`),
-  ].join("\n\n");
+  ]
+    .filter((section): section is [string, string] => Boolean(section[1]))
+    .map(([title, body]) => `## ${title}\n${body}`)
+    .join("\n\n");
 }
 
 type SubSessionReport = {
-  outcome: "completed" | "failed";
+  outcome: "completed" | "failed" | "interrupted";
   report: string;
   externalWrites?: string[];
+  /** An interrupted sub session's brief, so its owner can redo the task elsewhere. */
+  brief?: string;
 };
 
 /**
@@ -154,6 +174,24 @@ export function subSessionReport(
     return { outcome: "completed", report: clip(answer), ...writes };
   if (externalWrites.length === 0) return undefined;
   return { outcome: "completed", report: "It had nothing else to report.", ...writes };
+}
+
+/**
+ * What an owner hears when a sub session's run stopped before it could finish: Agent Teams
+ * restarted, or its node went out of reach. Its brief comes back with it, since the run may need
+ * redoing elsewhere.
+ */
+export function interruptedReport(
+  reason: string,
+  brief: SubSessionBrief | undefined,
+  externalWrites: readonly string[] = [],
+): SubSessionReport {
+  return {
+    outcome: "interrupted",
+    report: clip(reason),
+    ...(externalWrites.length > 0 ? { externalWrites: [...externalWrites] } : {}),
+    ...(brief ? { brief: clip(renderBriefSections(brief)) } : {}),
+  };
 }
 
 function clip(text: string): string {

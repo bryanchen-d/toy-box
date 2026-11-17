@@ -6,7 +6,7 @@ import { AgentItem } from "@teams/components/agents/AgentItem";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { teamTasksForAgent, compareTeamAgents, type Team, type TeamTask } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
-import { formatModelConfiguration } from "@providers/model";
+import { formatModelConfiguration, providerNode } from "@providers/model";
 import { teamQueries } from "@teams/queries";
 import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
 import type { Session } from "@sessions/model";
@@ -322,6 +322,7 @@ function SubSession({ session }: { session: Session }) {
   const { openSession } = useWorkspaceSurface();
   const activity = useWorkspaceSessionActivity(session.id);
   const title = session.title || "Sub session";
+  const node = providerNode(session.provider?.id);
   return (
     <li>
       {openSession ? (
@@ -337,6 +338,7 @@ function SubSession({ session }: { session: Session }) {
         title
       )}
       <span className="block text-muted-foreground">
+        {node ? `On ${node} · ` : null}
         {activity.waiting ? (
           "Waiting for input"
         ) : activity.background ? (

@@ -1,38 +1,40 @@
 // A pool node's agent host as a session provider. Its sessions run in the host's Copilot agent,
 // each in its own folder under the node's scratch folder, through the node's live connection.
 
-import { ActionType, type ChatState, type RootState } from "@microsoft/agent-host-protocol";
+import { ActionType, type ChatState } from "@microsoft/agent-host-protocol";
 import type { AhpClient } from "@microsoft/agent-host-protocol/client";
+import { nodeProviderId } from "@providers/model";
+import { getProcessValue } from "@/shared/server/processState";
 import {
   SessionConnectionUnavailableError,
   type SessionConfiguration,
   type SessionConnection,
   type SessionProvider,
 } from "../provider";
-import { activeClient, connectRemoteSession, defaultChat, sessionUri } from "./connection";
+import {
+  activeClient,
+  connectRemoteSession,
+  defaultChat,
+  sessionUri,
+  type AgentHost,
+} from "./connection";
 import { projectTurns, type NativeTurn } from "./projector";
+
+export type { AgentHost } from "./connection";
 
 const ROOT_CHANNEL = "ahp-root://";
 /** Remote sessions run in the host's Copilot agent. */
 const AGENT = "copilotcli";
 
-/** A node's link to its agent host, which its provider runs sessions through. */
-export type AgentHost = {
-  readonly node: { readonly name: string; readonly scratchFolder: string };
-  /** The connected host's client, or undefined while the node is out of reach. */
-  readonly client: AhpClient | undefined;
-  readonly clientId: string;
-  readonly agents: RootState["agents"];
-};
-
-export function nodeProviderId(name: string): string {
-  return `node:${name}`;
-}
-
 export function createNodeProvider(host: AgentHost): SessionProvider {
   const id = nodeProviderId(host.node.name);
   // Sessions with a live connection, whose subscriptions reading history or deleting must keep.
   const live = new Set<string>();
+  // Sessions closed while the node was out of reach, retired once it connects. They outlive this
+  // provider, which a changed pool replaces.
+  const retiring = getProcessValue(`node-retirements:${id}`, () => new Set<string>());
+  const stopRetiring = host.onConnected((client) => void retireClosed(client));
+  if (host.client) void retireClosed(host.client);
 
   function client(): AhpClient {
     if (!host.client) {
@@ -49,8 +51,7 @@ export function createNodeProvider(host: AgentHost): SessionProvider {
   ): Promise<SessionConnection> {
     const connection = await connectRemoteSession({
       providerId: id,
-      client: client(),
-      clientId: host.clientId,
+      host,
       sessionId,
       models: agent()?.models.map(({ id }) => id) ?? [],
       configuration,
@@ -68,6 +69,41 @@ export function createNodeProvider(host: AgentHost): SessionProvider {
   async function release(remote: AhpClient, sessionId: string, ...channels: string[]) {
     if (live.has(sessionId)) return;
     await Promise.allSettled(channels.map((channel) => remote.unsubscribe(channel)));
+  }
+
+  /** Stops a closed session's run and archives it, so an old attempt never works beside a new one. */
+  async function retire(remote: AhpClient, sessionId: string): Promise<void> {
+    const uri = sessionUri(sessionId);
+    const known = await remote.request("subscribe", { channel: uri }).then(
+      () => true,
+      () => false,
+    );
+    if (!known) return;
+    const chatUri = await defaultChat(remote, uri);
+    try {
+      const { activeTurn } = await readChat(remote, chatUri);
+      if (activeTurn) {
+        remote.dispatch(chatUri, {
+          type: ActionType.ChatTurnCancelled,
+          turnId: activeTurn.id,
+          duration: 0,
+        });
+      }
+      remote.dispatch(uri, { type: ActionType.SessionIsArchivedChanged, isArchived: true });
+    } finally {
+      await release(remote, sessionId, chatUri, uri);
+    }
+  }
+
+  async function retireClosed(remote: AhpClient): Promise<void> {
+    for (const sessionId of [...retiring]) {
+      try {
+        await retire(remote, sessionId);
+        retiring.delete(sessionId);
+      } catch (error) {
+        console.error(`Couldn't retire remote session ${sessionId} on ${host.node.name}:`, error);
+      }
+    }
   }
 
   return {
@@ -144,13 +180,12 @@ export function createNodeProvider(host: AgentHost): SessionProvider {
       return false;
     },
     async delete(nativeId) {
-      const remote = client();
-      const uri = sessionUri(nativeId);
-      await remote.request("subscribe", { channel: uri });
-      remote.dispatch(uri, { type: ActionType.SessionIsArchivedChanged, isArchived: true });
-      await release(remote, nativeId, uri);
+      if (host.client) return retire(host.client, nativeId);
+      retiring.add(nativeId);
     },
-    async stop() {},
+    async stop() {
+      stopRetiring();
+    },
   };
 }
 

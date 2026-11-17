@@ -3,6 +3,7 @@ import { InMemoryTransport, type AhpTransport } from "@microsoft/agent-host-prot
 import type { PoolNode } from "../../model";
 import type { AgentPoolConnectorRecord } from "../database";
 import { PoolLink, poolStatus, type PoolLinkDependencies } from "./link";
+import type { NodeLink } from "./node";
 
 describe("pool link", () => {
   test("connects each node and signs its host in with the owner's GitHub token", async () => {
@@ -36,14 +37,88 @@ describe("pool link", () => {
   test("a node it can't reach leaves the others connected", async () => {
     const host = fakeHost();
     const link = startPool([node("brchen-db3"), node("brchen-db4")], {
-      openTransport: async (target) => {
+      openTransport: async (target, previous) => {
         if (target.name === "brchen-db4") throw new Error("tunnel not hosted");
-        return host.open();
+        return host.open(target, previous);
       },
     });
 
     await until(() => link.status.state === "connected");
     expect(host.opened).toBe(1);
+    expect(link.nodeStates).toEqual({ "brchen-db3": "connected", "brchen-db4": "connecting" });
+  });
+
+  test("a node returns to the agent host its sessions live on, and remembers a new one", async () => {
+    const host = fakeHost("host-b");
+    const remembered: string[] = [];
+    const asked: (string | undefined)[] = [];
+    const link = startPool([node("brchen-db3")], {
+      openTransport: (target, previous) => {
+        asked.push(previous);
+        return host.open(target, previous);
+      },
+      hosts: {
+        read: async () => "host-a",
+        remember: async (_node, chosen) => void remembered.push(chosen),
+      },
+    });
+    await until(() => link.status.state === "connected");
+
+    host.drop();
+    await until(() => host.opened === 2 && link.status.state === "connected");
+    expect(asked).toEqual(["host-a", "host-b"]);
+    expect(remembered).toEqual(["host-b"]);
+  });
+});
+
+describe("waiting for a node", () => {
+  test("hands over the client once the node connects", async () => {
+    const host = fakeHost();
+    let nodeLink: NodeLink | undefined;
+    const link = startPool([node("brchen-db3")], {
+      openTransport: async (target, previous) => {
+        await Bun.sleep(20);
+        return host.open(target, previous);
+      },
+      serveNode: (served) => {
+        nodeLink = served;
+        return () => {};
+      },
+    });
+
+    const client = await nodeLink!.whenConnected();
+
+    expect(client).toBeDefined();
+    expect(link.status.state).toBe("connected");
+  });
+
+  test("gives up once the node is unreachable or the link stops", async () => {
+    let nodeLink: NodeLink | undefined;
+    const link = startPool([node("brchen-db3")], {
+      serveNode: (served) => {
+        nodeLink = served;
+        return () => {};
+      },
+      timing: {
+        pingIntervalMs: 10,
+        requestTimeoutMs: 1_000,
+        reconnectBackoff: { min: 5, max: 20 },
+        unreachableAfterMs: 30,
+      },
+    });
+
+    expect(await nodeLink!.whenConnected()).toBeUndefined();
+    expect(link.status.state).toBe("unreachable");
+
+    const stopped = startPool([node("brchen-db4")], {
+      serveNode: (served) => {
+        nodeLink = served;
+        return () => {};
+      },
+    });
+    const waiting = nodeLink!.whenConnected();
+    await stopped.stop();
+    expect(await waiting).toBeUndefined();
   });
 });
 
@@ -104,6 +179,7 @@ function startPool(nodes: PoolNode[], overrides: Partial<PoolLinkDependencies>) 
     openTransport: async () => {
       throw new Error("no host");
     },
+    hosts: { read: async () => undefined, remember: async () => {} },
     githubToken: async () => "gh-token",
     serveNode: () => () => {},
     onChange: () => {},
@@ -119,8 +195,12 @@ function startPool(nodes: PoolNode[], overrides: Partial<PoolLinkDependencies>) 
   return link;
 }
 
-/** An agent host that answers the handshake, sign-in, and pings, and can drop its connections. */
-function fakeHost() {
+/**
+ * An agent host that answers the handshake, sign-in, and pings, and can drop its connections.
+ * Its gateway returns a connection to the host it asks for while that is live; otherwise it
+ * starts `fresh`, the one live host.
+ */
+function fakeHost(fresh = "host-1") {
   const requests: { method: string; params: Record<string, unknown> }[] = [];
   const connections: AhpTransport[] = [];
   return {
@@ -128,11 +208,11 @@ function fakeHost() {
     get opened() {
       return connections.length;
     },
-    open: async (): Promise<AhpTransport> => {
+    open: async (_node: PoolNode, _previous: string | undefined) => {
       const [client, server] = InMemoryTransport.pair();
       connections.push(server);
       void serve(server, requests);
-      return client;
+      return { transport: client as AhpTransport, host: fresh };
     },
     drop() {
       for (const connection of connections) void connection.close();

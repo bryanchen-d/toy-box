@@ -102,12 +102,18 @@ service connector:
 the owner's GitHub token from the gh CLI finds the tunnel by its machine-name label and gets a
 connect token from the Dev Tunnels service, and a Bun WebSocket carrying it (the protocol package's
 own transport can't send headers) opens the tunnel's `/agent-host/select` route. That route lists
-the machine's live agent hosts; the link returns to the one it used before while it is live, else
-takes any live standalone host, else asks for a new dedicated one, and the tunnel injects the host's
-connection token. Each connection initializes under the connector's client ID, signs the host's
-agents in with the same GitHub token, proves itself alive with pings, and reconnects with the same
-backoff and unreachable threshold as a service link. A pool is connected while any node is;
-otherwise its error names each node it can't reach. While it runs, the link registers each node as
+the machine's live agent hosts, and the tunnel injects the chosen host's connection token. A remote
+session opens only on the host that has it, and a host already running when another exits can't
+take that one's sessions over, while a host started afterward can. So each node keeps its host in
+`connector_node_hosts`, across restarts: it returns to that host while it is live, replaces a lost
+one with a new dedicated host, and takes any live standalone host only when it has none yet.
+Hosts holding sessions never exit on their own. Each connection initializes under the connector's
+client ID, signs the host's agents in with the same GitHub token, proves itself alive with pings,
+and reconnects with the same backoff and unreachable threshold as a service link. A pool is
+connected while any node is; otherwise its error names each node it can't reach, and its entry
+carries each node's state as `nodeStates`. A node link hands its client to whoever waits for the
+node (`whenConnected`, which gives up once the node is unreachable) and to listeners on each
+connection (`onConnected`). While it runs, the link registers each node as
 a session provider ([Providers](../providers/AGENTS.md#node-providers)), which runs sub sessions
 created for that node over the node's connection. A pool is a place, not something a team talks
 to: no message addresses it, and `read_team` lists it with its nodes instead of a mention.

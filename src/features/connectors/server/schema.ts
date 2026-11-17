@@ -34,5 +34,13 @@ export async function initializeConnectorSchema(db: Bun.SQL): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_connector_outbox_conversation
       ON connector_outbox(connector_id, conversation_id, position);
+
+    -- The agent host a pool node's remote sessions live on, since a session opens only there.
+    CREATE TABLE IF NOT EXISTS connector_node_hosts (
+      connector_id      TEXT NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
+      node              TEXT NOT NULL,
+      host              TEXT NOT NULL,
+      PRIMARY KEY (connector_id, node)
+    );
   `);
 }

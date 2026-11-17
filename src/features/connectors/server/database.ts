@@ -90,6 +90,22 @@ export class ConnectorDatabase {
     `;
   }
 
+  /** The agent host a pool node's sessions live on. */
+  async nodeHost(connectorId: string, node: string): Promise<string | undefined> {
+    const [row] = await this.db<{ host: string }[]>`
+      SELECT host FROM connector_node_hosts WHERE connector_id = ${connectorId} AND node = ${node}
+    `;
+    return row?.host;
+  }
+
+  async setNodeHost(connectorId: string, node: string, host: string): Promise<void> {
+    await this.db`
+      INSERT INTO connector_node_hosts (connector_id, node, host)
+      VALUES (${connectorId}, ${node}, ${host})
+      ON CONFLICT(connector_id, node) DO UPDATE SET host = excluded.host
+    `;
+  }
+
   async enqueue(connectorId: string, message: ConnectorMessage, now = new Date()): Promise<void> {
     const createdAt = now.toISOString();
     await this.db`

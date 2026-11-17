@@ -72,21 +72,25 @@ export function findToolCall(chat: NativeChat, toolCallId: string): NativeToolCa
   return currentParts(chat).find((part) => part.toolCall?.toolCallId === toolCallId)?.toolCall;
 }
 
-/** A live projector: one per subscription, since it remembers which reply is still streaming. */
+/**
+ * A live projector: one per remote session connection, since it remembers the turn it follows,
+ * which reply is still streaming, and what it has already emitted. After a gap in which actions
+ * were missed, `catchUp` brings the transcript up to the chat's current state.
+ */
 export function createChatProjector() {
+  let turnId: string | undefined;
   let openReply: string | undefined;
+  const replies = new Set<string>();
   const started = new Set<string>();
   // The host echoes a client tool's completion and then reports its own; one ends the call.
   const ended = new Set<string>();
 
-  function closeReply(chat: NativeChat): SessionEvent[] {
-    const reply = currentParts(chat).find(
-      (part) => part.kind === "markdown" && part.id === openReply,
-    );
+  function closeReply(parts: readonly NativePart[]): SessionEvent[] {
+    const reply = parts.find((part) => part.kind === "markdown" && part.id === openReply);
     openReply = undefined;
-    return reply
-      ? [{ type: "assistant_message", messageId: reply.id, content: reply.content ?? "" }]
-      : [];
+    if (!reply) return [];
+    replies.add(reply.id!);
+    return [{ type: "assistant_message", messageId: reply.id, content: reply.content ?? "" }];
   }
 
   function toolEnd(event: Extract<SessionEvent, { type: "tool_end" }>): SessionEvent[] {
@@ -95,10 +99,49 @@ export function createChatProjector() {
     return [event];
   }
 
-  return (raw: unknown, chat: NativeChat): SessionEvent[] => {
+  function toolStarted(call: NativeToolCall): SessionEvent[] {
+    if (started.has(call.toolCallId)) return [];
+    started.add(call.toolCallId);
+    return [toolStart(call)];
+  }
+
+  /** The replies and tool calls in `parts` not yet emitted; an active turn's last reply stays open. */
+  function catchUpParts(parts: readonly NativePart[], active: boolean): SessionEvent[] {
+    openReply = undefined;
+    return parts.flatMap((part, index): SessionEvent[] => {
+      if (part.kind === "markdown" && !replies.has(part.id!)) {
+        if (active && index === parts.length - 1) openReply = part.id;
+        else replies.add(part.id!);
+        return [{ type: "assistant_message", messageId: part.id, content: part.content ?? "" }];
+      }
+      const call = part.toolCall;
+      if (!call) return [];
+      return [
+        ...toolStarted(call),
+        ...(call.status === "completed"
+          ? toolEnd({
+              type: "tool_end",
+              toolCallId: call.toolCallId,
+              success: call.success ?? false,
+              result: resultText(call),
+            })
+          : call.status === "cancelled"
+            ? toolEnd({
+                type: "tool_end",
+                toolCallId: call.toolCallId,
+                success: false,
+                result: text(call.reasonMessage),
+              })
+            : []),
+      ];
+    });
+  }
+
+  function project(raw: unknown, chat: NativeChat): SessionEvent[] {
     const action = raw as NativeAction;
     switch (action.type) {
       case ActionType.ChatTurnStarted:
+        turnId = action.turnId;
         return [
           // A turn the host starts from a steering message carries on the turn it steered.
           messageEvent(action.message!, action.queuedMessageId ?? action.turnId!),
@@ -107,14 +150,14 @@ export function createChatProjector() {
       case ActionType.ChatResponsePart: {
         const part = action.part!;
         if (part.kind === "markdown") {
-          const closed = closeReply(chat);
+          const closed = closeReply(currentParts(chat));
           openReply = part.id;
           return part.content
             ? [...closed, { type: "delta", messageId: part.id, content: part.content }]
             : closed;
         }
         if (part.kind === "reasoning") {
-          const closed = closeReply(chat);
+          const closed = closeReply(currentParts(chat));
           return part.content
             ? [...closed, { type: "reasoning_delta", content: part.content }]
             : closed;
@@ -126,12 +169,10 @@ export function createChatProjector() {
       case ActionType.ChatReasoning:
         return [{ type: "reasoning_delta", content: action.content ?? "" }];
       case ActionType.ChatToolCallStart:
-        return closeReply(chat);
+        return closeReply(currentParts(chat));
       case ActionType.ChatToolCallReady: {
         const call = findToolCall(chat, action.toolCallId!);
-        if (!call || started.has(call.toolCallId)) return [];
-        started.add(call.toolCallId);
-        return [toolStart(call)];
+        return call ? toolStarted(call) : [];
       }
       case ActionType.ChatToolCallConfirmed:
         return action.approved === false
@@ -154,12 +195,13 @@ export function createChatProjector() {
       case ActionType.ChatTurnComplete:
       case ActionType.ChatTurnCancelled:
         // The host ends a steered turn and starts the next from its steering message.
-        return chat.steeringMessage
-          ? closeReply(chat)
-          : [...closeReply(chat), { type: "end", reason: "idle" }];
+        if (chat.steeringMessage) return closeReply(currentParts(chat));
+        turnId = undefined;
+        return [...closeReply(currentParts(chat)), { type: "end", reason: "idle" }];
       case ActionType.ChatError:
+        turnId = undefined;
         return [
-          ...closeReply(chat),
+          ...closeReply(currentParts(chat)),
           {
             type: "end",
             reason: "error",
@@ -169,7 +211,38 @@ export function createChatProjector() {
       default:
         return [];
     }
-  };
+  }
+
+  /**
+   * The events that bring the transcript from what was emitted up to `chat`: the rest of the
+   * followed turn, its end if it finished, and a turn the host started from a steering message,
+   * whose message the transcript already shows. A followed turn the host no longer has ended when
+   * a restarted host lost it.
+   */
+  function catchUp(chat: NativeChat): SessionEvent[] {
+    if (turnId === undefined) return [];
+    const { activeTurn } = chat;
+    if (activeTurn?.id === turnId) return catchUpParts(activeTurn.responseParts, true);
+    const finished = chat.turns.find(({ id }) => id === turnId);
+    if (!finished) {
+      turnId = undefined;
+      return [{ type: "end", reason: "error", error: "The agent host lost this run." }];
+    }
+    const events = catchUpParts(finished.responseParts, false);
+    if (activeTurn) {
+      turnId = activeTurn.id;
+      return [...events, ...catchUpParts(activeTurn.responseParts, true)];
+    }
+    turnId = undefined;
+    return [
+      ...events,
+      finished.state === "error"
+        ? { type: "end", reason: "error", error: "The remote turn failed." }
+        : { type: "end", reason: "idle" },
+    ];
+  }
+
+  return { project, catchUp };
 }
 
 /** A chat's completed turns, as the events their live projection produced. */

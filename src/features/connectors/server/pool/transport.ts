@@ -15,11 +15,11 @@ const TUNNELS_API_VERSION = "api-version=2023-09-27-preview";
 const AGENT_HOST_PORT = 31546;
 const HOST_SELECTION_PATH = "/agent-host/select";
 
-/** The agent host each node last selected, so a reconnect returns to it while it's live. */
-const selectedHosts = new Map<string, string>();
-
-/** Opens an AHP transport to the node's agent host. */
-export async function openNodeTransport(node: PoolNode): Promise<AhpTransport> {
+/** Opens an AHP transport to the node's agent host, returning to `host` while it is live. */
+export async function openNodeTransport(
+  node: PoolNode,
+  host: string | undefined,
+): Promise<{ transport: AhpTransport; host: string }> {
   const tunnel = await findAgentHostTunnel(node.name, await githubToken());
   const url = new URL(HOST_SELECTION_PATH, tunnel.agentHostUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -30,9 +30,8 @@ export async function openNodeTransport(node: PoolNode): Promise<AhpTransport> {
   // The host-selection route speaks first, so listen before the socket opens.
   const frames = new FrameBuffer(socket);
   await opened(socket);
-  const instanceId = await selectAgentHost(socket, frames, selectedHosts.get(node.name));
-  selectedHosts.set(node.name, instanceId);
-  return new WebSocketTransport(socket, frames);
+  const selected = await selectAgentHost(socket, frames, host);
+  return { transport: new WebSocketTransport(socket, frames), host: selected };
 }
 
 /** The owner's VS Code tunnel for a machine, found by the machine-name label `code tunnel` sets. */
@@ -85,19 +84,32 @@ type HostInventory = {
 };
 
 /**
- * Chooses the agent host this connection talks to: the one it used before while that is live,
- * otherwise any live standalone host, otherwise a new dedicated one, which stays while a client
- * is connected or a session runs. Editor-owned hosts end with their window, so they're skipped.
+ * The agent host a node's connection asks for. A remote session opens only on the host that has
+ * it, and a host already running when another exits can't take that one's sessions over, while a
+ * host started afterward can. So a node returns to its host while that is live and replaces a lost
+ * one with a new dedicated host; a node with no host yet takes any live standalone host. Editor
+ * hosts end with their window, so they're never chosen.
  */
+export function chooseAgentHost(
+  endpoints: HostInventory["endpoints"],
+  host: string | undefined,
+): { instanceId: string } | { newDedicated: true } {
+  const standalone = endpoints.filter(({ type }) => type === "standalone");
+  if (host) {
+    return standalone.some(({ instanceId }) => instanceId === host)
+      ? { instanceId: host }
+      : { newDedicated: true };
+  }
+  return standalone[0] ? { instanceId: standalone[0].instanceId } : { newDedicated: true };
+}
+
 async function selectAgentHost(
   socket: WebSocket,
   frames: FrameBuffer,
-  preferred: string | undefined,
+  host: string | undefined,
 ): Promise<string> {
   const inventory = JSON.parse(await frames.nextText()) as HostInventory;
-  const standalone = inventory.endpoints.filter(({ type }) => type === "standalone");
-  const chosen = standalone.find(({ instanceId }) => instanceId === preferred) ?? standalone[0];
-  socket.send(JSON.stringify(chosen ? { instanceId: chosen.instanceId } : { newDedicated: true }));
+  socket.send(JSON.stringify(chooseAgentHost(inventory.endpoints, host)));
   const reply = JSON.parse(await frames.nextText()) as {
     ok: boolean;
     selected?: { instanceId: string };
