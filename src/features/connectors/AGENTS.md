@@ -107,9 +107,10 @@ session opens only on the host that has it, and a host already running when anot
 take that one's sessions over, while a host started afterward can. So each node keeps its host in
 `connector_node_hosts`, across restarts: it returns to that host while it is live, replaces a lost
 one with a new dedicated host, and takes any live standalone host only when it has none yet. A
-dead host can stay listed and never answer, so when its host doesn't answer, a node asks for a new
-dedicated host instead, which can take two minutes to answer, and then for the newest other live
-host, never starting more than one host per loss.
+dead host can stay listed and never answer, so a node passes over a listed host that doesn't
+answer: it replaces its own with a new dedicated host, which can take two minutes to answer, or,
+with none yet, takes another live one. If a new host doesn't answer in time, the node takes the
+newest live host rather than starting another.
 Hosts holding sessions never exit on their own. Each connection initializes under the connector's
 client ID, signs the host's agents in with the same GitHub token, proves itself alive with pings,
 and reconnects with the same backoff and unreachable threshold as a service link. A pool is

@@ -19,8 +19,9 @@ const HOST_SELECTION_PATH = "/agent-host/select";
 
 /**
  * Opens an AHP transport to the node's agent host, returning to `host` while it answers. The
- * gateway can list a host that has died, so one that doesn't answer is replaced by a new dedicated
- * host. If that one doesn't answer in time either, the newest other live host is taken rather than
+ * gateway can list a host that has died, so a listed host that doesn't answer is passed over: a
+ * lost `host` is replaced by a new dedicated host, and a node with no host takes another live one.
+ * If a new dedicated host doesn't answer in time, the newest live host is taken rather than
  * starting more: the gateway lists the newest host first, and that is the slow new one once it
  * has started.
  */
@@ -29,27 +30,24 @@ export async function openNodeTransport(
   host: string | undefined,
 ): Promise<{ transport: AhpTransport; host: string }> {
   const tunnel = await findAgentHostTunnel(node.name, await githubToken());
-  const open = (ask: string | undefined, exclude?: string) =>
-    openAgentHost(tunnel.agentHostUrl, tunnel.connectToken, ask, exclude);
-  if (!host) return open(undefined);
-  for (const [ask, exclude] of [
-    [host, undefined],
-    [host, host],
-  ] as const) {
+  const unanswered: string[] = [];
+  let ask = host;
+  for (let attempt = 1; ; attempt++) {
     try {
-      return await open(ask, exclude);
+      return await openAgentHost(tunnel.agentHostUrl, tunnel.connectToken, ask, unanswered);
     } catch (error) {
-      if (!(error instanceof HostSelectionError)) throw error;
+      if (!(error instanceof HostSelectionError) || attempt === 3) throw error;
+      if (error.instanceId) unanswered.push(error.instanceId);
+      else ask = undefined;
     }
   }
-  return open(undefined, host);
 }
 
 async function openAgentHost(
   agentHostUrl: string,
   connectToken: string,
   host: string | undefined,
-  exclude: string | undefined,
+  unanswered: readonly string[],
 ): Promise<{ transport: AhpTransport; host: string }> {
   const url = new URL(HOST_SELECTION_PATH, agentHostUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -60,7 +58,7 @@ async function openAgentHost(
   // The host-selection route speaks first, so listen before the socket opens.
   const frames = new FrameBuffer(socket);
   await opened(socket);
-  const selected = await selectAgentHost(socket, frames, host, exclude);
+  const selected = await selectAgentHost(socket, frames, host, unanswered);
   return { transport: new WebSocketTransport(socket, frames), host: selected };
 }
 
@@ -133,21 +131,29 @@ export function chooseAgentHost(
   return standalone[0] ? { instanceId: standalone[0].instanceId } : { newDedicated: true };
 }
 
-/** The chosen agent host didn't take the connection. */
-class HostSelectionError extends Error {}
+/** The chosen agent host, if one listed, didn't take the connection. */
+class HostSelectionError extends Error {
+  constructor(
+    message: string,
+    readonly instanceId: string | undefined,
+    options: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
 
-/** Selects the node's host, never `exclude`, which the gateway may still list after it died. */
+/** Selects the node's host, never one that didn't answer, which the gateway may still list. */
 async function selectAgentHost(
   socket: WebSocket,
   frames: FrameBuffer,
   host: string | undefined,
-  exclude: string | undefined,
+  unanswered: readonly string[],
 ): Promise<string> {
   const inventory = JSON.parse(
     await frames.nextText("The tunnel didn't offer agent host selection; update its VS Code CLI."),
   ) as HostInventory;
   const choice = chooseAgentHost(
-    inventory.endpoints.filter(({ instanceId }) => instanceId !== exclude),
+    inventory.endpoints.filter(({ instanceId }) => !unanswered.includes(instanceId)),
     host,
   );
   socket.send(JSON.stringify(choice));
@@ -166,9 +172,11 @@ async function selectAgentHost(
     return reply.selected.instanceId;
   } catch (error) {
     socket.close();
-    throw new HostSelectionError(error instanceof Error ? error.message : String(error), {
-      cause: error,
-    });
+    throw new HostSelectionError(
+      error instanceof Error ? error.message : String(error),
+      "instanceId" in choice ? choice.instanceId : undefined,
+      { cause: error },
+    );
   }
 }
 
