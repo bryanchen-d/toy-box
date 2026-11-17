@@ -216,8 +216,8 @@ export function createChatProjector() {
   /**
    * The events that bring the transcript from what was emitted up to `chat`: the rest of the
    * followed turn, its end if it finished, and a turn the host started from a steering message,
-   * whose message the transcript already shows. A followed turn the host no longer has ended when
-   * a restarted host lost it.
+   * whose message the transcript already shows. A followed turn the host doesn't have was lost
+   * with the host that ran it, which may have finished it before it stopped.
    */
   function catchUp(chat: NativeChat): SessionEvent[] {
     if (turnId === undefined) return [];
@@ -226,7 +226,14 @@ export function createChatProjector() {
     const finished = chat.turns.find(({ id }) => id === turnId);
     if (!finished) {
       turnId = undefined;
-      return [{ type: "end", reason: "error", error: "The agent host lost this run." }];
+      return [
+        {
+          type: "end",
+          reason: "error",
+          error:
+            "The agent host running this turn stopped, and its replacement doesn't have the turn. It may have finished some or all of it first, so ask the session what it got done before you redo any of it.",
+        },
+      ];
     }
     const events = catchUpParts(finished.responseParts, false);
     if (activeTurn) {

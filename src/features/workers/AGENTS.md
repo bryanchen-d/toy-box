@@ -70,7 +70,8 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   push its work to its own branch at each milestone and name the branch in every report, which is
   how anyone takes the task over if the session is lost. `list_sub_sessions` shows each sub
   session's node and, with an agent pool, every node and its state; the instructions tell owners to
-  prefer a connected node for work that doesn't need this machine.
+  call it before creating a sub session and to prefer a connected node for work that doesn't need
+  this machine.
 - The brief is kept in the sub session's Worker metadata, so an interrupted report can return it.
 - A sub session never owns sub sessions: session-owned Workers receive only `wake_after` from the
   set, and creation refuses a caller that is one.

@@ -18,6 +18,8 @@ export const sessionProviders: readonly SessionProvider[] = [
 
 // Pool nodes run sessions for agents that ask for them by node; they stay out of the catalog.
 const nodeProviders = sharedMap<SessionProvider>("node-session-providers");
+// Each node's current link. A changed or reloaded pool replaces it, and runs follow the new one.
+const nodeLinks = sharedMap<AgentHost>("node-links");
 
 const modelsByProvider = sharedMap<Promise<ModelInfo[]>>("provider-models");
 const pendingSessionsByProvider = sharedMap<Promise<Session[]>>("provider-session-discovery");
@@ -36,10 +38,12 @@ export function getSessionProvider(id: string): SessionProvider {
 
 /** Runs sessions on a pool node while its pool lists it; the returned function stops that. */
 export function registerNodeProvider(host: AgentHost): () => void {
-  const provider = createNodeProvider(host);
+  const provider = createNodeProvider(host, () => nodeLinks.get(provider.id));
   nodeProviders.set(provider.id, provider);
+  nodeLinks.set(provider.id, host);
   return () => {
     if (nodeProviders.get(provider.id) === provider) nodeProviders.delete(provider.id);
+    if (nodeLinks.get(provider.id) === host) nodeLinks.delete(provider.id);
     void provider.stop();
   };
 }

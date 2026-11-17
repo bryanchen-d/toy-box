@@ -53,6 +53,8 @@ export type AgentHost = {
 export type RemoteSession = {
   providerId: string;
   host: AgentHost;
+  /** The node's current link, which replaces `host` when its pool changes or reloads. */
+  currentHost: () => AgentHost | undefined;
   sessionId: string;
   /** The host's model IDs; a message names its model only when the host offers it. */
   models: readonly string[];
@@ -146,7 +148,7 @@ export async function connectRemoteSession(remote: RemoteSession): Promise<Sessi
       }
       if (stopped.signal.aborted) return;
       away = true;
-      const next = await host.whenConnected(stopped.signal);
+      const next = await reconnected();
       if (stopped.signal.aborted) return;
       const joined = next
         ? await join(next).catch((error: unknown) => {
@@ -170,6 +172,20 @@ export async function connectRemoteSession(remote: RemoteSession): Promise<Sessi
       answerHost();
     }
   })();
+
+  /**
+   * The node's client once it is connected again, through whichever link the pool now has for
+   * it; undefined once the node is unreachable or the pool no longer lists it.
+   */
+  async function reconnected(): Promise<AhpClient | undefined> {
+    for (let link = remote.currentHost(); link && !stopped.signal.aborted;) {
+      const next = await link.whenConnected(stopped.signal);
+      const current = remote.currentHost();
+      if (next || current === link) return next;
+      link = current;
+    }
+    return undefined;
+  }
 
   // A turn that ran while no connection was open may hold calls for this client; the ones it
   // finished were screened by the connection that saw them finish.

@@ -26,7 +26,11 @@ const ROOT_CHANNEL = "ahp-root://";
 /** Remote sessions run in the host's Copilot agent. */
 const AGENT = "copilotcli";
 
-export function createNodeProvider(host: AgentHost): SessionProvider {
+export function createNodeProvider(
+  host: AgentHost,
+  /** The node's current link, which replaces `host` when its pool changes or reloads. */
+  currentHost: () => AgentHost | undefined = () => host,
+): SessionProvider {
   const id = nodeProviderId(host.node.name);
   // Sessions with a live connection, whose subscriptions reading history or deleting must keep.
   const live = new Set<string>();
@@ -52,6 +56,7 @@ export function createNodeProvider(host: AgentHost): SessionProvider {
     const connection = await connectRemoteSession({
       providerId: id,
       host,
+      currentHost,
       sessionId,
       models: agent()?.models.map(({ id }) => id) ?? [],
       configuration,

@@ -9,7 +9,7 @@ import {
 export const SUB_SESSION_INSTRUCTIONS = `<sub_sessions>
 You can hand a task to a sub session: a session you own that does that one task, reports each finished turn back to you, and stays open for follow-ups until you close it.
 - Use your provider's own subagents for quick work inside a turn, such as a parallel search or a diff review. Use a sub session for a task that outlives your turn, needs its own review, or should run alongside your other work.
-- When list_sub_sessions lists nodes, run a sub session on a connected node that isn't draining unless its task needs this machine's files, services, or uncommitted changes. UI work, builds, test runs, and long investigations belong on a node, which keeps this machine free for the user. A node sub session starts in an empty folder there, so name the repository and branch to work on in its brief; it pushes its progress to that branch as it goes.
+- Before you create a sub session, call list_sub_sessions: it shows the nodes you can run one on. Run it on a connected node that isn't draining, by setting its node, unless its task needs this machine's files, services, or uncommitted changes. UI work, builds, test runs, and long investigations belong on a node, which keeps this machine free for the user. A node sub session starts in an empty folder there, so name the repository and branch to work on in its brief; it pushes its progress to that branch as it goes.
 - You are the expert on the task, so brief it the way you would brief a capable colleague who knows nothing yet: the goal, the context and decisions so far, the deliverable, acceptance criteria you will actually check, and its boundaries. Vague briefs come back as duplicated or misdirected work.
 - Give parallel sub sessions separate parts of the work, and a worktree each when they change the same repository on this machine.
 - Treat each report as a claim. Check it against your acceptance criteria and its evidence before you use it or pass it on, and send a follow-up when it falls short. A report also lists the external writes the sub session made, such as pushes and pull request or issue changes; check that each is within its brief and fits what you know.
@@ -25,7 +25,7 @@ const createSubSessionTool = defineTool("create_sub_session", {
   description:
     "Creates a sub session you own to do one task, starting it with your brief. " +
     "Each finished turn reports back to you; send follow-ups with message_sub_session and close it with close_sub_session when the task is done. " +
-    "Set node to run it on a pool node from list_sub_sessions instead of this machine. " +
+    "Set node to run it on a pool node, which list_sub_sessions shows, instead of this machine. " +
     `It inherits your model and directory unless you set them. You can own at most ${SUB_SESSION_LIMIT} at once.`,
   parameters: subSessionRequestSchema,
   handler: async (request, invocation) => {

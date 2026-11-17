@@ -108,10 +108,11 @@
         },
         {
           "id": "f-ahp-host-binding",
-          "statement": "On brchen-db3, a remote session opens only on the agent host process that created it: another host that was already running lists it but refuses it with `-32001` (\"No agent for session\"), even after the first host exits, while a host started after that one exited reopens it with its history and context. A standalone host that holds sessions never exits on its own, even with no client connected.",
-          "whyItMatters": "A node must keep using one host across Agent Teams restarts, replace a lost host with a newly started one rather than another running one, and expect hosts to accumulate unless something retires them.",
+          "statement": "On brchen-db3, a remote session opens only on the agent host process that created it: another host that was already running lists it but refuses it with `-32001` (\"No agent for session\"), even after the first host exits, while a host started after that one exited reopens it with its history and context, as saved when it started, so it lacks a turn the lost host was still running. A standalone host that holds sessions never exits on its own, even with no client connected. The gateway can keep listing a host after its process is killed, and selecting it then never answers; a newly started dedicated host can take over 30 seconds to answer its selection, and starts even if the selection times out. Stopping the listed process can leave the turn it ran going to completion.",
+          "whyItMatters": "A node must keep using one host across Agent Teams restarts, replace a lost host with a newly started one rather than another running one, wait long enough for that host rather than starting more, report a turn its replacement lacks as possibly finished rather than lost, and expect hosts to accumulate unless something retires them.",
           "sources": [
-            "Host restart probe against Insiders agent host 944d79c on brchen-db3, 2026-11-17"
+            "Host restart probe against Insiders agent host 944d79c on brchen-db3, 2026-11-17",
+            "Host loss dogfood against brchen-db3, 2026-11-17"
           ]
         },
         {

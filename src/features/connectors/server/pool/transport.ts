@@ -9,28 +9,58 @@ import type { AhpTransport, TransportFrame } from "@microsoft/agent-host-protoco
 import type { PoolNode } from "../../model";
 
 const OPEN_TIMEOUT_MS = 30_000;
+/** How long a node waits for a new dedicated agent host to start and answer. */
+const NEW_HOST_TIMEOUT_MS = 120_000;
 const TUNNELS_API = "https://global.rel.tunnels.api.visualstudio.com";
 const TUNNELS_API_VERSION = "api-version=2023-09-27-preview";
 /** The tunnel port `code tunnel` forwards to the machine's agent host. */
 const AGENT_HOST_PORT = 31546;
 const HOST_SELECTION_PATH = "/agent-host/select";
 
-/** Opens an AHP transport to the node's agent host, returning to `host` while it is live. */
+/**
+ * Opens an AHP transport to the node's agent host, returning to `host` while it answers. The
+ * gateway can list a host that has died, so one that doesn't answer is replaced by a new dedicated
+ * host. If that one doesn't answer in time either, the newest other live host is taken rather than
+ * starting more: the gateway lists the newest host first, and that is the slow new one once it
+ * has started.
+ */
 export async function openNodeTransport(
   node: PoolNode,
   host: string | undefined,
 ): Promise<{ transport: AhpTransport; host: string }> {
   const tunnel = await findAgentHostTunnel(node.name, await githubToken());
-  const url = new URL(HOST_SELECTION_PATH, tunnel.agentHostUrl);
+  const open = (ask: string | undefined, exclude?: string) =>
+    openAgentHost(tunnel.agentHostUrl, tunnel.connectToken, ask, exclude);
+  if (!host) return open(undefined);
+  for (const [ask, exclude] of [
+    [host, undefined],
+    [host, host],
+  ] as const) {
+    try {
+      return await open(ask, exclude);
+    } catch (error) {
+      if (!(error instanceof HostSelectionError)) throw error;
+    }
+  }
+  return open(undefined, host);
+}
+
+async function openAgentHost(
+  agentHostUrl: string,
+  connectToken: string,
+  host: string | undefined,
+  exclude: string | undefined,
+): Promise<{ transport: AhpTransport; host: string }> {
+  const url = new URL(HOST_SELECTION_PATH, agentHostUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   // Bun's WebSocket takes request headers, which the DOM type doesn't declare.
   const socket = new WebSocket(url, {
-    headers: { "X-Tunnel-Authorization": `tunnel ${tunnel.connectToken}` },
+    headers: { "X-Tunnel-Authorization": `tunnel ${connectToken}` },
   } as unknown as string[]);
   // The host-selection route speaks first, so listen before the socket opens.
   const frames = new FrameBuffer(socket);
   await opened(socket);
-  const selected = await selectAgentHost(socket, frames, host);
+  const selected = await selectAgentHost(socket, frames, host, exclude);
   return { transport: new WebSocketTransport(socket, frames), host: selected };
 }
 
@@ -103,23 +133,43 @@ export function chooseAgentHost(
   return standalone[0] ? { instanceId: standalone[0].instanceId } : { newDedicated: true };
 }
 
+/** The chosen agent host didn't take the connection. */
+class HostSelectionError extends Error {}
+
+/** Selects the node's host, never `exclude`, which the gateway may still list after it died. */
 async function selectAgentHost(
   socket: WebSocket,
   frames: FrameBuffer,
   host: string | undefined,
+  exclude: string | undefined,
 ): Promise<string> {
-  const inventory = JSON.parse(await frames.nextText()) as HostInventory;
-  socket.send(JSON.stringify(chooseAgentHost(inventory.endpoints, host)));
-  const reply = JSON.parse(await frames.nextText()) as {
-    ok: boolean;
-    selected?: { instanceId: string };
-    error?: string;
-  };
-  if (!reply.ok || !reply.selected) {
+  const inventory = JSON.parse(
+    await frames.nextText("The tunnel didn't offer agent host selection; update its VS Code CLI."),
+  ) as HostInventory;
+  const choice = chooseAgentHost(
+    inventory.endpoints.filter(({ instanceId }) => instanceId !== exclude),
+    host,
+  );
+  socket.send(JSON.stringify(choice));
+  // A new host takes a while to start.
+  const timeoutMs = "newDedicated" in choice ? NEW_HOST_TIMEOUT_MS : OPEN_TIMEOUT_MS;
+  try {
+    const reply = JSON.parse(
+      await frames.nextText(
+        `The agent host didn't answer within ${timeoutMs / 1000} seconds.`,
+        timeoutMs,
+      ),
+    ) as { ok: boolean; selected?: { instanceId: string }; error?: string };
+    if (!reply.ok || !reply.selected) {
+      throw new Error(`The agent host couldn't be selected: ${reply.error ?? "no reason given"}.`);
+    }
+    return reply.selected.instanceId;
+  } catch (error) {
     socket.close();
-    throw new Error(`The agent host couldn't be selected: ${reply.error ?? "no reason given"}.`);
+    throw new HostSelectionError(error instanceof Error ? error.message : String(error), {
+      cause: error,
+    });
   }
-  return reply.selected.instanceId;
 }
 
 /** The owner's GitHub token, which signs a node's agent host in to Copilot. */
@@ -186,17 +236,11 @@ class FrameBuffer {
     return new Promise((resolve) => this.#waiters.push(resolve));
   }
 
-  /** The next text frame, within the open timeout, for the host-selection handshake. */
-  async nextText(): Promise<string> {
+  /** The next text frame, within a timeout, for the host-selection handshake. */
+  async nextText(timeoutMessage: string, timeoutMs = OPEN_TIMEOUT_MS): Promise<string> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () =>
-          reject(
-            new Error("The tunnel didn't offer agent host selection; update its VS Code CLI."),
-          ),
-        OPEN_TIMEOUT_MS,
-      );
+      timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
     });
     try {
       const frame = await Promise.race([this.next(), timeout]);

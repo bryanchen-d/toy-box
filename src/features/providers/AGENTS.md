@@ -119,11 +119,14 @@ lists it. Node providers stay out of the catalog: a sub session asks for one by 
   choosing the host's matching option. Completed native calls are screened, which records external
   writes; the host can't take a replaced result. Input requests are declined, since nobody watches
   a remote session to answer.
-- A run goes on at the node when its connection drops, so the connection waits for the node link
-  to reconnect, registers its tools again, resubscribes, catches the transcript up from the chat's
-  state, and resends any answer the host still waits on. Sends in the meantime are
+- A run goes on at the node when its connection drops, so the connection waits for the node to
+  reconnect through whichever link the pool now has for it (`nodeLinks`), so a pool edit or reload
+  doesn't end the run. It then registers its tools again, resubscribes, catches the transcript up
+  from the chat's state, and resends any answer the host still waits on. Sends in the meantime are
   `SessionConnectionUnavailableError`. It gives up once the link marks the node unreachable, ending
-  the turn with an error that says the run may have gone on there.
+  the turn with an error that says the run may have gone on there. A host that replaced a lost one
+  reopens the session as it was saved, without a turn the lost host was running, so that turn ends
+  with an error saying the lost host may have finished it.
 - `projector.ts` translates chat actions live, read against the chat state they produced, and a
   chat's turns from history, into the same transcript. System messages ride in the native message's
   `_meta`. The host ends a steered turn and starts the next from its steering message, so a turn

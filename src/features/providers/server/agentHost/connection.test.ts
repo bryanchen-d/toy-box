@@ -23,12 +23,15 @@ function fakeNode() {
     chat = chatReducer(chat, action as never, () => {});
     for (const feed of feeds) feed.push({ type: "action", params: { action } });
   };
+  const visible = () => structuredClone(chat);
 
   function connectClient() {
     let feed: { push: (event: unknown) => void; end: () => void } | undefined;
     let open = true;
     const client = {
-      request: async () => ({ snapshot: { state: { defaultChat: CHAT } } }),
+      request: async (_method: string, params: { channel?: string }) => ({
+        snapshot: { state: params.channel === CHAT ? visible() : { defaultChat: CHAT } },
+      }),
       subscribe: async () => {
         const queue: unknown[] = [];
         let wake = () => {};
@@ -51,7 +54,7 @@ function fakeNode() {
             await new Promise<void>((resolve) => (wake = resolve));
           }
         }
-        return { result: { snapshot: { state: structuredClone(chat) } }, subscription: events() };
+        return { result: { snapshot: { state: visible() } }, subscription: events() };
       },
       dispatch: (channel: string, action: Record<string, any>) => {
         if (!open) throw new Error("The client is closed.");
@@ -74,7 +77,7 @@ function fakeNode() {
 
   let current: ReturnType<typeof connectClient> | undefined = connectClient();
   let reconnected = Promise.withResolvers<AhpClient | undefined>();
-  const host: AgentHost = {
+  const link = (): AgentHost => ({
     node: { name: "brchen-db3", scratchFolder: "C:/scratch" },
     get client() {
       return current?.client;
@@ -83,9 +86,12 @@ function fakeNode() {
     agents: [],
     whenConnected: () => (current ? Promise.resolve(current.client) : reconnected.promise),
     onConnected: () => () => {},
-  };
+  });
+  let host = link();
   return {
-    host,
+    get host() {
+      return host;
+    },
     apply,
     dispatched: (type: ActionType) => dispatched.filter((action) => action.type === type),
     drop() {
@@ -97,8 +103,23 @@ function fakeNode() {
       current = connectClient();
       reconnected.resolve(current.client);
     },
+    /** The node comes back on a new host, which reopened the session before the run began. */
+    reconnectToNewHost() {
+      chat = { turns: [] } as unknown as ChatState;
+      current = connectClient();
+      reconnected.resolve(current.client);
+    },
     giveUp() {
       reconnected.resolve(undefined);
+    },
+    /** The pool changed: its old link stops and a new one connects to the same host. */
+    replaceLink() {
+      const stopped = reconnected;
+      reconnected = Promise.withResolvers();
+      host = link();
+      stopped.resolve(undefined);
+      current = connectClient();
+      reconnected.resolve(current.client);
     },
   };
 }
@@ -119,6 +140,7 @@ async function connect(
   const connection = await connectRemoteSession({
     providerId: "node:brchen-db3",
     host: node.host,
+    currentHost: () => node.host,
     sessionId: "session-1",
     models: [],
     configuration: {
@@ -368,5 +390,38 @@ describe("a dropped node", () => {
     await expect(connection.send(message("m2", "Again."))).rejects.toBeInstanceOf(
       SessionConnectionUnavailableError,
     );
+  });
+
+  test("a run follows the pool's new link when the pool changes or reloads", async () => {
+    const { node, connection, events } = await connect();
+    await connection.send(message("m1", "Start."));
+    await until(() => events.some(({ type }) => type === "user_message"));
+
+    node.drop();
+    node.apply(reply("r1", "Done."));
+    node.apply({ type: ActionType.ChatTurnComplete, turnId: "m1", duration: 1 });
+    node.replaceLink();
+
+    await until(() => events.some(({ type }) => type === "end"));
+    expect(events.slice(-2)).toEqual([
+      { type: "assistant_message", messageId: "r1", content: "Done." },
+      { type: "end", reason: "idle" },
+    ]);
+  });
+
+  test("a run its new host doesn't have ends, warning that the lost host may have finished it", async () => {
+    const { node, connection, events } = await connect();
+    await connection.send(message("m1", "Start."));
+    await until(() => events.some(({ type }) => type === "user_message"));
+
+    node.drop();
+    node.reconnectToNewHost();
+
+    await until(() => events.some(({ type }) => type === "end"));
+    expect(events.at(-1)).toMatchObject({
+      type: "end",
+      reason: "error",
+      error: expect.stringContaining("may have finished"),
+    });
   });
 });
