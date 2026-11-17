@@ -107,6 +107,14 @@
           ]
         },
         {
+          "id": "f-ahp-turns",
+          "statement": "On brchen-db3's host, a steering message ends the running turn, and the host starts the next turn from it with `queuedMessageId` naming it. Autopilot appends a `**Task completed:**` summary part after the model's own answer, which interactive mode doesn't. The host echoes a client tool's completion and then reports it again. Subscribing to a session that doesn't exist fails with `-32001` (\"No agent for session\"), and a message's `_meta` survives into history.",
+          "whyItMatters": "A steered turn and its successor are one Agent Teams turn; remote sessions run in interactive mode so a sub session's final answer, including `NO_UPDATE`, is its own; and subscribing first detects a retried create.",
+          "sources": [
+            "Node provider probe against Insiders agent host 944d79c on brchen-db3, 2026-11-17"
+          ]
+        },
+        {
           "id": "f-agent-sandbox",
           "statement": "The host's per-session `sandboxEnabled` switch didn't help on brchen-db3: it refused to start every shell command until the machine allows the sandbox's local proxy, it marks sandboxed commands as needing no confirmation, and the host's own GitHub MCP reads run outside it. A client can toggle or stop a session's MCP servers.",
           "whyItMatters": "Neither the sandbox nor permission rules remove a session's GitHub read path; the node's environment has to.",
@@ -1574,6 +1582,7 @@
               "id": "s-remote-provider",
               "title": "Run sub sessions on a node through the remote provider",
               "doneWhen": "A sub session created for brchen-db3's pool runs there with its transcript and history in Agent Teams; a retried create makes one session; messages and steering reach it; attachments reach the node; and mentioning the pool addresses nothing.",
+              "status": "in-progress",
               "implements": [
                 "r-remote-provider",
                 "r-remote-nodes",

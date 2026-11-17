@@ -47,6 +47,8 @@ the workspace consumes the same provider-owned catalog and configuration.
   GitHub Copilot SDK.
 - [`server/codex/`](server/codex/AGENTS.md) implements it through the Codex app-server.
 - [`server/claude/`](server/claude/AGENTS.md) implements it through the Claude Agent SDK.
+- `server/agentHost/` implements it for a pool node, a machine whose VS Code agent host runs
+  sessions over the Agent Host Protocol (AHP). See [Node providers](#node-providers).
 - [`INTEGRATION.md`](INTEGRATION.md) records the capability inventory and native limits.
 
 Sessions owns public IDs, draft records, native identity, role policy, tools, instructions,
@@ -92,6 +94,35 @@ before publishing completion. Disconnecting a browser never disconnects the prov
 `ModelConfiguration.provider` and `Session.provider.id` select the provider;
 these shared value fields also distinguish models with the same name across catalogs.
 Keep one model configuration and transcript shape across providers and all consumers.
+
+## Node providers
+
+Each node an agent pool lists is its own provider, `node:<machine>`, registered by the pool's link
+([Connectors](../connectors/AGENTS.md)) through `registerNodeProvider` for as long as the pool
+lists it. Node providers stay out of the catalog: a sub session asks for one by node, and
+`getSessionProvider` resolves it. A node no pool lists anymore resolves to
+`SessionConnectionUnavailableError`, so its sessions can still be closed.
+
+- `provider.ts` runs sessions through the node link's live client in the host's Copilot agent
+  (`copilotcli`), each in its own folder under the node's scratch folder, in interactive mode, whose
+  final answer is the model's own (autopilot appends a task summary after it). Creating subscribes
+  to the session URI first, so a retried create reuses the session it made. History pages every
+  turn in with `fetchTurns`. Deleting archives the session on the node. A node out of reach throws
+  `SessionConnectionUnavailableError`.
+- `connection.ts` holds a session's subscription, which keeps Agent Teams the session's active
+  client with its tools registered. A new session's first message carries Agent Teams' instructions
+  in `<agent_teams_instructions>`, which projection strips. A message starts a turn whose ID is the
+  message's client ID, or steers the running turn. The host holds Agent Teams' own tool calls for
+  this client, which approves them and runs them; it holds native calls the guard then reviews,
+  choosing the host's matching option. Completed native calls are screened, which records external
+  writes; the host can't take a replaced result. Input requests are declined, since nobody watches
+  a remote session to answer. A dropped node connection ends the turn with an error and makes the
+  next send reacquire the connection.
+- `projector.ts` translates chat actions live, read against the chat state they produced, and a
+  chat's turns from history, into the same transcript. System messages ride in the native message's
+  `_meta`. The host ends a steered turn and starts the next from its steering message, so a turn
+  ends only when no steering message is pending, and the next turn takes that message's client ID.
+  The host echoes a client tool's completion before reporting its own; one ends the call.
 
 ## Native workarounds
 

@@ -8,6 +8,8 @@ import { NodeLink, type NodeLinkDependencies } from "./node";
 export type PoolLinkDependencies = {
   openTransport: (node: PoolNode) => Promise<AhpTransport>;
   githubToken: () => Promise<string>;
+  /** Runs sessions on a node while the pool lists it; the returned function stops that. */
+  serveNode: (node: NodeLink) => () => void;
   /** The link's status changed. */
   onChange: (connectorId: string) => void;
   now?: () => Date;
@@ -16,8 +18,11 @@ export type PoolLinkDependencies = {
 
 export class PoolLink {
   readonly #nodes: NodeLink[];
+  readonly #serveNode: PoolLinkDependencies["serveNode"];
+  #stopServing: (() => void)[] = [];
 
   constructor(connector: AgentPoolConnectorRecord, dependencies: PoolLinkDependencies) {
+    this.#serveNode = dependencies.serveNode;
     this.#nodes = connector.nodes.map(
       (node) =>
         new NodeLink(node, {
@@ -37,13 +42,15 @@ export class PoolLink {
 
   start(): void {
     for (const node of this.#nodes) node.start();
+    this.#stopServing = this.#nodes.map((node) => this.#serveNode(node));
   }
 
   async stop(): Promise<void> {
+    for (const stopServing of this.#stopServing) stopServing();
     await Promise.all(this.#nodes.map((node) => node.stop()));
   }
 
-  /** Requests wait in the outbox until the pool runs them as remote sessions. */
+  /** No message addresses a pool, so it never has anything to deliver. */
   async deliver(): Promise<void> {}
 
   /** A pool answers only the teams that write to it, so it needs no directory. */

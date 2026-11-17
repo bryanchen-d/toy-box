@@ -1,6 +1,7 @@
 // Connector definitions, their live links, and delivery into connectors.
 
 import { broadcast, subscribeWorkspaceEvents } from "@workspace/server/events";
+import { registerNodeProvider } from "@providers/server";
 import { getStateDatabase } from "@/server/database";
 import { getProcessValue, sharedMap } from "@/shared/server/processState";
 import type { ConnectorEntry, ConnectorMessage, ConnectorOptions } from "../model";
@@ -91,7 +92,12 @@ function startLink(database: ConnectorDatabase, record: ConnectorRecord): void {
   const onChange = (connectorId: string) => void publishConnector(connectorId);
   const link: Link =
     record.kind === "agentPool"
-      ? new PoolLink(record, { openTransport: openNodeTransport, githubToken, onChange })
+      ? new PoolLink(record, {
+          openTransport: openNodeTransport,
+          githubToken,
+          serveNode: registerNodeProvider,
+          onChange,
+        })
       : new ConnectorLink(record, {
           database,
           openEndpoint: openConnectorEndpoint,

@@ -64,6 +64,9 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   ask rather than guess. Sub sessions are retained; only their owner or its deletion removes them.
 - A session owns at most five at once. Creation is serialized per owner, so parallel calls can't
   exceed the limit.
+- Naming a `node` runs it on that pool node as the node's provider
+  ([Providers](../providers/AGENTS.md#node-providers)), in a fresh folder there, so it takes no
+  directory or worktree. A model it names applies only if the node offers it.
 - A sub session never owns sub sessions: session-owned Workers receive only `wake_after` from the
   set, and creation refuses a caller that is one.
 - Closing cancels its work and deletes it, which also closes any pane linked to it.

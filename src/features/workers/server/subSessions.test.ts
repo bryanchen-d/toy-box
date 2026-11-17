@@ -174,6 +174,32 @@ describe("sub sessions", () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
+  test("run on a node a pool lists, as that node's provider in a folder of its own", async () => {
+    const { registerNodeProvider } = await import("@providers/server");
+    onTestFinished(
+      registerNodeProvider({
+        node: { name: "brchen-db3", scratchFolder: "C:/scratch" },
+        client: undefined,
+        clientId: "client-1",
+        agents: [],
+      }),
+    );
+    const model = { provider: "copilot", name: "gpt-5.5" };
+
+    await createSubSession("owner", { name: "UI check", brief, node: "brchen-db3", model });
+
+    expect(spawnMock.mock.calls[0]![0].message.model).toEqual({
+      provider: "node:brchen-db3",
+      name: "gpt-5.5",
+    });
+    await expect(
+      createSubSession("owner", { name: "Elsewhere", brief, node: "brchen-db9" }),
+    ).rejects.toThrow("No agent pool lists the node brchen-db9.");
+    await expect(
+      createSubSession("owner", { name: "Here", brief, node: "brchen-db3", useWorktree: true }),
+    ).rejects.toThrow("leave directory and useWorktree unset");
+  });
+
   test("answer only to their owner", async () => {
     const { sessionId } = await createSubSession("owner", { name: "Reconnect fix", brief });
 

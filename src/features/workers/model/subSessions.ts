@@ -89,6 +89,14 @@ export const subSessionRequestSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether to isolate the sub session in its own git worktree. Defaults to false."),
+  node: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "A node to run the sub session on, by the name its agent pool lists it under, for work that needs its own machine, such as driving a UI. It starts in a fresh folder there, so leave directory and useWorktree unset; a model you name applies only if the node offers it.",
+    ),
 });
 export type SubSessionRequest = z.infer<typeof subSessionRequestSchema>;
 

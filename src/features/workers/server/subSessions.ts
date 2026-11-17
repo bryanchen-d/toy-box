@@ -56,12 +56,17 @@ export function createSubSession(
 
 async function admit(
   ownerSessionId: string,
-  { name, brief, model, directory, useWorktree }: SubSessionRequest,
+  { name, brief, model, directory, useWorktree, node }: SubSessionRequest,
 ): Promise<{ sessionId: string }> {
   const owner = await getPersistedWorker(ownerSessionId);
   if (owner?.type === "session") {
     throw new Error(
       "A sub session can't create sub sessions of its own. Report what you need to your owner instead.",
+    );
+  }
+  if (node && (directory !== undefined || useWorktree)) {
+    throw new Error(
+      "A sub session on a node starts in its own folder there; leave directory and useWorktree unset.",
     );
   }
   const open = await ownedSubSessions(ownerSessionId);
@@ -74,9 +79,21 @@ async function admit(
   return spawnSessionWorker({
     parentSessionId: ownerSessionId,
     name,
-    message: { content: renderSubSessionBrief(brief, { name: owner?.name }), model },
+    message: {
+      content: renderSubSessionBrief(brief, { name: owner?.name }),
+      model: node ? await nodeModel(node, model) : model,
+    },
     location: { directory, useWorktree },
   });
+}
+
+/** A node runs its sub sessions as its own provider, with the named model if the node has it. */
+async function nodeModel(node: string, model: SubSessionRequest["model"]) {
+  const { getSessionProvider } = await import("@providers/server");
+  const { nodeProviderId } = await import("@providers/server/agentHost/provider");
+  const provider = nodeProviderId(node);
+  getSessionProvider(provider);
+  return { provider, name: model?.name ?? "auto" };
 }
 
 /** Sends a follow-up, which starts the sub session's next turn or waits behind its current one. */

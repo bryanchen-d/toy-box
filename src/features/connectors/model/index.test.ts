@@ -67,19 +67,26 @@ describe("connector options", () => {
 });
 
 describe("connector addressing", () => {
-  const connectors = [{ name: "BryanBot" }, { name: "Build Watcher" }];
+  const connectors = [
+    { name: "BryanBot", kind: "service" as const },
+    { name: "Build Watcher", kind: "service" as const },
+  ];
 
   test("a message addresses the connectors it opens with", () => {
     expect(connectorHandle({ name: "Build Watcher" })).toBe("build-watcher");
     expect(connectorsAddressedBy("@bryanbot post this to #dev", connectors)).toEqual([
-      { name: "BryanBot" },
+      connectors[0],
     ]);
     expect(connectorsAddressedBy("@build-watcher, @BryanBot: ping", connectors)).toEqual(
       connectors,
     );
-    expect(connectorsAddressedBy("@lead @bryanbot post this", connectors)).toEqual([
-      { name: "BryanBot" },
-    ]);
+    expect(connectorsAddressedBy("@lead @bryanbot post this", connectors)).toEqual([connectors[0]]);
+  });
+
+  test("a pool is never addressed", () => {
+    expect(
+      connectorsAddressedBy("@pool run this", [{ name: "Pool", kind: "agentPool" as const }]),
+    ).toEqual([]);
   });
 
   test("a connector's handle later in the text is only its name", () => {

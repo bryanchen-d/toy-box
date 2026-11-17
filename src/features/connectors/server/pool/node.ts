@@ -33,6 +33,7 @@ export class NodeLink {
   readonly #abort = new AbortController();
   #status: ConnectorStatus;
   #client: AhpClient | undefined;
+  #agents: RootState["agents"] = [];
   #failures = 0;
   #running: Promise<void> | undefined;
   #unreachableTimer: ReturnType<typeof setTimeout> | undefined;
@@ -51,6 +52,16 @@ export class NodeLink {
   /** The connected host's client, or undefined while the node is out of reach. */
   get client(): AhpClient | undefined {
     return this.#client;
+  }
+
+  /** Identifies this installation to the host, which keeps a client's tools across reconnects. */
+  get clientId(): string {
+    return this.#deps.clientId;
+  }
+
+  /** The host's agents and their models, as of the last connection. */
+  get agents(): RootState["agents"] {
+    return this.#agents;
   }
 
   start(): void {
@@ -95,6 +106,7 @@ export class NodeLink {
         | undefined;
       await this.#signIn(client, root);
       if (signal.aborted) return;
+      this.#agents = root?.agents ?? [];
       this.#client = client;
       this.#connected();
       for (;;) {

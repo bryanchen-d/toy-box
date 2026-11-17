@@ -107,8 +107,10 @@ takes any live standalone host, else asks for a new dedicated one, and the tunne
 connection token. Each connection initializes under the connector's client ID, signs the host's
 agents in with the same GitHub token, proves itself alive with pings, and reconnects with the same
 backoff and unreachable threshold as a service link. A pool is connected while any node is;
-otherwise its error names each node it can't reach. Requests to a pool wait in the outbox until the
-pool runs them as remote sessions.
+otherwise its error names each node it can't reach. While it runs, the link registers each node as
+a session provider ([Providers](../providers/AGENTS.md#node-providers)), which runs sub sessions
+created for that node over the node's connection. A pool is a place, not something a team talks
+to: no message addresses it, and `read_team` lists it with its nodes instead of a mention.
 
 `server/index.ts` owns the registry of links, CRUD, and publication. Startup links every connector
 and returns cleanup that stops them. Starting a link replaces the registered one in a single step

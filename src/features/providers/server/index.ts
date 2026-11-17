@@ -3,11 +3,12 @@ import type { ModelInfo, ProviderCatalog } from "@providers/model";
 import { getSettings } from "@workspace/server/state/settings";
 import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
-import type { SessionProvider } from "./provider";
+import { SessionConnectionUnavailableError, type SessionProvider } from "./provider";
 import * as cli from "./cli";
 import { copilotProvider } from "./copilot/provider";
 import { codexProvider } from "./codex/provider";
 import { claudeProvider } from "./claude/provider";
+import { createNodeProvider, nodeProviderId, type AgentHost } from "./agentHost/provider";
 
 export const sessionProviders: readonly SessionProvider[] = [
   copilotProvider,
@@ -15,13 +16,32 @@ export const sessionProviders: readonly SessionProvider[] = [
   claudeProvider,
 ];
 
+// Pool nodes run sessions for agents that ask for them by node; they stay out of the catalog.
+const nodeProviders = sharedMap<SessionProvider>("node-session-providers");
+
 const modelsByProvider = sharedMap<Promise<ModelInfo[]>>("provider-models");
 const pendingSessionsByProvider = sharedMap<Promise<Session[]>>("provider-session-discovery");
 
 export function getSessionProvider(id: string): SessionProvider {
-  const provider = sessionProviders.find((candidate) => candidate.id === id);
-  if (!provider) throw new Error(`Unknown session provider: ${id}.`);
-  return provider;
+  const provider =
+    sessionProviders.find((candidate) => candidate.id === id) ?? nodeProviders.get(id);
+  if (provider) return provider;
+  // A node's sessions outlive its pool listing; they can still be closed without it.
+  if (id.startsWith(nodeProviderId(""))) {
+    throw new SessionConnectionUnavailableError(
+      `No agent pool lists the node ${id.slice(nodeProviderId("").length)}.`,
+    );
+  }
+  throw new Error(`Unknown session provider: ${id}.`);
+}
+
+/** Runs sessions on a pool node while its pool lists it; the returned function stops that. */
+export function registerNodeProvider(host: AgentHost): () => void {
+  const provider = createNodeProvider(host);
+  nodeProviders.set(provider.id, provider);
+  return () => {
+    if (nodeProviders.get(provider.id) === provider) nodeProviders.delete(provider.id);
+  };
 }
 
 export async function getProviderCatalog(): Promise<ProviderCatalog> {

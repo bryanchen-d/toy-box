@@ -127,14 +127,17 @@ export function connectorHandle(connector: Pick<Connector, "name">): string {
 
 /**
  * The connectors a message opens by addressing, which each receive it. Elsewhere in the text a
- * connector's handle is only its name, so talking about one never sends it anything.
+ * connector's handle is only its name, so talking about one never sends it anything. A pool is
+ * where sub sessions run, not something a team talks to, so no message addresses it.
  */
-export function connectorsAddressedBy<C extends Pick<Connector, "name">>(
+export function connectorsAddressedBy<C extends Pick<Connector, "name" | "kind">>(
   content: string,
   connectors: readonly C[],
 ): C[] {
   const handles = leadingMentionHandles(content);
-  return connectors.filter((connector) => handles.includes(connectorHandle(connector)));
+  return connectors.filter(
+    (connector) => connector.kind === "service" && handles.includes(connectorHandle(connector)),
+  );
 }
 
 /** Where forwarded content came from. A requester who isn't the owner speaks only as context. */

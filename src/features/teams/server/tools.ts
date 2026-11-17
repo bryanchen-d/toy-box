@@ -454,12 +454,22 @@ async function toTeamReadToolResult(
   const { listTeams } = await import("@teams/server");
   const { receiveUntrustedContent } = await import("@security/server");
   const teamNames = new Map((await listTeams()).teams.map(({ id, name }) => [id, name]));
-  const connectors = (await listConnectors()).map(({ id, name, status }) => ({
-    connectorId: id,
-    name,
-    mention: `@${connectorHandle({ name })}`,
-    status: status.state,
-    ...(status.state === "unreachable" ? { unreachableSince: status.since } : {}),
+  const connectors = (await listConnectors()).map((connector) => ({
+    connectorId: connector.id,
+    name: connector.name,
+    // A pool isn't addressed; its nodes are where create_sub_session can run a sub session.
+    ...(connector.kind === "agentPool"
+      ? {
+          nodes: connector.nodes.map(({ name, draining }) => ({
+            name,
+            ...(draining ? { draining } : {}),
+          })),
+        }
+      : { mention: `@${connectorHandle(connector)}` }),
+    status: connector.status.state,
+    ...(connector.status.state === "unreachable"
+      ? { unreachableSince: connector.status.since }
+      : {}),
   }));
   const images: Attachment[] = [];
   const messages = await Promise.all(

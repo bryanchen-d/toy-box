@@ -105,6 +105,7 @@ function startPool(nodes: PoolNode[], overrides: Partial<PoolLinkDependencies>) 
       throw new Error("no host");
     },
     githubToken: async () => "gh-token",
+    serveNode: () => () => {},
     onChange: () => {},
     timing: {
       pingIntervalMs: 10,
