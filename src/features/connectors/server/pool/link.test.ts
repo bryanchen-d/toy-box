@@ -82,8 +82,6 @@ describe("pool status", () => {
 function node(name: string): PoolNode {
   return {
     name,
-    transport: { type: "http", url: "http://127.0.0.1:31790" },
-    tokenFile: "unused",
     workspaces: [],
     scratchFolder: "C:/scratch",
     computeSlots: 9_999,

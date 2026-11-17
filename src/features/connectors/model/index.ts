@@ -36,11 +36,8 @@ const connectorPathSchema = z.string().trim().min(1).max(1_000);
 /** A machine whose VS Code agent host runs a pool's remote sessions. */
 export const poolNodeSchema = z
   .object({
+    /** The machine's name, which labels its VS Code tunnel, through which Agent Teams reaches it. */
     name: z.string().trim().min(1).max(80),
-    /** How Agent Teams reaches the node's agent host. */
-    transport: connectorTransportSchema,
-    /** A file on this machine holding the host's connection token, read on each connection. */
-    tokenFile: connectorPathSchema,
     /** Repositories checked out on the node, where sessions for teams working in them start. */
     workspaces: z
       .array(

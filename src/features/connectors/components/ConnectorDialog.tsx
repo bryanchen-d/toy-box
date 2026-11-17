@@ -47,8 +47,6 @@ type TransportDraft = {
 type NodeDraft = {
   key: string;
   name: string;
-  transport: TransportDraft;
-  tokenFile: string;
   workspaces: string;
   scratchFolder: string;
   computeSlots: string;
@@ -170,7 +168,7 @@ export function ConnectorDialog({
   );
 }
 
-/** One node of a pool: how to reach its agent host, and where its sessions start. */
+/** One node of a pool: the machine whose VS Code tunnel reaches its agent host, and where its sessions start. */
 function PoolNodeFields({
   node,
   onChange,
@@ -185,7 +183,7 @@ function PoolNodeFields({
     <fieldset className="space-y-3 rounded-md border border-border/70 p-3">
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <Field label="Node">
+          <Field label="Machine">
             {(id) => (
               <Input
                 id={id}
@@ -202,20 +200,10 @@ function PoolNodeFields({
           </Button>
         )}
       </div>
-      <TransportFields
-        value={node.transport}
-        onChange={(transport) => onChange({ ...node, transport })}
-      />
-      <Field label="Host token file">
-        {(id) => (
-          <Input
-            id={id}
-            value={node.tokenFile}
-            onChange={(event) => onChange({ ...node, tokenFile: event.target.value })}
-            placeholder="Q:\agent-teams\pool\brchen-db3.token"
-          />
-        )}
-      </Field>
+      <p className="text-xs text-muted-foreground">
+        The name of the machine&apos;s VS Code tunnel. Agent Teams reaches it with your GitHub
+        sign-in from the gh CLI.
+      </p>
       <Field label="Workspaces">
         {(id) => (
           <Textarea
@@ -356,13 +344,11 @@ function transportFrom(draft: TransportDraft) {
     : { type: draft.type, tunnelId: draft.tunnelId, port: Number(draft.port) };
 }
 
-/** A node's fields, defaulting to the agent node kit's port and to no compute limit. */
+/** A node's fields, defaulting to no compute limit. */
 function nodeDraft(node?: PoolNode): NodeDraft {
   return {
     key: crypto.randomUUID(),
     name: node?.name ?? "",
-    transport: transportDraft(node?.transport, { type: "devtunnel", port: "31790" }),
-    tokenFile: node?.tokenFile ?? "",
     workspaces: (node?.workspaces ?? [])
       .map(({ repository, folder }) => `${repository} = ${folder}`)
       .join("\n"),
@@ -375,8 +361,6 @@ function nodeDraft(node?: PoolNode): NodeDraft {
 function nodeFrom(draft: NodeDraft) {
   return {
     name: draft.name,
-    transport: transportFrom(draft.transport),
-    tokenFile: draft.tokenFile,
     workspaces: draft.workspaces
       .split("\n")
       .filter((line) => line.trim())

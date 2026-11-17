@@ -52,8 +52,6 @@ describe("connector records", () => {
     const nodes = [
       {
         name: "brchen-db3",
-        transport: { type: "devtunnel" as const, tunnelId: "brchen-db3-agent-node", port: 31790 },
-        tokenFile: "Q:/agent-teams/pool/brchen-db3.token",
         workspaces: [{ repository: "bryanchen-d/vscode-space", folder: "C:/repos/vscode-space" }],
         scratchFolder: "C:/Users/brchen/.agent-node/scratch",
         computeSlots: 9_999,

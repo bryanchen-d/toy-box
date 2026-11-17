@@ -17,7 +17,7 @@ connector answers later in the same thread. A connector is one of two kinds:
 ```text
 Connector      name (and the @handle derived from it), kind, client ID, received cursor
 ├─ service     transport
-├─ agentPool   nodes: name, transport, host token file, workspaces, scratch folder, compute slots, draining
+├─ agentPool   nodes: machine name, workspaces, scratch folder, compute slots, draining
 ├─ Status      connected, connecting, or unreachable, since when, and the last failure; live only
 ├─ Outbox      messages waiting for the connector, ordered per conversation
 └─ Conversation one exchange with the connector, mapped to one team thread by Teams
@@ -27,9 +27,9 @@ Connector      name (and the @handle derived from it), kind, client ID, received
   `@handle` follows the agent mention grammar and is unique across connectors. A transport is
   `{ type: "http", url }` for a reachable base URL (the same machine, the LAN, or a dev tunnel's web
   URL), or `{ type: "devtunnel", tunnelId, port }`.
-- A pool node names the file holding its agent host's connection token, which Agent Teams reads on
-  each connection, so it stores no secrets. Its workspaces map a repository, as `owner/name`, to the
-  folder holding it on the node.
+- A pool node is named for its machine, whose VS Code tunnel carries its agent host, so Agent Teams
+  stores no secrets for it. Its workspaces map a repository, as `owner/name`, to the folder holding
+  it on the node.
 - The server keeps two private fields. `clientId` identifies this installation to the connector,
   which routes its own outbox by it, or to each node's agent host, which keeps a client's tools
   across reconnects. `receivedThrough` is the last service event applied, and the stream resumes
@@ -98,13 +98,17 @@ service connector:
    sent it gets a note. Reconnects back off from 1 second to 1 minute.
 
 `server/pool/` owns an agent pool's link. It holds one AHP connection per node
-(`server/pool/node.ts`), opened by `server/pool/transport.ts` over a Bun WebSocket that carries the
-dev tunnel's connect token, because the protocol package's own transport can't send headers. Each
-connection initializes under the connector's client ID, signs the host's agents in with the owner's
-GitHub token from the gh CLI, proves itself alive with pings, and reconnects with the same backoff
-and unreachable threshold as a service link. A pool is connected while any node is; otherwise its
-error names each node it can't reach. Requests to a pool wait in the outbox until the pool runs them
-as remote sessions.
+(`server/pool/node.ts`), opened by `server/pool/transport.ts` through the machine's VS Code tunnel:
+the owner's GitHub token from the gh CLI finds the tunnel by its machine-name label and gets a
+connect token from the Dev Tunnels service, and a Bun WebSocket carrying it (the protocol package's
+own transport can't send headers) opens the tunnel's `/agent-host/select` route. That route lists
+the machine's live agent hosts; the link returns to the one it used before while it is live, else
+takes any live standalone host, else asks for a new dedicated one, and the tunnel injects the host's
+connection token. Each connection initializes under the connector's client ID, signs the host's
+agents in with the same GitHub token, proves itself alive with pings, and reconnects with the same
+backoff and unreachable threshold as a service link. A pool is connected while any node is;
+otherwise its error names each node it can't reach. Requests to a pool wait in the outbox until the
+pool runs them as remote sessions.
 
 `server/index.ts` owns the registry of links, CRUD, and publication. Startup links every connector
 and returns cleanup that stops them. Starting a link replaces the registered one in a single step
