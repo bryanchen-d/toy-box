@@ -62,6 +62,24 @@ export function SettingsDialog({
           <div className="grid gap-2">
             <div className="flex items-center gap-2">
               <Checkbox
+                id="show-apps"
+                checked={settings.showApps}
+                onCheckedChange={(checked) => {
+                  updateSetting("showApps", checked);
+                }}
+              />
+              <label htmlFor="show-apps" className="text-sm font-medium text-foreground">
+                Show apps
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Shared across devices. Shows the Apps section in the sidebar. Hiding it does not close
+              open apps.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
                 id="show-sidebar-tools"
                 checked={settings.showSidebarTools}
                 onCheckedChange={(checked) => {

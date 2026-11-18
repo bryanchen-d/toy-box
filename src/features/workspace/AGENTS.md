@@ -54,6 +54,8 @@ write workspace settings or alter open panes.
 `showSidebarTools` defaults off and is shared across clients. It hides the Hyper session,
 Files/Screens browser, and Terminal buttons in both the expanded sidebar and collapsed rail
 without closing open surfaces or disabling their capabilities.
+`showApps` also defaults off and is shared across clients. It hides only the Apps sidebar
+section; open app panes, direct links, and app capabilities remain available.
 
 [`model/state/reducer.ts`](model/state/reducer.ts) applies the same `WorkspaceEvent` transitions on
 the server and in each browser. The sparse `sessionStates` map retains only meaningful shared

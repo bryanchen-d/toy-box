@@ -129,6 +129,7 @@ export function Sidebar({
   const showSessionsAndAutomations = useWorkspaceSelector(
     (workspace) => workspace.settings.showSessionsAndAutomations,
   );
+  const showApps = useWorkspaceSelector((workspace) => workspace.settings.showApps);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The file browser opens at a row's directory, or wherever it defaults from the footer.
   const [browsing, setBrowsing] = useState<{ directory?: string }>();
@@ -219,13 +220,15 @@ export function Sidebar({
             </SidebarSection>
           )}
 
-          <AppsPanel
-            isExpanded={panels.apps}
-            onExpandedChange={(expanded) => onPanelExpanded("apps", expanded)}
-            openAppIds={openAppIds}
-            onAppOpen={onAppOpen}
-            onAppOpenInHyper={onAppOpenInHyper}
-          />
+          {showApps && (
+            <AppsPanel
+              isExpanded={panels.apps}
+              onExpandedChange={(expanded) => onPanelExpanded("apps", expanded)}
+              openAppIds={openAppIds}
+              onAppOpen={onAppOpen}
+              onAppOpenInHyper={onAppOpenInHyper}
+            />
+          )}
 
           {showSessionsAndAutomations && (
             <AutomationPanel
