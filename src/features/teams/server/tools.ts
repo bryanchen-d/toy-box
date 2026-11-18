@@ -310,7 +310,7 @@ const setTeamStatusTool = defineTool("set_agent_status", {
 
 const updateTeamTool = defineTool("update_team", {
   description:
-    "Updates this team's name, purpose, working directory, tasks, preview, or canvas. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_team_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set purpose, directory, preview, or canvasArtifactId to null to clear it.",
+    "Updates this team's name, icon (avatar), purpose, working directory, tasks, preview, or canvas. Only the lead can update it. Design an avatar as SVG path data and a background color; use this same field to replace it when asked for a new team icon. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_team_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set avatar, purpose, directory, preview, or canvasArtifactId to null to clear it.",
   parameters: updateTeamInputSchema,
   handler: async (args, invocation) => {
     const { updateTeamFromLead } = await import("@teams/server");
@@ -558,6 +558,7 @@ async function toTeamReadToolResult(
 function teamContextForTool({
   id,
   name,
+  avatar,
   purpose,
   directory,
   tasks,
@@ -571,6 +572,7 @@ function teamContextForTool({
     uri: teamUri({ type: "team", teamId: id }),
     membersUri: teamUri({ type: "members", teamId: id }),
     name,
+    avatar,
     purpose,
     directory,
     paused,

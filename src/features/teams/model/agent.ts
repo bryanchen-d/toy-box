@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { modelConfigurationSchema } from "@providers/model";
 import { hasChanges } from "./changes";
+import { avatarSchema } from "./avatar";
 import type { TeamAgent } from ".";
 
 const durableIdSchema = z.string().trim().min(1).max(255);
@@ -13,28 +14,6 @@ export const agentRoleSchema = z
   .describe(
     "The member's role in the team, including any necessary persona or behavioral details.",
   );
-
-const agentAvatarMarkSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(2_000)
-  .regex(/^[MmZzLlHhVvCcSsQqTtAaEe0-9.,+\-\s]+$/, "Use SVG path data only.")
-  .describe(
-    "SVG path data for a distinctive outline mark in a 24 by 24 viewBox. Multiple subpaths are allowed. Keep the mark recognizable at 20 pixels.",
-  );
-
-export const agentAvatarSchema = z
-  .object({
-    mark: agentAvatarMarkSchema,
-    color: z
-      .string()
-      .regex(/^#[0-9a-f]{6}$/i)
-      .describe("A six-digit hex background color chosen to express this agent's identity."),
-  })
-  .strict();
-
-export type AgentAvatar = z.output<typeof agentAvatarSchema>;
 
 export const TEAM_LEAD_PROFILE = {
   name: "Lead",
@@ -70,7 +49,7 @@ const teamMemberChangesSchema = z
     name: agentNameSchema.optional(),
     role: agentRoleSchema.optional(),
     model: modelConfigurationSchema.nullable().optional(),
-    avatar: agentAvatarSchema.optional(),
+    avatar: avatarSchema.optional(),
   })
   .strict();
 export type TeamMemberChanges = z.output<typeof teamMemberChangesSchema>;

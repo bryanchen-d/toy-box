@@ -717,6 +717,37 @@ test("a Session can seed and passively read Team context", async () => {
   });
 });
 
+test("lead-authored team icons reach detail observers, the catalog, and agent context without wakes", async () => {
+  const teams = await openTeams();
+  const team = await createStoredTeam(teams, { name: "Design", ...TEAM_DEFAULTS });
+  const initial = (await getTeamSnapshot(team.id))!;
+  const events: TeamEvent[] = [];
+  onTestFinished(subscribeTeamEvents(team.id, (event) => events.push(event)));
+  onTestFinished(() => releaseTeamEvents(team.id));
+  const broadcast = spyOn(workspaceEvents, "broadcast").mockImplementation(() => {});
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage");
+  onTestFinished(() => {
+    broadcast.mockRestore();
+    deliver.mockRestore();
+  });
+  const avatar = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
+
+  expect(await invokeTool("update_team", { avatar }, team.id)).toMatchObject({
+    teamId: team.id,
+    avatar,
+  });
+  expect(events).toEqual([{ type: "avatar", revision: initial.revision + 1, avatar }]);
+  expect(broadcast).toHaveBeenCalledWith({
+    type: "team.upserted",
+    team: { ...team, avatar },
+  });
+  expect(events.reduce(reduceTeamState, initial)).toEqual((await getTeamSnapshot(team.id))!);
+  expect(await invokeTool("read_team", { teamId: team.id })).toMatchObject({
+    team: { avatar },
+  });
+  expect(deliver).not.toHaveBeenCalled();
+});
+
 test("canvas selection reaches observers and agent context through the existing team protocol", async () => {
   const teams = await openTeams();
   const team = await createStoredTeam(teams, { name: "Canvas", ...TEAM_DEFAULTS });

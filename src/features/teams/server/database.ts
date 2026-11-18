@@ -1,5 +1,6 @@
 import {
   agentHandleFromName,
+  avatarSchema,
   teamAgentMetadataSchema,
   teamHandle,
   isTeamSystemMessage,
@@ -1087,6 +1088,13 @@ async function updateTeamFields(
       tasks: next.tasks,
     });
   }
+  if (!Bun.deepEquals(next.avatar, current.avatar)) {
+    events.push({
+      type: "avatar",
+      revision: await advanceRevision(db, current.id),
+      avatar: next.avatar ?? null,
+    });
+  }
   if (!Bun.deepEquals(next.model, current.model)) {
     events.push({
       type: "model",
@@ -1107,11 +1115,20 @@ async function updateTeamFields(
 function teamColumns(
   team: Pick<
     Team,
-    "name" | "paused" | "purpose" | "directory" | "model" | "tasks" | "preview" | "canvasArtifactId"
+    | "name"
+    | "avatar"
+    | "paused"
+    | "purpose"
+    | "directory"
+    | "model"
+    | "tasks"
+    | "preview"
+    | "canvasArtifactId"
   >,
 ) {
   return {
     name: team.name,
+    avatar: team.avatar ? JSON.stringify(team.avatar) : null,
     paused: team.paused ? 1 : 0,
     purpose: team.purpose ?? null,
     directory: team.directory ?? null,
@@ -1368,6 +1385,7 @@ function adviceFromRow(row: TeamAdviceRow): TeamAdvice {
 type TeamRow = {
   id: string;
   name: string;
+  avatar: string | null;
   purpose: string | null;
   paused: number;
   directory: string | null;
@@ -1427,6 +1445,7 @@ function teamFromRow(row: TeamRow): Team {
   return {
     id: row.id,
     name: row.name,
+    ...(row.avatar ? { avatar: avatarSchema.parse(JSON.parse(row.avatar)) } : {}),
     paused: row.paused === 1,
     ...(row.purpose ? { purpose: row.purpose } : {}),
     ...(row.directory ? { directory: row.directory } : {}),

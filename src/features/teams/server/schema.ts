@@ -4,6 +4,7 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
     CREATE TABLE IF NOT EXISTS teams (
       id              TEXT PRIMARY KEY,
       name            TEXT NOT NULL,
+      avatar          TEXT CHECK (avatar IS NULL OR json_valid(avatar)),
       paused          INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
       purpose         TEXT,
       directory       TEXT,

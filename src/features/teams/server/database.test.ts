@@ -859,6 +859,41 @@ describe("team database", () => {
     ]);
   });
 
+  test("team icons persist quietly, can be replaced or cleared, and survive renames", async () => {
+    const teams = await openTeams();
+    const team = await createStoredTeam(teams, { name: "Design", ...TEAM_DEFAULTS });
+    const { member } = await teams.createMember(teamAgent(team.id, "designer", "Designer"));
+    const before = (await teams.getSnapshot(team.id, 100))!;
+    const avatars = [
+      { mark: "M5 12h14M12 5v14", color: "#7c3aed" },
+      { mark: "M4 20L12 4l8 16Z", color: "#0f766e" },
+    ];
+
+    for (const [index, avatar] of avatars.entries()) {
+      const change = await teams.updateTeam(team.id, { avatar });
+      expect(change.events).toEqual([
+        { type: "avatar", avatar, revision: before.revision + index + 1 },
+      ]);
+      expect(change.team).toEqual({ ...before.team, avatar });
+      expect(await teams.getTeam(team.id)).toEqual(change.team);
+      expect((await teams.listTeams()).teams[0]?.avatar).toEqual(avatar);
+      expect((await teams.getSnapshot(team.id, 100))?.team.avatar).toEqual(avatar);
+      expect((await teams.updateTeam(team.id, { avatar: { ...avatar } })).events).toEqual([]);
+    }
+    expect((await teams.getSnapshot(team.id, 100))?.messages).toEqual(before.messages);
+    await expect(teams.updateTeam(member.id, { avatar: avatars[0] })).rejects.toThrow(
+      "Only the team lead",
+    );
+    const renamed = await teams.updateTeam(team.id, { name: "Product design" });
+    expect(renamed.team.avatar).toEqual(avatars[1]);
+    const cleared = await teams.updateTeam(team.id, { avatar: null });
+    expect(cleared.events).toEqual([
+      { type: "avatar", avatar: null, revision: before.revision + 4 },
+    ]);
+    expect((await teams.getTeam(team.id))?.avatar).toBeUndefined();
+    expect((await teams.updateTeam(team.id, { avatar: null })).events).toEqual([]);
+  });
+
   test("a screen preview persists as one idempotent reference and can be replaced by a URL", async () => {
     const teams = await openTeams();
     const team = await createStoredTeam(teams, {

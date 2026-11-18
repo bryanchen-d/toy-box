@@ -425,7 +425,9 @@ Session execution.
 - Managed features may govern a session's lifecycle, but they do not redefine session execution,
   transcript state, native event projection, registry, or UI primitives.
 - The application rebuilds private Team agent configuration, including its working directory,
-  for comparison between executions. Single-flight runtime acquisition replaces the idle provider
+  for comparison between executions. Tool names, descriptions, JSON input schemas, availability,
+  and terminal behavior are part of that comparison, so an existing tool's changed contract
+  refreshes its native registration too. Single-flight runtime acquisition replaces the idle provider
   connection only when that effective configuration changed; active delivery keeps its existing
   session. Callers do not coordinate configuration refresh. This preserves durable history,
   workspace identity, and worktree state.

@@ -12,9 +12,9 @@ import type { ConnectorOrigin } from "@connectors/model";
 import type { TeamAdvice } from "./advice";
 import type { TeamAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
+import { avatarSchema, type Avatar } from "./avatar";
 import { teamTasksSchema, type TeamTask } from "./tasks";
 import {
-  agentAvatarSchema,
   agentHandleFromName,
   agentNameSchema,
   agentRoleSchema,
@@ -24,6 +24,7 @@ import {
 } from "./agent";
 
 export * from "./agent";
+export * from "./avatar";
 export * from "./tasks";
 
 const durableIdSchema = z.string().trim().min(1).max(255);
@@ -44,6 +45,7 @@ const teamReactionSchema = z
 export type Team = {
   id: string;
   name: string;
+  avatar?: Avatar;
   paused: boolean;
   purpose?: string;
   directory?: string;
@@ -133,7 +135,7 @@ export const teamAgentMetadataSchema = z
   .object({
     role: agentRoleSchema.optional(),
     model: modelConfigurationSchema.optional(),
-    avatar: agentAvatarSchema.optional(),
+    avatar: avatarSchema.optional(),
     seenThrough: z.number().int().nonnegative(),
     status: teamAgentStatusSchema.optional(),
   })
@@ -316,8 +318,8 @@ export const TEAM_AUTHOR_AVATAR = {
 } as const;
 
 /** Another team speaks in a transcript under its own name, like a connector. */
-export function teamAuthor({ id, name }: Pick<Team, "id" | "name">): TeamAgent {
-  return { id, name, role: "Team", avatar: TEAM_AUTHOR_AVATAR };
+export function teamAuthor({ id, name, avatar }: Pick<Team, "id" | "name" | "avatar">): TeamAgent {
+  return { id, name, role: "Team", avatar: avatar ?? TEAM_AUTHOR_AVATAR };
 }
 
 /** The @handle that reaches a team's lead from another team. */
@@ -554,6 +556,7 @@ export type TeamEvent<A = TeamAttachment> = (
       reaction: TeamReaction["reaction"] | null;
     }
   | { type: "tasks"; tasks: TeamTask[] }
+  | { type: "avatar"; avatar: Avatar | null }
   | { type: "artifacts"; artifacts: TeamArtifact[] }
   | { type: "advice"; advice: TeamAdvice }
   | { type: "model"; model: ModelConfiguration; updatedAt: string }
@@ -589,6 +592,12 @@ const teamChangesSchema = z
   .object({
     model: modelConfigurationSchema.optional(),
     name: teamNameSchema.optional().describe("The team's new title."),
+    avatar: avatarSchema
+      .nullable()
+      .optional()
+      .describe(
+        "A distinctive team icon reflecting its name and purpose, separate from the lead's avatar. Set null to clear it.",
+      ),
     purpose: teamPurposeSchema
       .nullable()
       .optional()
@@ -632,7 +641,7 @@ export const editTeamInputSchema = teamChangesSchema
 
 export const updateTeamInputSchema = teamChangesSchema.omit({ model: true }).refine(hasChanges, {
   message:
-    "Update the name, purpose, directory, tasks, preview, canvas, or any combination of them.",
+    "Update the name, avatar, purpose, directory, tasks, preview, canvas, or any combination of them.",
 });
 
 export const postTeamMessageInputSchema = z

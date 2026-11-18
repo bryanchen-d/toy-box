@@ -15,6 +15,7 @@ import {
 import { connectorQueries } from "@connectors/queries";
 import { securityQueries } from "@security/queries";
 import { useTeam } from "@teams/useTeam";
+import { TeamAvatar } from "@teams/components/TeamAvatar";
 import type { WorkspaceFile } from "@files/model";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
@@ -263,29 +264,39 @@ function TeamContent({
               <div
                 ref={chatRef}
                 tabIndex={-1}
-                className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] outline-none"
+                className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] outline-none"
               >
                 <div className="row-start-1 flex min-h-0 flex-col">
                   {state && (
-                    <TeamMessageSearch
-                      teamId={teamId}
-                      isVisible={isVisible}
-                      hotkeyTarget={chatRef}
-                      onSelect={(match) =>
-                        setOpened({
-                          type: "thread",
-                          sequence: match.threadSequence,
-                          selectedSequence: match.sequence,
-                        })
-                      }
-                      actions={<TranscriptViewMenu view={view} onViewChange={setView} />}
-                      // Chat meets the panel bar while no aside is open, so the row keeps its end
-                      // clear of the pane's floating actions beyond the bar's 2.5rem.
-                      className={cn(
-                        !asideKind &&
-                          "pr-[max(0.75rem,calc(var(--agent-teams-pane-actions-inset,0px)-2.5rem))]",
-                      )}
-                    />
+                    <header className="flex min-w-0 shrink-0 items-center gap-2 border-b bg-panel pl-3">
+                      <TeamAvatar team={state.team} className="size-6" />
+                      <h2
+                        className="min-w-0 flex-1 truncate text-sm font-medium"
+                        title={state.team.name}
+                      >
+                        {state.team.name}
+                      </h2>
+                      <TeamMessageSearch
+                        teamId={teamId}
+                        isVisible={isVisible}
+                        hotkeyTarget={chatRef}
+                        onSelect={(match) =>
+                          setOpened({
+                            type: "thread",
+                            sequence: match.threadSequence,
+                            selectedSequence: match.sequence,
+                          })
+                        }
+                        actions={<TranscriptViewMenu view={view} onViewChange={setView} />}
+                        // Chat meets the panel bar while no aside is open, so the row keeps its end
+                        // clear of the pane's floating actions beyond the bar's 2.5rem.
+                        className={cn(
+                          "border-b-0",
+                          !asideKind &&
+                            "pr-[max(0.75rem,calc(var(--agent-teams-pane-actions-inset,0px)-2.5rem))]",
+                        )}
+                      />
+                    </header>
                   )}
                   <div className="min-h-0 flex-1">
                     {state ? (

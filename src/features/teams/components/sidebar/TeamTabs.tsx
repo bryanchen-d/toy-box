@@ -1,5 +1,6 @@
 import { Pause } from "lucide-react";
 import { useTeams } from "@teams/useTeams";
+import { TeamAvatar } from "@teams/components/TeamAvatar";
 import { SidebarStatusMark } from "@/shared/sidebar/SidebarStatus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/utils";
@@ -49,12 +50,13 @@ export function TeamTabs({
                     aria-current={isOpen ? "true" : undefined}
                     onClick={(event) => onTeamOpen(team.id, event.metaKey || event.ctrlKey)}
                     className={cn(
-                      "relative flex w-7 cursor-pointer justify-center rounded-lg py-2.5 text-xs font-medium text-cyan-700 transition-colors dark:text-cyan-300",
+                      "relative flex w-7 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-medium text-cyan-700 transition-colors dark:text-cyan-300",
                       isOpen
                         ? "bg-cyan-500/30 ring-2 ring-cyan-500/60"
                         : "bg-cyan-500/15 hover:bg-cyan-500/25",
                     )}
                   >
+                    <TeamAvatar team={team} className="size-5 rounded-md" />
                     <span className="max-h-56 truncate [writing-mode:vertical-rl]">
                       {team.name}
                     </span>

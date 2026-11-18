@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Hash, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
+import { TeamAvatar } from "@teams/components/TeamAvatar";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { TeamMenuItems } from "@teams/components/TeamMenuItems";
 import { DeleteTeamDialog } from "@teams/components/DeleteTeamDialog";
@@ -37,7 +38,7 @@ export function TeamOverview({
       aria-label={`#${team.name} overview`}
       className="flex h-full min-h-0 min-w-0 flex-col bg-panel"
     >
-      <TeamPanelHeader icon={Hash} title={team.name}>
+      <TeamPanelHeader icon={<TeamAvatar team={team} className="size-6" />} title={team.name}>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

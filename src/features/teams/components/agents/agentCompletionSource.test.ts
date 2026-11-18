@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { teamLead, type TeamMember } from "@teams/model";
+import { teamAuthor, teamLead, TEAM_AUTHOR_AVATAR, type TeamMember } from "@teams/model";
 import { matchCompletion } from "@/shared/composers/completions/useCompletions";
 import { agentCompletionSource } from "./agentCompletionSource";
 
@@ -78,5 +78,19 @@ describe("agentCompletionSource", () => {
     expect(source.query("bryanbot")).toEqual([
       expect.objectContaining({ value: "@bryanbot", label: "BryanBot", group: "Connectors" }),
     ]);
+  });
+
+  test("another team's mention and message identity share its current team icon", () => {
+    const avatar = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
+    for (const team of [
+      { id: "design", name: "Design", avatar },
+      { id: "design", name: "Design" },
+    ]) {
+      const source = agentCompletionSource({ lead, members, teams: [team] });
+      expect(source.query("design")).toEqual([
+        expect.objectContaining({ value: "@design", avatar: teamAuthor(team).avatar }),
+      ]);
+      expect(teamAuthor(team).avatar).toEqual("avatar" in team ? avatar : TEAM_AUTHOR_AVATAR);
+    }
   });
 });

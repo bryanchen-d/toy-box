@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import { createSession, deliverSessionMessage, recreateSession } from "./index";
 import { SessionStream } from "./sessionStream";
 import { createInitialSessionState } from "@sessions/model/reducer";
+import { z } from "zod";
 
 async function setup(teamWorker: boolean, agent: "member" | "lead" = "member") {
   let sessionId = `configuration-${crypto.randomUUID()}`;
@@ -368,6 +369,54 @@ describe("Session-owned configuration lifetime", () => {
     await deliverSessionMessage(sessionId, { content: "Again" });
     expect(resume).toHaveBeenCalledTimes(1);
   });
+
+  test.each(["parameters", "description"] as const)(
+    "a changed team tool %s refreshes at the next execution without interrupting active work",
+    async (field) => {
+      const { sessionId, handles, resume } = await setup(true, "lead");
+      const getConfiguration = teamAgent.getTeamAgentConfiguration;
+      const configuration = spyOn(teamAgent, "getTeamAgentConfiguration").mockImplementation(
+        async (worker) => {
+          const current = await getConfiguration(worker);
+          return {
+            ...current,
+            tools: current.tools.map((tool) =>
+              tool.name === "update_team"
+                ? {
+                    ...tool,
+                    ...(field === "parameters"
+                      ? { parameters: z.object({ name: z.string().optional() }).strict() }
+                      : { description: "Updates this team's name." }),
+                  }
+                : tool,
+            ),
+          };
+        },
+      );
+      await createSession(sessionId, { content: "Start" }, { sessionType: "worker" });
+      configuration.mockImplementation(getConfiguration);
+
+      await deliverSessionMessage(sessionId, { content: "Still running", immediate: true });
+      expect(resume).not.toHaveBeenCalled();
+      expect(handles[0]!.disconnect).not.toHaveBeenCalled();
+
+      SessionStream.get(sessionId)!.finish();
+      await deliverSessionMessage(sessionId, { content: "Retry with the current tools" });
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
+      const update = resume.mock.calls[0]![1].tools?.find(({ name }) => name === "update_team");
+      expect(
+        update?.parameters?.safeParse({
+          avatar: { mark: "M5 12h14M12 5v14", color: "#7c3aed" },
+        }).success,
+      ).toBe(true);
+
+      SessionStream.get(sessionId)!.finish();
+      await deliverSessionMessage(sessionId, { content: "Keep the unchanged connection" });
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(handles[1]!.disconnect).not.toHaveBeenCalled();
+    },
+  );
 
   test("Team agents refresh changed configuration only between executions", async () => {
     const { sessionId, db, create, resume, handles } = await setup(true);

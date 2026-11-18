@@ -90,6 +90,8 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
   switch (event.type) {
     case "tasks":
       return { ...team, tasks: event.tasks };
+    case "avatar":
+      return { ...team, avatar: event.avatar ?? undefined };
     case "model":
       return { ...team, model: event.model, updatedAt: event.updatedAt };
     case "read":

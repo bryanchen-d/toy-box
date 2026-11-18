@@ -53,6 +53,22 @@ test("the lead can select or clear a canvas using its shared artifact identity",
   expect(update?.parameters?.safeParse({ canvasArtifactId: "" }).success).toBe(false);
 });
 
+test("team icons use the same constrained vector format as member avatars", () => {
+  const update = teamLeadTools.find(({ name }) => name === "update_team");
+  const avatar = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
+  expect(update?.parameters?.parse({ avatar })).toEqual({ avatar });
+  expect(update?.parameters?.parse({ avatar: null })).toEqual({ avatar: null });
+  for (const invalid of [
+    { ...avatar, mark: "<svg onload='alert(1)'/>" },
+    { ...avatar, color: "url(https://example.com/image)" },
+    { ...avatar, mark: "" },
+    { ...avatar, color: "#fff" },
+    { ...avatar, url: "https://example.com/image" },
+  ]) {
+    expect(update?.parameters?.safeParse({ avatar: invalid }).success).toBe(false);
+  }
+});
+
 test("only the lead's messages can request input", () => {
   const sendLead = teamLeadTools.find(({ name }) => name === "send_team_message");
   const sendMember = teamMemberTools.find(({ name }) => name === "send_team_message");

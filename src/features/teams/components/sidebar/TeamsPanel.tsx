@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Hash, Pause, Plus } from "lucide-react";
+import { Pause, Plus } from "lucide-react";
+import { TeamAvatar } from "@teams/components/TeamAvatar";
 import { WorkingAgents } from "@teams/components/agents/WorkingAgents";
 import { useTeams } from "@teams/useTeams";
 import { SidebarListItem } from "@/shared/sidebar/SidebarListItem";
@@ -92,11 +93,7 @@ export function TeamsPanel({
                   />
                 </span>
               }
-              icon={
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-700 dark:text-cyan-300">
-                  <Hash className="size-4" />
-                </span>
-              }
+              icon={<TeamAvatar team={team} />}
               time={<RelativeTime date={team.updatedAt} />}
               badge={directory ? <SessionMetadataBadges cwd={directory} /> : undefined}
               menuItems={

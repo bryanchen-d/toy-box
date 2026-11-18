@@ -5,7 +5,8 @@ import {
   CONNECTOR_AVATAR,
   TEAM_AUTHOR_AVATAR,
   teamHandle,
-  type AgentAvatar,
+  type Avatar,
+  type Team,
   type TeamLead,
   type TeamMember,
 } from "@teams/model";
@@ -16,7 +17,7 @@ import type {
 
 /** A mention choice whose value is the `@handle` inserted into the draft. */
 export type AgentCompletionItem = CompletionItem & {
-  avatar?: AgentAvatar;
+  avatar?: Avatar;
   agent?: TeamMember;
   kind?: "everyone" | "create";
 };
@@ -33,7 +34,7 @@ export function agentCompletionSource({
   /** App-level connectors, which every team can mention. */
   connectors?: readonly { name: string }[];
   /** Other teams, whose leads a message reaches when it opens with their mention. */
-  teams?: readonly { name: string; purpose?: string }[];
+  teams?: readonly Pick<Team, "name" | "purpose" | "avatar">[];
   /** Omit while paused; otherwise creates and onboards an unknown handle. */
   createMember?: (name: string) => Promise<{ name: string }>;
 }): CompletionSource<AgentCompletionItem> {
@@ -60,7 +61,7 @@ function agentItems(
   lead: TeamLead,
   members: readonly TeamMember[],
   connectors: readonly { name: string }[],
-  teams: readonly { name: string; purpose?: string }[],
+  teams: readonly Pick<Team, "name" | "purpose" | "avatar">[],
 ): AgentCompletionItem[] {
   const items: AgentCompletionItem[] = [];
   if ("everyone".includes(query)) {
@@ -112,7 +113,7 @@ function agentItems(
       label: team.name,
       description: "Send this message to the team's lead",
       group: "Teams",
-      avatar: TEAM_AUTHOR_AVATAR,
+      avatar: team.avatar ?? TEAM_AUTHOR_AVATAR,
     });
   }
   const words = query.split("-").filter(Boolean);

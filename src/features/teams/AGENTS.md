@@ -49,10 +49,12 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
 └─ Advice      proposed improvements the user applies or dismisses
 ```
 
-- `Team` owns its name, optional purpose and working directory, lead model, public
+- `Team` owns its name, optional avatar, purpose and working directory, lead model, public
   tasks, paused state, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
   Its `requestSequence` and `completedSequence` refer to transcript milestones. Completion is unread
   when it follows `seenThrough`; a request remains pending until a user reply clears its sequence.
+  Its avatar is an authored SVG path and background color, using the same constrained format as
+  member avatars, but represents the team rather than its lead's fixed star identity.
 - `TeamTask` has a short, stable, team-unique ID such as `t12`, title, status, optional owner
   and subtasks. Its optional `artifactId` is a shared artifact's `id`; file metadata
   stays with the artifact. Its optional `diff: DiffStats` uses `shared/diffStats.ts`, like Session
@@ -129,6 +131,10 @@ projections for persistence and runtime configuration; private read positions st
   working directory. Name, purpose, and directory changes create a durable system message;
   preview changes also create a system message, like sharing an artifact. Ordinary task updates
   stay out of the transcript and do not create unread state or list movement.
+- The lead designs a missing team avatar during its next normal turn after the initial kickoff
+  or question, and saves or replaces it through `update_team({avatar:{mark,color}})`.
+  This uses no image-generation service, separate generation job, or additional wake. Keep the
+  icon across renames and purpose changes unless deliberately redesigned. Null clears it.
 - Let the lead add, update, remove, and move tasks by ID with `edit_team_tasks`, committing an ordered
   batch against the latest tree. Updates preserve omitted fields and children; null clears optional
   fields. Removal deletes a subtree; moving appends it intact at the root or under a parent outside
@@ -376,7 +382,9 @@ teardowns cannot produce member departures for the deleted Team. Name, purpose, 
 changes update Team metadata and append a separate typed system message for each changed property
 in one transaction, advancing sequence and revision for each; a user purpose change also wakes the lead
 to read the new direction. Preview changes append `preview_changed`; tasks and lead-model changes
-have their own revisioned events without a transcript entry, as does an artifact arrangement, which
+have their own revisioned events without a transcript entry. The optional avatar is stored on the
+Team row; its `avatar` event updates detail clients and the usual catalog upsert updates all other
+surfaces without unread activity or list movement. An artifact arrangement likewise stays quiet and
 rewrites each artifact's `position`, `pinned`, and `archived` columns. Pins sort ahead of positions; a new share takes the position before
 every other. Human read-position advances also
 have a revisioned event carrying only the committed cursor.
@@ -563,6 +571,11 @@ offers "Reply in thread", which opens its thread with the draft addressed to its
 former Reply action did. A message still being sent offers none until it commits. "Input needed"
 opens a question asked in a thread.
 
+The Team transcript header shows its current name and icon beside message search, truncating long
+names while keeping the full name available on hover. The same team icon appears in the expanded
+sidebar, collapsed Team tabs, overview, and other teams' messages and mention suggestions.
+Until authored, these surfaces retain their generic team mark. Team and agent icons share vector
+rendering, with rounded-square frames for teams and circular frames for agents.
 Teams and threads use the shared `MessageSearch` popup and focused-pane `Ctrl+F`/`Cmd+F`.
 Team search includes all public user and agent messages and their replies, independently of
 the current transcript view; thread search includes only its root and replies. The database scans
@@ -691,7 +704,8 @@ presents one deleted identity everywhere.
 
 - `model/` is the isomorphic domain. `index.ts` owns the types, input schemas, audience policy, and
   public exports. `tasks.ts` owns task identity, outcome schemas, derived diff totals, tree edits,
-  ownership release, and completion. `agent.ts` owns agent names, roles, avatars, the lead profile, mention
+  ownership release, and completion. `avatar.ts` owns the shared SVG mark and color contract.
+  `agent.ts` owns agent names, roles, the lead profile, mention
   handles, and the deleted identity an ID resolves to once its agent is removed. `worker.ts` projects Worker metadata into the lead, members, and roster. `reducer.ts`
   reduces the complete public snapshot and owns the metadata and roster transitions shared with
   the server. `presence.ts` and `reactions.ts`
@@ -709,7 +723,8 @@ presents one deleted identity everywhere.
 - `components/pane/` holds the pane, composer, thread, artifacts panel, and shared pane context, with `transcript/` and
   `overview/` beneath it. `components/agents/` holds avatars, mention Markdown, the mention
   source and menu, the member editor, and working agents. `components/sidebar/` holds the Teams panel, the
-  collapsed sidebar's Team tabs, and their shared attention priority. The top level holds the create/edit dialog and team menu.
+  collapsed sidebar's Team tabs, and their shared attention priority. The top level holds shared
+  avatar rendering, the Team avatar, create/edit dialog, and team menu.
 - Outside this folder, [Workers](../workers/AGENTS.md) owns agent identity and lifetime.
   [`sessionConfiguration.ts`](../../server/sessionConfiguration.ts) grants ordinary Sessions the
   Team tools and resolves agent configuration, and

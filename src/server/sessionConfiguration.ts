@@ -104,7 +104,15 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
           model,
           configuration.directory,
           configuration.additionalInstructions,
-          configuration.tools.map(({ name, alwaysAvailable }) => [name, alwaysAvailable]),
+          configuration.tools.map(
+            ({ name, description, parameters, alwaysAvailable, isTerminal }) => [
+              name,
+              description,
+              parameters?.toJSONSchema(),
+              alwaysAvailable,
+              isTerminal,
+            ],
+          ),
         ]),
       };
     }

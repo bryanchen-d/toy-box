@@ -115,6 +115,24 @@ test("quiet tasks and model changes advance the cursor without creating transcri
   }
 });
 
+test("team icons replay quietly without changing the lead identity, attention, or messages", () => {
+  const previous = snapshot();
+  previous.team.requestSequence = 100;
+  previous.team.completedSequence = 101;
+  const avatar = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
+  const event = { type: "avatar" as const, revision: 102, avatar };
+  const changed = reduceTeamState(previous, event);
+  expect(changed.team).toEqual({ ...previous.team, avatar });
+  expect(changed.messages).toBe(previous.messages);
+  expect(changed.lead).toBe(previous.lead);
+  expect(changed.revision).toBe(102);
+  expect(reduceTeamState(changed, event)).toBe(changed);
+  const cleared = reduceTeamState(changed, { type: "avatar", revision: 103, avatar: null });
+  expect(cleared.team.avatar).toBeUndefined();
+  expect(cleared.messages).toBe(previous.messages);
+  expect(cleared.team).toEqual(previous.team);
+});
+
 test("metadata messages update the public team alongside transcript activity", () => {
   const actor = { type: "user" as const };
   const events = [
