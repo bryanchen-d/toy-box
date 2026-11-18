@@ -137,7 +137,7 @@ describe("stream golden replay", () => {
 
     const stream = SessionStream.getOrCreate(
       SESSION_ID,
-      connectCopilotSession(fakeSession, SESSION_ID),
+      connectCopilotSession(fakeSession, SESSION_ID, new AbortController().signal),
       {
         model: { provider: "copilot", name: "gpt-5.5" },
       },
@@ -267,7 +267,7 @@ describe("stream golden replay", () => {
       return {
         stream: SessionStream.getOrCreate(
           sessionId,
-          connectCopilotSession(fakeSession, sessionId),
+          connectCopilotSession(fakeSession, sessionId, new AbortController().signal),
           initialState,
         ),
         emit: (event) => handler!(event),

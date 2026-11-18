@@ -1,8 +1,11 @@
 import { expect, mock, test } from "bun:test";
 import type { CopilotSession, SessionEvent as SdkEvent } from "@github/copilot-sdk";
 import type { SessionEvent } from "@sessions/model";
+import { SessionConnectionUnavailableError } from "@providers/server/provider";
 import { connectCopilotSession } from "./connection";
 import { encodeSystemMessage, systemMessagePrompt } from "@sessions/model/systemMessages";
+
+const running = new AbortController().signal;
 
 test("native inputs retain payloads and client identity through interleaved echoes", async () => {
   let emit!: (event: SdkEvent) => void;
@@ -16,7 +19,7 @@ test("native inputs retain payloads and client identity through interleaved echo
     },
     send,
   } as unknown as CopilotSession;
-  const connection = connectCopilotSession(native, "public");
+  const connection = connectCopilotSession(native, "public", running);
   const events: SessionEvent[] = [];
   connection.onEvent((event) => events.push(event));
   await connection.send({
@@ -79,6 +82,7 @@ test("native lifecycle events end live turns", () => {
       },
     } as unknown as CopilotSession,
     "public",
+    running,
   );
   const events: SessionEvent[] = [];
   connection.onEvent((event) => events.push(event));
@@ -117,6 +121,7 @@ test("abort clears native queued input and still interrupts if clearing fails", 
       },
     } as unknown as CopilotSession,
     "public",
+    running,
   );
   await expect(connection.abort()).rejects.toThrow("clear failed");
   expect(calls).toEqual(["clear", "abort"]);
@@ -139,7 +144,32 @@ test("rewind resolves the requested timestamp to a native conversation boundary"
       },
     } as unknown as CopilotSession,
     "public",
+    running,
   );
   await connection.rewind("2026-08-14T20:00:00.000Z");
   expect(rewind).toHaveBeenCalledWith({ eventId: "second", mode: "conversation" });
+});
+
+test("a stopped client ends live turns and leaves the connection unavailable", async () => {
+  const stopped = new AbortController();
+  const send = mock(async () => "native-1");
+  const connection = connectCopilotSession(
+    { sessionId: "native", on: () => () => {}, send } as unknown as CopilotSession,
+    "public",
+    stopped.signal,
+  );
+  const live: SessionEvent[] = [];
+  const finished: SessionEvent[] = [];
+  connection.onEvent((event) => live.push(event));
+  connection.onEvent((event) => finished.push(event))();
+
+  stopped.abort();
+
+  expect(live).toEqual([{ type: "end", reason: "error", error: "The Copilot client stopped." }]);
+  expect(finished).toEqual([]);
+  expect(() => connection.onEvent(() => {})).toThrow(SessionConnectionUnavailableError);
+  await expect(
+    connection.send({ role: "user", clientId: "client", content: "Hello" }),
+  ).rejects.toBeInstanceOf(SessionConnectionUnavailableError);
+  expect(send).not.toHaveBeenCalled();
 });

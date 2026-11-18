@@ -2,14 +2,25 @@
 
 import { CopilotClient, RuntimeConnection } from "@github/copilot-sdk";
 import { realpathSync } from "node:fs";
-import { sharedMap } from "@/shared/server/processState";
+import { sharedMap, sharedWeakMap } from "@/shared/server/processState";
 
 const copilotClients = sharedMap<Promise<CopilotClient>>("copilot-clients");
+// Session registries outlive a dev server restart, but the SDK disconnects a stopped client's
+// sessions without telling their handlers, so each connection learns of the stop here.
+const clientLifetimes = sharedWeakMap<CopilotClient, AbortController>("copilot-client-lifetimes");
 
 export async function stopCopilotClient(): Promise<void> {
   const client = copilotClients.get("shared");
   copilotClients.delete("shared");
-  if (client) await (await client).stop();
+  if (!client) return;
+  const stopping = await client;
+  lifetime(stopping).abort();
+  await stopping.stop();
+}
+
+/** Aborts when this client stops; every session it served is unavailable from then on. */
+export function copilotClientStopped(client: CopilotClient): AbortSignal {
+  return lifetime(client).signal;
 }
 
 /** Start or reuse the one Copilot process shared by every server operation. */
@@ -38,6 +49,15 @@ export function startCopilotClient(): Promise<CopilotClient> {
     if (copilotClients.get("shared") === promise) copilotClients.delete("shared");
   });
   return promise;
+}
+
+function lifetime(client: CopilotClient): AbortController {
+  let controller = clientLifetimes.get(client);
+  if (!controller) {
+    controller = new AbortController();
+    clientLifetimes.set(client, controller);
+  }
+  return controller;
 }
 
 /** Run the installed CLI, which Settings also reports and updates. */

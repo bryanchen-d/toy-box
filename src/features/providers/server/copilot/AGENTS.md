@@ -4,6 +4,12 @@
 installed GitHub Copilot CLI and SDK. It owns SDK configuration, catalog, and metadata queries;
 `client.ts` owns the shared native process. `connection.ts` adapts one native handle into domain operations;
 Sessions alone owns its registry, execution lease, queue, and lifetime.
+Sessions' registry and live streams outlive a dev server restart, which stops the client, and the
+SDK disconnects a stopped client's sessions without telling their handlers. So `client.ts` gives
+each client a stop signal: when it fires, each of its connections ends its live turn with an error
+and answers later subscriptions, sends, renames, and rewinds with
+`SessionConnectionUnavailableError`, so Sessions resumes through the next client, as with a closed
+Codex transport.
 
 `projector.ts` translates SDK events, tool aliases, SQL todos, background subagents,
 questions, and native canvas activity. `provider.readHistory()` uses that same projector.

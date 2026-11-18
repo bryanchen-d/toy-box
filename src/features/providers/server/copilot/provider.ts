@@ -12,7 +12,7 @@ import type { SessionEvent } from "@sessions/model";
 import type { ProviderSubscription } from "@providers/model";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
 import { normalizeToolResult, type ToolResult } from "@sessions/server/tools/definition";
-import { startCopilotClient, stopCopilotClient } from "./client";
+import { copilotClientStopped, startCopilotClient, stopCopilotClient } from "./client";
 import { connectCopilotSession } from "./connection";
 import { toModelInfo } from "./models";
 import { toSdkSessionModelOptions } from "./modelConfiguration";
@@ -89,6 +89,7 @@ export const copilotProvider: SessionProvider = {
     });
     try {
       const connection = await connect(
+        client,
         session,
         sessionId,
         configuration.allowUserQuestions,
@@ -107,7 +108,13 @@ export const copilotProvider: SessionProvider = {
       session.provider?.sessionId ?? session.id,
       await nativeConfiguration(session.id, configuration, client),
     );
-    return connect(native, session.id, configuration.allowUserQuestions, configuration.model);
+    return connect(
+      client,
+      native,
+      session.id,
+      configuration.allowUserQuestions,
+      configuration.model,
+    );
   },
   async readDirectory(nativeId) {
     return sessionDirectory(
@@ -148,6 +155,7 @@ export function toSubscription(plan: string, quotas: CopilotQuotas): ProviderSub
 }
 
 async function connect(
+  client: CopilotClient,
   session: CopilotSession,
   sessionId: string,
   allowUserQuestions: boolean,
@@ -155,7 +163,7 @@ async function connect(
 ) {
   if (allowUserQuestions)
     await session.rpc.eventLog.registerInterest({ eventType: "user_input.requested" });
-  return connectCopilotSession(session, sessionId, appliedModel);
+  return connectCopilotSession(session, sessionId, copilotClientStopped(client), appliedModel);
 }
 
 async function nativeConfiguration(
