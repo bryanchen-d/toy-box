@@ -1,6 +1,7 @@
 // Claims scheduled work and dispatches it through the automation lifecycle.
 
 import { broadcast } from "@workspace/server/events";
+import { SettingsDatabase } from "@workspace/server/state/settings";
 import { getStateDatabase } from "@/server/database";
 import { AutomationDatabase } from "./database";
 import { runAutomation } from "./index";
@@ -20,10 +21,14 @@ export async function runSchedulerTick(): Promise<void> {
     const appDatabase = await getStateDatabase({ createIfMissing: false });
     if (!appDatabase) return;
 
+    const settings = new SettingsDatabase(appDatabase);
+    if (!(await settings.get()).showSessionsAndAutomations) return;
+
     const database = new AutomationDatabase(appDatabase);
     for (const automation of await database.claimDue()) {
       // The claim durably advances nextRunAt, even when dispatch later fails.
       broadcast({ type: "automation.upserted", automation });
+      if (!(await settings.get()).showSessionsAndAutomations) continue;
       try {
         await runAutomation(automation.id);
       } catch (error) {

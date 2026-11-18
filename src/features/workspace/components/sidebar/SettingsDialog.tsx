@@ -38,6 +38,28 @@ export function SettingsDialog({
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="show-sessions-and-automations"
+                checked={settings.showSessionsAndAutomations}
+                onCheckedChange={(checked) => {
+                  updateSetting("showSessionsAndAutomations", checked);
+                }}
+              />
+              <label
+                htmlFor="show-sessions-and-automations"
+                className="text-sm font-medium text-foreground"
+              >
+                Show sessions and automations
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Shared across devices. When off, hides standalone sessions and automations and pauses
+              scheduled automations. Active runs finish; team routines are unaffected. Turning it on
+              resumes scheduling.
+            </p>
+          </div>
+          <div className="grid gap-2">
             <label htmlFor="theme-preference" className="text-sm font-medium text-foreground">
               Appearance
             </label>

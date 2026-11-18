@@ -17,6 +17,7 @@ describe("settings", () => {
       defaultModel: { provider: "copilot", name: "gpt-5", reasoningEffort: "high" },
       terminalShell: "/bin/zsh",
       useWorktree: true,
+      showSessionsAndAutomations: true,
       autoFocusArtifacts: "sessions",
       disabledProviders: ["claude"],
       pinnedSessionIds: ["session-a", "session-b"],
@@ -43,6 +44,7 @@ describe("settings", () => {
         defaultModel: { name: "" },
         terminalShell: 42,
         useWorktree: "yes",
+        showSessionsAndAutomations: "yes",
         autoFocusArtifacts: "occasionally",
         pinnedSessionIds: [42],
       }),
@@ -58,6 +60,18 @@ describe("settings", () => {
       areSettingsEqual(settings, { ...settings, disabledProviders: ["copilot", "claude"] }),
     ).toBe(true);
     expect(areSettingsEqual(settings, { ...settings, disabledProviders: [] })).toBe(false);
+  });
+
+  test("defaults sessions and automations off and accepts an explicit shared opt-in", () => {
+    const settings = normalizeSettings({});
+    expect(settings.showSessionsAndAutomations).toBe(false);
+    const enabled = normalizeSettings({ showSessionsAndAutomations: true });
+    expect(enabled.showSessionsAndAutomations).toBe(true);
+    expect(areSettingsEqual(settings, enabled)).toBe(false);
+    expect(settingsUpdateSchema.safeParse({ showSessionsAndAutomations: true }).success).toBe(true);
+    expect(settingsUpdateSchema.safeParse({ showSessionsAndAutomations: "true" }).success).toBe(
+      false,
+    );
   });
 
   test("validates complete settings at the transport boundary", () => {

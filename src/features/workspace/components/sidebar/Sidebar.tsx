@@ -26,6 +26,7 @@ import { TeamsPanel } from "@teams/components/sidebar/TeamsPanel";
 import { TeamTabs } from "@teams/components/sidebar/TeamTabs";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import type { SidebarPanel, SidebarPanels } from "@workspace/model/config/layoutPrefs";
+import { useWorkspaceSelector } from "@workspace/hooks/state";
 
 /**
  * Crossfade one of the sidebar's two layouts. Whichever layout is leaving clears
@@ -125,6 +126,9 @@ export function Sidebar({
   onOpenScreen,
   className,
 }: SidebarProps) {
+  const showSessionsAndAutomations = useWorkspaceSelector(
+    (workspace) => workspace.settings.showSessionsAndAutomations,
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The file browser opens at a row's directory, or wherever it defaults from the footer.
   const [browsing, setBrowsing] = useState<{ directory?: string }>();
@@ -189,29 +193,31 @@ export function Sidebar({
             onCreate={() => setCreateTeamOpen(true)}
           />
 
-          <SidebarSection
-            title="Sessions"
-            count={sessions.length}
-            isExpanded={panels.sessions}
-            onExpandedChange={(expanded) => onPanelExpanded("sessions", expanded)}
-            fill
-          >
-            <div className="px-3 pt-2">
-              <SessionFilterInput filter={filter} onFilterChange={onFilterChange} />
-            </div>
-            <SessionList
-              className="px-3 py-2"
-              sessions={sessions}
-              isLoading={isSessionsLoading}
-              onSessionSelect={onSessionSelect}
-              onSessionRename={onSessionRename}
-              onSessionDelete={onSessionDelete}
-              onBrowseDirectory={(directory) => setBrowsing({ directory })}
-              openSessionIds={openSessionIds}
-              worktreeSessionIds={worktreeSessionIds}
-              emptyMessage={emptyMessage}
-            />
-          </SidebarSection>
+          {showSessionsAndAutomations && (
+            <SidebarSection
+              title="Sessions"
+              count={sessions.length}
+              isExpanded={panels.sessions}
+              onExpandedChange={(expanded) => onPanelExpanded("sessions", expanded)}
+              fill
+            >
+              <div className="px-3 pt-2">
+                <SessionFilterInput filter={filter} onFilterChange={onFilterChange} />
+              </div>
+              <SessionList
+                className="px-3 py-2"
+                sessions={sessions}
+                isLoading={isSessionsLoading}
+                onSessionSelect={onSessionSelect}
+                onSessionRename={onSessionRename}
+                onSessionDelete={onSessionDelete}
+                onBrowseDirectory={(directory) => setBrowsing({ directory })}
+                openSessionIds={openSessionIds}
+                worktreeSessionIds={worktreeSessionIds}
+                emptyMessage={emptyMessage}
+              />
+            </SidebarSection>
+          )}
 
           <AppsPanel
             isExpanded={panels.apps}
@@ -221,13 +227,15 @@ export function Sidebar({
             onAppOpenInHyper={onAppOpenInHyper}
           />
 
-          <AutomationPanel
-            isExpanded={panels.automations}
-            onExpandedChange={(expanded) => onPanelExpanded("automations", expanded)}
-            openSessionIds={openSessionIds}
-            onSessionOpen={(sessionId) => onSessionSelect(sessionId, false)}
-            onCreate={() => setCreateAutomationOpen(true)}
-          />
+          {showSessionsAndAutomations && (
+            <AutomationPanel
+              isExpanded={panels.automations}
+              onExpandedChange={(expanded) => onPanelExpanded("automations", expanded)}
+              openSessionIds={openSessionIds}
+              onSessionOpen={(sessionId) => onSessionSelect(sessionId, false)}
+              onCreate={() => setCreateAutomationOpen(true)}
+            />
+          )}
 
           <ConnectorPanel
             isExpanded={panels.connectors}

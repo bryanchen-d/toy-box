@@ -44,6 +44,11 @@ Each server value has one owning cache; cross-feature consumers compose those ca
 Provider availability and pin changes are published after persistence, then invalidate session
 catalog membership on every client. Provider changes also invalidate the provider catalog.
 Other preferences retain their existing optimistic updates.
+`showSessionsAndAutomations` defaults off and is shared across clients. It hides the
+standalone Sessions and Automations panels, their creation menu (including session-backed
+document and whiteboard drafts), and the new-session shortcut. Automation scheduling pauses
+while it is off. Existing panes, direct links, manual automation runs, team agents, team
+routines, Apps, Inbox, and Hyper remain available; this is not a session-runtime capability gate.
 Sidebar text, provider, and external-session filters are browser-local route state; they do not
 write workspace settings or alter open panes.
 

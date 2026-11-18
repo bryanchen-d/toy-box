@@ -318,6 +318,9 @@ function WorkspacePage() {
   const disabledProviders = useWorkspaceSelector(
     (workspace) => workspace.settings.disabledProviders,
   );
+  const showSessionsAndAutomations = useWorkspaceSelector(
+    (workspace) => workspace.settings.showSessionsAndAutomations,
+  );
 
   // Layout state is restored from and persisted to the workspace layout cookie.
   const [sidebarWidth, setSidebarWidth] = useState(initialLayout.sidebarWidth);
@@ -500,7 +503,7 @@ function WorkspacePage() {
     requireReset: true,
   });
   useHotkey("Control+N", () => handleCreateSession(), {
-    enabled: hasModels,
+    enabled: hasModels && showSessionsAndAutomations,
     requireReset: true,
   });
   useHotkey("Control+`", toggleTerminal, { requireReset: true });

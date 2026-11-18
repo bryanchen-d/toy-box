@@ -13,6 +13,7 @@ test("persists one complete settings document", async () => {
     defaultModel: { provider: "copilot", name: "gpt-5", reasoningEffort: "high" },
     terminalShell: "/bin/zsh",
     useWorktree: true,
+    showSessionsAndAutomations: true,
     pinnedSessionIds: ["session-a"],
   };
 

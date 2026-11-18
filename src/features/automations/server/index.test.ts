@@ -2,6 +2,8 @@ import { describe, expect, onTestFinished, setSystemTime, spyOn, test } from "bu
 import * as state from "@/server/database";
 import * as sessions from "@sessions/server/runtime";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
+import { SettingsDatabase } from "@workspace/server/state/settings";
+import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import type { SessionCompletion } from "@sessions/model";
 import type { WorkspaceEvent } from "@workspace/model/events";
 import type { AutomationOptions } from "../model";
@@ -157,7 +159,11 @@ describe("automation lifecycle", () => {
   });
 
   test("publishes due claims, continues after a failed start, and never redispatches a claim", async () => {
-    const { database, events, recreate, completion } = await setup();
+    const { db, database, events, recreate, completion } = await setup();
+    await new SettingsDatabase(db).set({
+      ...DEFAULT_SETTINGS,
+      showSessionsAndAutomations: true,
+    });
     const log = spyOn(console, "error").mockImplementation(() => {});
     onTestFinished(() => {
       log.mockRestore();
@@ -196,6 +202,56 @@ describe("automation lifecycle", () => {
     expect(recreate).toHaveBeenCalledTimes(2);
     expect(events).toEqual(claims);
   });
+
+  test("leaves due work untouched while hidden and resumes once without a catch-up storm", async () => {
+    const { db, database, events, recreate } = await setup();
+    onTestFinished(() => setSystemTime());
+    setSystemTime(new Date("2026-02-14T10:00:00.000Z"));
+    const automation = await database.create({ ...options, cron: "* * * * *" });
+    setSystemTime(new Date("2026-02-14T10:05:30.000Z"));
+
+    await runSchedulerTick();
+    expect(recreate).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+    expect(await database.get(automation.id)).toEqual(automation);
+
+    const settings = new SettingsDatabase(db);
+    await settings.set({ ...DEFAULT_SETTINGS, showSessionsAndAutomations: true });
+    await runSchedulerTick();
+    expect(recreate).toHaveBeenCalledTimes(1);
+    expect((await database.get(automation.id))?.nextRunAt).toBe("2026-02-14T10:06:00.000Z");
+    await runSchedulerTick();
+    expect(recreate).toHaveBeenCalledTimes(1);
+
+    await settings.set(DEFAULT_SETTINGS);
+    setSystemTime(new Date("2026-02-14T10:07:30.000Z"));
+    await runSchedulerTick();
+    expect(recreate).toHaveBeenCalledTimes(1);
+    expect((await database.get(automation.id))?.nextRunAt).toBe("2026-02-14T10:06:00.000Z");
+  });
+
+  test("pausing during dispatch leaves the active run alone and skips remaining starts", async () => {
+    const { db, database, events, recreate, deleteSession, release } = await setup();
+    const settings = new SettingsDatabase(db);
+    await settings.set({ ...DEFAULT_SETTINGS, showSessionsAndAutomations: true });
+    onTestFinished(() => setSystemTime());
+    setSystemTime(new Date("2026-02-14T10:00:00.000Z"));
+    await database.create({ ...options, title: "First", cron: "* * * * *" });
+    setSystemTime(new Date("2026-02-14T10:01:00.000Z"));
+    await database.create({ ...options, title: "Second", cron: "* * * * *" });
+    setSystemTime(new Date("2026-02-14T10:02:30.000Z"));
+    recreate.mockImplementationOnce(async () => {
+      await settings.set(DEFAULT_SETTINGS);
+      return { disposition: "started", waitForCompletion: () => new Promise(() => {}) };
+    });
+
+    await runSchedulerTick();
+
+    expect(recreate).toHaveBeenCalledTimes(1);
+    expect(deleteSession).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    expect(events).toHaveLength(2);
+  });
 });
 
 async function setup() {
@@ -227,5 +283,5 @@ async function setup() {
     release.mockRestore();
     await db.close();
   });
-  return { db, database, events, deleteSession, running, recreate, completion, released };
+  return { db, database, events, deleteSession, running, recreate, release, completion, released };
 }

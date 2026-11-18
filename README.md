@@ -75,6 +75,17 @@ not shared with other devices, and is applied before the page renders.
 Markdown code blocks use their surrounding surface's colors, including user-message
 bubbles. Editors, syntax highlighting, whiteboards, and terminals follow the selected theme.
 
+### Sessions and automations
+
+The Sessions and Automations sidebar sections are hidden by default. Enable
+**Settings > Show sessions and automations** to reveal them, their creation menu,
+and the new-session shortcut. This preference is shared across devices.
+
+Turning it off pauses scheduled automations without deleting their definitions or
+stopping active runs. Turning it on resumes scheduling, collapsing missed occurrences
+into one run. Team agents, canvases, routines, existing session links, manual automation
+runs, Apps, Inbox, and Hyper remain available.
+
 ## Access From Anywhere
 
 In order to access Agent Teams from your phone (or other machines), simply configure [Tailscale](https://tailscale.com/) on the desired devices, enable MagicDNS and HTTPS for your tailnet, start Agent Teams (`agent-teams`), then run:

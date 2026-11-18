@@ -205,6 +205,9 @@ export function SidebarSplitButton({
   ...actions
 }: SidebarCreationActions & { variant?: SidebarCreationVariant }) {
   const hasModels = useHasModels();
+  const showSessionsAndAutomations = useWorkspaceSelector(
+    (workspace) => workspace.settings.showSessionsAndAutomations,
+  );
   const rail = variant === "rail";
 
   return (
@@ -213,9 +216,11 @@ export function SidebarSplitButton({
         label="Create team"
         variant="accent"
         className={cn(
-          !rail && "size-7 rounded-r-none",
+          !rail && "size-7",
+          !rail && showSessionsAndAutomations && "rounded-r-none",
           rail &&
             hasModels &&
+            showSessionsAndAutomations &&
             "group-hover/create:rounded-b-none group-has-[[data-slot=dropdown-menu-trigger]:focus-visible]/create:rounded-b-none group-has-data-[popup-open]/create:rounded-b-none",
         )}
         disabled={!hasModels}
@@ -224,7 +229,9 @@ export function SidebarSplitButton({
       >
         <Plus />
       </SidebarAction>
-      <SidebarCreationMenu {...actions} disabled={!hasModels} variant={variant} />
+      {showSessionsAndAutomations && (
+        <SidebarCreationMenu {...actions} disabled={!hasModels} variant={variant} />
+      )}
     </div>
   );
 }
