@@ -14,6 +14,7 @@ import {
   abortSession,
   deliverSessionMessage,
   getSessionUsage,
+  reportStalledSessions,
   searchSessionHistory,
   registerPendingSessionCompletion,
   rejectPendingSessionCompletion,
@@ -2578,5 +2579,36 @@ describe("waitForSessions", () => {
     expect(rejectPendingSessionCompletion("session-pending-canceled", error)).toBe(true);
     await expect(completion).rejects.toBe(error);
     expect(rejectPendingSessionCompletion("session-pending-canceled", error)).toBe(false);
+  });
+});
+
+describe("stalled session reports", () => {
+  test("warn once for each stretch a live session's provider stays silent", async () => {
+    const sessionId = "session-stall-report";
+    cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
+    mockStreamRuntimeModules();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const { session, emit } = makeControllableSession();
+    const stream = SessionStream.getOrCreate(sessionId, session);
+    await stream.deliver(userMessage("go"));
+    const start = Date.parse("2026-11-18T12:00:00.000Z");
+    const minutes = (count: number) => start + count * 60_000;
+    setSystemTime(start);
+    onTestFinished(() => setSystemTime());
+    emit({ type: "tool_start", toolCallId: "shell-1", toolName: "shell", arguments: {} });
+
+    reportStalledSessions(minutes(29));
+    reportStalledSessions(minutes(31));
+    reportStalledSessions(minutes(90));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenLastCalledWith(
+      `Session ${sessionId} has heard nothing from its provider since 2026-11-18T12:00:00.000Z while thinking. Running tools: shell. Queued messages: none.`,
+    );
+
+    setSystemTime(minutes(91));
+    emit({ type: "delta", content: "Still here" });
+    reportStalledSessions(minutes(120));
+    reportStalledSessions(minutes(122));
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });

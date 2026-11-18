@@ -86,6 +86,8 @@ A delivery receipt exposes the initial `started`, `steered` (immediate input inj
 
 A waiter observes one execution it knows about. `subscribeSessionCompletions` observes every execution that ends on its own or with an error, whoever started it, which is how Workers reports a sub session's work to its owner even when the user prompted it. An aborted or deleted execution reports nothing, because whoever stopped it wanted no result.
 
+An execution whose provider goes quiet never ends on its own, so `reportStalledSessions`, run every five minutes from Sessions' `server/startup.ts`, warns once when a live stream's provider has been silent for half an hour outside a blocking question, naming its running tools and queue so the hang can be traced. It warns again only after the provider speaks and falls silent once more.
+
 A supervisor that retains durable history but expects little immediate reuse may call
 `releaseIdleSession` after completion. This disconnects only a session with no active execution;
 ordinary bounded provider operations independently restart the idle window when they finish.

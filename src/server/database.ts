@@ -55,7 +55,31 @@ export async function inStateTransaction<Result>(
     queue = new SerialTaskQueue();
     transactionQueues.set(db, queue);
   }
-  return queue.enqueue(() => db.begin("IMMEDIATE", operation));
+  // SQLite reports lock contention long after the caller's stack is gone, so note it now.
+  const caller = new Error().stack?.split("\n")[2]?.trim();
+  const queuedAt = performance.now();
+  let startedAt = queuedAt;
+  let phase: "begin" | "body" | "commit" = "begin";
+  try {
+    return await queue.enqueue(() => {
+      startedAt = performance.now();
+      return db.begin("IMMEDIATE", async (transaction) => {
+        phase = "body";
+        const result = await operation(transaction);
+        phase = "commit";
+        return result;
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "SQLITE_BUSY") {
+      const queuedMs = Math.round(startedAt - queuedAt);
+      const heldMs = Math.round(performance.now() - startedAt);
+      console.error(
+        `State database was locked at ${phase} of a transaction ${caller} (queued ${queuedMs} ms, held ${heldMs} ms).`,
+      );
+    }
+    throw error;
+  }
 }
 
 function resolveDefaultPath(): string {
