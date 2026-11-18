@@ -51,6 +51,9 @@ while it is off. Existing panes, direct links, manual automation runs, team agen
 routines, Apps, Inbox, and Hyper remain available; this is not a session-runtime capability gate.
 Sidebar text, provider, and external-session filters are browser-local route state; they do not
 write workspace settings or alter open panes.
+`showSidebarTools` defaults off and is shared across clients. It hides the Hyper session,
+Files/Screens browser, and Terminal buttons in both the expanded sidebar and collapsed rail
+without closing open surfaces or disabling their capabilities.
 
 [`model/state/reducer.ts`](model/state/reducer.ts) applies the same `WorkspaceEvent` transitions on
 the server and in each browser. The sparse `sessionStates` map retains only meaningful shared
@@ -176,6 +179,9 @@ One sparse browser cookie retains non-default `WorkspaceLayout` values across re
 `sidebarCollapsed` is the shared visibility fact: it produces the desktop rail or reveals the
 mobile workspace, whose no-root fallback is Inbox. The main surface also hands Team panes the
 panel they open beside chat and each Team aside kind's resized share, keyed by kinds Teams names.
+The expanded Teams sidebar panel fills the available height; the other list panels retain
+their compact, capped scrolling bodies. When standalone Sessions is also expanded, Teams
+gets three shares of the flexible height to Sessions' one.
 
 [`components/layout/HyperSession.tsx`](components/layout/HyperSession.tsx) is an independent
 mini-workspace around a managed session. It has its own roots, focus, and publication graph while

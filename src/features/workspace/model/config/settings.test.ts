@@ -18,6 +18,7 @@ describe("settings", () => {
       terminalShell: "/bin/zsh",
       useWorktree: true,
       showSessionsAndAutomations: true,
+      showSidebarTools: true,
       autoFocusArtifacts: "sessions",
       disabledProviders: ["claude"],
       pinnedSessionIds: ["session-a", "session-b"],
@@ -45,6 +46,7 @@ describe("settings", () => {
         terminalShell: 42,
         useWorktree: "yes",
         showSessionsAndAutomations: "yes",
+        showSidebarTools: "yes",
         autoFocusArtifacts: "occasionally",
         pinnedSessionIds: [42],
       }),
@@ -82,6 +84,16 @@ describe("settings", () => {
         accentColor: "yellow",
       }).success,
     ).toBe(false);
+  });
+
+  test("defaults sidebar tools off and accepts a shared opt-in", () => {
+    const settings = normalizeSettings({});
+    expect(settings.showSidebarTools).toBe(false);
+    const enabled = normalizeSettings({ showSidebarTools: true });
+    expect(enabled.showSidebarTools).toBe(true);
+    expect(areSettingsEqual(settings, enabled)).toBe(false);
+    expect(settingsUpdateSchema.safeParse({ showSidebarTools: true }).success).toBe(true);
+    expect(settingsUpdateSchema.safeParse({ showSidebarTools: "true" }).success).toBe(false);
   });
 
   test("describes precise settings updates as JSON Schema", () => {

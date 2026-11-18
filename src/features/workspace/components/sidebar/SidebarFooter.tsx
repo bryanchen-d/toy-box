@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { BrowseMenu, HyperButton, TerminalToggle } from "./SidebarActions";
 
 export function SidebarFooter({
@@ -19,14 +20,18 @@ export function SidebarFooter({
   onToggleTerminal: () => void;
   isTerminalOpen: boolean;
 }) {
+  const showSidebarTools = useWorkspaceSelector((workspace) => workspace.settings.showSidebarTools);
+
   return (
     <div className="pt-3 md:pb-3 px-2.5 border-t flex items-center justify-between">
       <div className="flex items-center gap-2">{leadingSlot}</div>
-      <div className="flex items-center gap-3">
-        <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
-        <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="top" />
-        <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
-      </div>
+      {showSidebarTools && (
+        <div className="flex items-center gap-3">
+          <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
+          <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="top" />
+          <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+        </div>
+      )}
     </div>
   );
 }

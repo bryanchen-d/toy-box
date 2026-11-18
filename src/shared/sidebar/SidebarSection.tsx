@@ -13,8 +13,8 @@ export type SidebarSectionProps = {
   action?: ReactNode;
   /** What its items are doing; while collapsed, the most pressing replaces the action. */
   activity?: { waiting?: boolean; finished?: boolean; unread?: boolean; running?: boolean };
-  /** Whether the expanded section takes the sidebar's remaining height rather than its content's. */
-  fill?: boolean;
+  /** Take remaining height; a positive number weights its share relative to other filling sections. */
+  fill?: boolean | number;
   children: ReactNode;
 };
 
@@ -35,15 +35,16 @@ export function SidebarSection({
     <section
       className={cn(
         "flex min-w-0 flex-col overflow-hidden border-t first:border-t-0",
-        // The filling section alone yields height when the sidebar is short, so
+        // Filling sections yield height when the sidebar is short, so
         // the sections above and below it keep their content's height.
         fill
           ? cn(
               "min-h-0 transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
-              isExpanded ? "grow" : "grow-0",
+              isExpanded ? "basis-10" : "grow-0",
             )
           : "shrink-0",
       )}
+      style={fill && isExpanded ? { flexGrow: fill === true ? 1 : fill } : undefined}
     >
       <div
         className={cn(

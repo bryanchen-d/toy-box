@@ -93,7 +93,7 @@ export function SessionList({
 
   return (
     <AnimatedSidebarList
-      rootClassName="min-h-40 flex-1"
+      rootClassName="min-h-0 flex-1"
       className={className}
       emptyState={
         <p className="text-center text-muted-foreground py-8 italic">

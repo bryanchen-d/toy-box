@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { Separator } from "@/shared/ui/separator";
 import {
   ActionSpacer,
@@ -51,6 +52,8 @@ export function SidebarRail({
   isTerminalOpen: boolean;
   children?: ReactNode;
 }) {
+  const showSidebarTools = useWorkspaceSelector((workspace) => workspace.settings.showSidebarTools);
+
   return (
     <div
       aria-hidden={!collapsed}
@@ -82,9 +85,17 @@ export function SidebarRail({
         {children}
       </div>
 
-      <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
-      <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="right" />
-      <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+      {showSidebarTools && (
+        <>
+          <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
+          <BrowseMenu
+            onBrowseFiles={onBrowseFiles}
+            onBrowseScreens={onBrowseScreens}
+            side="right"
+          />
+          <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+        </>
+      )}
       <Separator className={SEPARATOR} />
       <ActionSpacer />
     </div>

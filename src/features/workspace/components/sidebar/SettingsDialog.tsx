@@ -60,6 +60,24 @@ export function SettingsDialog({
             </p>
           </div>
           <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="show-sidebar-tools"
+                checked={settings.showSidebarTools}
+                onCheckedChange={(checked) => {
+                  updateSetting("showSidebarTools", checked);
+                }}
+              />
+              <label htmlFor="show-sidebar-tools" className="text-sm font-medium text-foreground">
+                Show sidebar tools
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Shared across devices. Shows Hyper session, Files and Screens, and Terminal buttons.
+              Hiding them does not close anything already open.
+            </p>
+          </div>
+          <div className="grid gap-2">
             <label htmlFor="theme-preference" className="text-sm font-medium text-foreground">
               Appearance
             </label>

@@ -14,6 +14,7 @@ test("persists one complete settings document", async () => {
     terminalShell: "/bin/zsh",
     useWorktree: true,
     showSessionsAndAutomations: true,
+    showSidebarTools: true,
     pinnedSessionIds: ["session-a"],
   };
 

@@ -44,6 +44,7 @@ export function TeamsPanel({
     <>
       <SidebarPanel
         title="Teams"
+        fill={3}
         isExpanded={isExpanded}
         onExpandedChange={onExpandedChange}
         emptyMessage="Create a team of agents to work toward a purpose together."
