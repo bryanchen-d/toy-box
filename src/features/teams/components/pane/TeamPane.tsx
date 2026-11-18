@@ -381,6 +381,7 @@ function TeamContent({
                       state={state}
                       composerRef={threadComposerRef}
                       onLoadThrough={loadPrevious}
+                      onClose={closeAside}
                       onReply={(message) =>
                         postMessage({ ...message, threadSequence: aside.sequence })
                       }

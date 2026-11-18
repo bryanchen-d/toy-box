@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { MessageSquareReply } from "lucide-react";
 import type { TeamState, PostTeamMessageInput } from "@teams/model";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
+import { Button } from "@/shared/ui/button";
 import { PaneMessage } from "@/shared/ui/pane-message";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { TeamComposer, type TeamComposerHandle } from "./TeamComposer";
@@ -29,6 +30,7 @@ export function TeamThread({
   composerRef,
   onLoadThrough,
   onReply,
+  onClose,
 }: {
   teamId: string;
   /** The thread's top-level message. */
@@ -40,6 +42,7 @@ export function TeamThread({
   /** Loads older history through the thread's top-level message. */
   onLoadThrough: (sequence: number) => Promise<void>;
   onReply: (message: Pick<PostTeamMessageInput, "content" | "attachments">) => Promise<unknown>;
+  onClose: () => void;
 }) {
   const pane = useTeamPane();
   const { lead, members } = pane;
@@ -93,7 +96,22 @@ export function TeamThread({
         aria-label="Thread"
         className="flex h-full min-h-0 min-w-0 flex-col bg-panel outline-none"
       >
-        <TeamPanelHeader icon={MessageSquareReply} title="Thread" />
+        <TeamPanelHeader
+          icon={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="-m-2 text-muted-foreground"
+              aria-label="Close thread"
+              title="Close thread"
+              onClick={onClose}
+            >
+              <MessageSquareReply aria-hidden />
+            </Button>
+          }
+          title="Thread"
+        />
         <TeamMessageSearch
           teamId={teamId}
           threadSequence={sequence}

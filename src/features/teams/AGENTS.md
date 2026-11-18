@@ -597,12 +597,14 @@ reorders locally until its optimistic arrangement replaces the list.
 The pane's right edge is `TeamPanelBar`, with a top show/hide button followed by one toggle per
 panel: overview, canvas (available once the lead sets one), members, tasks, artifacts, routines,
 and security, which is marked while one of the Team's agents has an open finding.
-The top button replaces header close buttons; its chevron points right to close and left to reopen
+The top button closes any aside; its chevron points right to close and left to reopen
 the last selected panel while the pane remains mounted, or overview if none was selected or its
 canvas is no longer available. One aside shows beside chat at a time. Choosing a panel replaces
 the current one, and choosing it again returns to chat. A thread, a
 message search result, or a members or agent reference opens over the panel, and closing it returns
-to the panel. A normal pane opens the panel the Workspace surface remembers in the layout cookie,
+to the panel. The icon left of the thread's header title closes its thread; the title itself is plain
+text. A normal pane opens
+the panel the Workspace surface remembers in the layout cookie,
 so it persists across reloads and Teams; a compact pane keeps its own and opens on chat.
 
 In a wide pane, chat and the aside form one resizable panel group divided by the shared
