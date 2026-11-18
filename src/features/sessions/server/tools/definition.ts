@@ -24,6 +24,23 @@ export function defineTool<T = unknown>(name: string, definition: Omit<Tool<T>, 
   return { name, ...definition };
 }
 
+export function getToolConfigurationKey(
+  tools: readonly Pick<
+    Tool,
+    "name" | "description" | "parameters" | "alwaysAvailable" | "isTerminal"
+  >[],
+): string {
+  return JSON.stringify(
+    tools.map(({ name, description, parameters, alwaysAvailable, isTerminal }) => [
+      name,
+      description,
+      parameters?.toJSONSchema(),
+      alwaysAvailable,
+      isTerminal,
+    ]),
+  );
+}
+
 export type ToolResult = {
   content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[];
   isError?: boolean;

@@ -30,6 +30,7 @@ import { USER_AUTHOR } from "@teams/model/performance";
 import { workspaceFileFromAbsolutePath } from "@files/server/paths";
 import {
   abortSession,
+  createSession,
   deliverSessionMessage,
   getSessionDirectory,
   getSessionUsage,
@@ -45,6 +46,8 @@ import { resolveMessageResources, resolveEventResources } from "./resources";
 import { publishTeamEvent, releaseTeamEvents } from "./events";
 import { sharedMap } from "@/shared/server/processState";
 import { SerialTaskQueue } from "@/shared/serialTaskQueue";
+import { ADMIN_TEAM_ID } from "@teams/model/admin";
+import { readSession } from "@sessions/server/state/sessions";
 
 const TEAM_MESSAGE_LIMIT = 100;
 const teamEditQueues = sharedMap<SerialTaskQueue>("team-edit-queues");
@@ -157,7 +160,10 @@ export async function createTeam(input: CreateTeamInput): Promise<Team> {
     name: `Lead · ${input.name}`,
     metadata: { seenThrough: 0 },
     retention: "durable",
-    message: { content: "This team was just created. Begin working toward its purpose." },
+    message: {
+      content:
+        "This team was just created. Read its context and begin your kickoff or ask the user what to work on. Before finishing this first turn, design and save a distinctive team avatar using update_team({avatar:{mark,color}}). Use simple SVG path data in a 24 by 24 viewBox and a six-digit hex background color, not SVG markup or a file. If the purpose is not defined yet, use the team's name for the design; avatar setup must not wait for a purpose.",
+    },
     admit: async (lead) => {
       const team = await database.createTeam(input, lead);
       broadcast({ type: "team.upserted", team });
@@ -706,7 +712,14 @@ export async function wakeTeamAgent(
   if (!team) throw new Error("Team not found.");
   if (team.paused) return;
   const at = new Date().toISOString();
-  const { disposition } = await deliverSessionMessage(agentId, { systemMessage, immediate: true });
+  const message = { systemMessage, immediate: true as const };
+  const { disposition } =
+    agentId === ADMIN_TEAM_ID && !(await readSession(agentId))?.provider
+      ? await createSession(agentId, message, {
+          sessionType: "worker",
+          name: `Lead · ${team.name}`,
+        })
+      : await deliverSessionMessage(agentId, message);
   await database
     .recordWake(team.id, {
       agentId,

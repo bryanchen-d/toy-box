@@ -79,6 +79,10 @@ export class SessionStream {
     return SessionStream.streams.has(sessionId);
   }
 
+  static getSessionIds(): string[] {
+    return [...SessionStream.streams.keys()];
+  }
+
   static async waitForCompletion(
     sessionId: string,
     timeoutMs?: number,
@@ -123,6 +127,7 @@ export class SessionStream {
   #hasOpenedTurn = false;
   #abortRequested = false;
   #finished = false;
+  #lastProviderEventAt?: number;
   #completionResult: SessionCompletion | undefined;
   // Actions held for the owner's approval, by question request ID.
   readonly #approvals = new Map<string, (allowed: boolean) => void>();
@@ -330,6 +335,10 @@ export class SessionStream {
     return this.#sessionState;
   }
 
+  get lastProviderEventAt(): number | undefined {
+    return this.#lastProviderEventAt;
+  }
+
   // ── Stream controls ──────────────────────────────────────────────────
 
   /** @internal Complete this execution; external controls should abort or delete the session. */
@@ -414,6 +423,7 @@ export class SessionStream {
 
   #handleProviderEvent(event: SessionEvent): void {
     if (this.#finished) return;
+    this.#lastProviderEventAt = Date.now();
     if (event.type === "session_title_changed") {
       broadcast({
         type: "session.upserted",

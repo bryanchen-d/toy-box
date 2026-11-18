@@ -7,6 +7,7 @@ import {
 import { cancelAdmittedWorker } from "./admission";
 import { finishWorkersForApp, finishWorkersOwnedBySession, getWorker } from "./registry";
 import type { Worker } from "../model";
+import { assertSessionCanBeDeleted } from "@/server/managedSessions";
 
 /** Remove every worker owned by a deleted session, including file workers. */
 export async function deleteWorkersForSession(sessionId: string): Promise<void> {
@@ -37,6 +38,7 @@ async function deleteWorkers(sessionIds: ReadonlySet<string>): Promise<unknown[]
 }
 
 export async function deleteWorker(sessionId: string, type?: Worker["type"]): Promise<boolean> {
+  assertSessionCanBeDeleted(sessionId);
   if (type) {
     const worker = (await getPersistedWorker(sessionId)) ?? getWorker(sessionId);
     if (worker?.type !== type) return false;

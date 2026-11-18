@@ -11,6 +11,7 @@ import * as registry from "../state/registry";
 import * as snapshots from "../state/snapshots";
 import { insertSession, readSession, setSessionProvider } from "../state/sessions";
 import { getSessionConfiguration } from "@/server/sessionConfiguration";
+import * as sessionConfiguration from "@/server/sessionConfiguration";
 import * as settings from "@workspace/server/state/settings";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
 import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
@@ -488,6 +489,40 @@ describe("Session-owned configuration lifetime", () => {
     expect(handles[1]!.send).toHaveBeenCalledTimes(3);
   });
 
+  test("connection diagnostics observe tool drift in paused teams without refreshing or discovering models", async () => {
+    const { sessionId, db, handles, resume } = await setup(true, "lead");
+    await createSession(sessionId, { content: "Start" }, { sessionType: "worker" });
+    const connected = await registry.getSessionConnectionStatus(sessionId);
+    if (!connected.toolConfiguration) throw new Error("Expected a tracked provider connection.");
+    expect(connected).toMatchObject({
+      state: "in_use",
+      toolConfiguration: "current",
+      connectedAt: expect.any(Number),
+    });
+    await new TeamDatabase(db).editTeam({ teamId: sessionId, paused: true });
+    expect(await registry.getSessionConnectionStatus(sessionId)).toEqual(connected);
+    const tools = await sessionConfiguration.getSessionTools(sessionId, "worker");
+    spyOn(sessionConfiguration, "getSessionTools").mockResolvedValue(
+      tools.map((tool) =>
+        tool.name === "update_team"
+          ? { ...tool, description: `${tool.description} Updated contract.` }
+          : tool,
+      ),
+    );
+    expect(await registry.getSessionConnectionStatus(sessionId)).toEqual({
+      ...connected,
+      toolConfiguration: "stale",
+    });
+    expect(resume).not.toHaveBeenCalled();
+    expect(handles[0]!.disconnect).not.toHaveBeenCalled();
+    expect(handles[0]!.send).toHaveBeenCalledTimes(1);
+    SessionStream.get(sessionId)!.finish();
+    expect(await registry.getSessionConnectionStatus(sessionId)).toMatchObject({
+      state: "cached",
+      toolConfiguration: "stale",
+    });
+  });
+
   test("a lead model edit reaches its existing session on the next execution", async () => {
     const { sessionId, db, create, resume, handles } = await setup(true, "lead");
     const teams = new TeamDatabase(db);
@@ -721,5 +756,53 @@ describe("Session-owned configuration lifetime", () => {
     await deliverSessionMessage(sessionId, { content: "Second" });
     expect(resume).toHaveBeenCalledTimes(2);
     expect(handles[1]!.send).toHaveBeenCalledTimes(1);
+  });
+
+  test("explicit connection refresh refuses active work and releases only the selected idle handle", async () => {
+    const { sessionId, resume, handles } = await setup(false);
+    const runtime = await import("./index");
+    await deliverSessionMessage(sessionId, { content: "First" });
+    expect(() => runtime.refreshSessionConnection(sessionId)).toThrow("busy or starting");
+    await expect(registry.refreshIdleSessionConnection(sessionId)).rejects.toThrow(
+      "busy or starting",
+    );
+    expect(handles[0]!.disconnect).not.toHaveBeenCalled();
+    SessionStream.get(sessionId)!.finish();
+    expect(await runtime.refreshSessionConnection(sessionId)).toEqual({
+      state: "released",
+      resumesOnNextMessage: true,
+    });
+    expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(await runtime.refreshSessionConnection(sessionId)).toEqual({
+      state: "disconnected",
+      resumesOnNextMessage: true,
+    });
+    await deliverSessionMessage(sessionId, { content: "Second" });
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(handles[1]!.send).toHaveBeenCalledTimes(1);
+  });
+
+  test("idle-only refresh does not detach a handle used by an in-flight bounded provider operation", async () => {
+    const { sessionId, handles } = await setup(false);
+    await deliverSessionMessage(sessionId, { content: "First" });
+    SessionStream.get(sessionId)!.finish();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const operation = registry.withSession(sessionId, async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    await entered.promise;
+    await expect(registry.refreshIdleSessionConnection(sessionId)).rejects.toThrow(
+      "busy or starting",
+    );
+    expect(handles[0]!.disconnect).not.toHaveBeenCalled();
+    release.resolve();
+    await operation;
+    expect(await registry.refreshIdleSessionConnection(sessionId)).toMatchObject({
+      state: "released",
+    });
+    expect(handles[0]!.disconnect).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,6 +11,7 @@ import {
 } from "@sessions/model/view";
 import { createSessionDiffsProjector } from "@sessions/model/editDiffs";
 import { searchSessionMessages } from "@sessions/model/search";
+import { hasBlockingSessionQuestion } from "@sessions/model/questions";
 import type { SessionQuestionAnswer, StreamSessionRequest } from "@sessions/model/protocol";
 import type {
   SessionCompletion,
@@ -170,6 +171,43 @@ export function getSessionRuntimeStatus(sessionId: string): {
   return {
     running: stream !== undefined || pendingStreamCreations.has(sessionId),
     queuedCount: stream?.getSessionState().queuedMessages.length ?? 0,
+  };
+}
+
+export function getSessionRuntimeIds(): string[] {
+  return [...new Set([...SessionStream.getSessionIds(), ...pendingStreamCreations.keys()])];
+}
+
+/** Stop no work: refreshing an idle handle only changes how the next execution connects. */
+export function refreshSessionConnection(sessionId: string) {
+  if (getSessionRuntimeStatus(sessionId).running) {
+    throw new Error(
+      "Session is busy or starting. Ask the owner to stop it before refreshing its connection.",
+    );
+  }
+  return sessionRegistry.refreshIdleSessionConnection(sessionId);
+}
+
+/** Metadata from live execution only; idle diagnostics never replay private history. */
+export function getSessionRuntimeDiagnostics(sessionId: string) {
+  const stream = SessionStream.get(sessionId);
+  const state = stream?.getSessionState();
+  const waitingForInput = state ? hasBlockingSessionQuestion(state) : false;
+  const phase = stream
+    ? waitingForInput
+      ? ("waiting" as const)
+      : state?.status === "background"
+        ? ("background" as const)
+        : ("running" as const)
+    : pendingStreamCreations.has(sessionId)
+      ? ("starting" as const)
+      : ("idle" as const);
+  return {
+    ...getSessionRuntimeStatus(sessionId),
+    phase,
+    activity: state?.status,
+    waitingForInput,
+    lastProviderEventAt: stream?.lastProviderEventAt,
   };
 }
 

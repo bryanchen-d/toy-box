@@ -30,6 +30,20 @@ export const sessionInputSchema = z.object({
   sessionId: z.string(),
 });
 
+export const sessionStatusInputSchema = z
+  .object({
+    sessionId: z.string().trim().min(1).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    offset: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .refine(
+    ({ sessionId, limit, offset }) =>
+      sessionId === undefined || (limit === undefined && offset === undefined),
+    "Paging applies only to the workspace overview; omit it when selecting a session.",
+  );
+export type SessionStatusInput = z.infer<typeof sessionStatusInputSchema>;
+
 export const sessionHistoryInputSchema = sessionInputSchema.extend({
   start: z.number().int().nonnegative(),
 });

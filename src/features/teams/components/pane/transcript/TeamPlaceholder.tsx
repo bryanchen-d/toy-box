@@ -1,4 +1,6 @@
 import { CloudPlaceholder, type Ink } from "@/shared/ink-cloud/CloudPlaceholder";
+import { ADMIN_TEAM_ID } from "@teams/model/admin";
+import { useTeamPane } from "../TeamPaneContext";
 
 /** Two inks converging: the user's rising from below, the agents' descending from above. */
 const INKS: Ink[] = [
@@ -8,13 +10,18 @@ const INKS: Ink[] = [
 
 /** The team before its first message: the inks meet in the middle, and the pointer stirs them. */
 export function TeamPlaceholder() {
+  const isAdmin = useTeamPane().teamId === ADMIN_TEAM_ID;
   return (
     <CloudPlaceholder
       className="absolute inset-0"
       inks={INKS}
       reaction="stir"
-      title="Your lead is getting started"
-      description="Send a message or type @ to add a member"
+      title={isAdmin ? "Your Admin team is ready" : "Your lead is getting started"}
+      description={
+        isAdmin
+          ? "Ask for a workspace health check or help with a session"
+          : "Send a message or type @ to add a member"
+      }
     />
   );
 }

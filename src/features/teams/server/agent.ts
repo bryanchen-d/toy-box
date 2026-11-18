@@ -5,14 +5,30 @@ import { modelTools } from "@sessions/server/tools";
 import type { Worker } from "@workers/model";
 import { SUB_SESSION_INSTRUCTIONS, subSessionOwnerTools } from "@workers/server/tools";
 import { getStateDatabase } from "@/server/database";
-import { teamAgentFromWorker, type TeamAgentContext } from "@teams/model/worker";
+import { isTeamLead, teamAgentFromWorker, type TeamAgentContext } from "@teams/model/worker";
 import { TeamDatabase } from "./database";
 import { TEAM_REFERENCE_INSTRUCTIONS, teamLeadTools, teamMemberTools } from "./tools";
 import { screenTools } from "@screens/server/tools";
+import { ADMIN_TEAM_ID, ADMIN_TEAM_INSTRUCTIONS } from "@teams/model/admin";
+import { adminTeamTools } from "./adminTools";
 
 const TEAM_SUB_SESSION_INSTRUCTIONS = `<team_sub_sessions>
 Your sub sessions are your private helpers, not team members: no one else on the team can message them, and their reports reach only you. A member is a lasting role on the team, while a sub session does one task for you, so don't create a member for a single task you can hand to a sub session. After you review a report, share what the team needs from it in a team message, and answer for that work as your own.
 </team_sub_sessions>`;
+
+export function getTeamAgentTools(worker: Extract<Worker, { type: "team" }>) {
+  return [
+    ...screenTools,
+    ...artifactAppTools,
+    ...appLifecycleTools,
+    ...automationTools,
+    ...createAppStateTools(),
+    ...modelTools,
+    ...subSessionOwnerTools,
+    ...(isTeamLead(worker) ? teamLeadTools : teamMemberTools),
+    ...(isTeamLead(worker) && worker.teamId === ADMIN_TEAM_ID ? adminTeamTools : []),
+  ];
+}
 
 export async function getTeamAgentConfiguration(worker: Extract<Worker, { type: "team" }>) {
   const team = await new TeamDatabase(await getStateDatabase()).getTeam(worker.teamId);
@@ -21,22 +37,14 @@ export async function getTeamAgentConfiguration(worker: Extract<Worker, { type: 
   const agent = teamAgentFromWorker(worker);
   const model = agent.isLead ? team.model : agent.model;
   return {
-    tools: [
-      ...screenTools,
-      ...artifactAppTools,
-      ...appLifecycleTools,
-      ...automationTools,
-      ...createAppStateTools(),
-      ...modelTools,
-      ...subSessionOwnerTools,
-      ...(agent.isLead ? teamLeadTools : teamMemberTools),
-    ],
+    tools: getTeamAgentTools(worker),
     directory: team.directory,
     additionalInstructions: [
       buildTeamAgentInstructions(agent, team),
       TEAM_REFERENCE_INSTRUCTIONS,
       SUB_SESSION_INSTRUCTIONS,
       TEAM_SUB_SESSION_INSTRUCTIONS,
+      ...(agent.isLead && team.id === ADMIN_TEAM_ID ? [ADMIN_TEAM_INSTRUCTIONS] : []),
     ].join("\n\n"),
     disableMemory: true as const,
     ...(model ? { model } : {}),
@@ -66,7 +74,7 @@ function buildTeamAgentInstructions(agent: TeamAgentContext, team: Team): string
     ? `Before creating tasks or members, or beginning substantive work, understand what sufficiently serving the purpose requires. Scale the process to the work. For focused or ad hoc work, frame the immediate scope and start. For complex or consequential work, define concrete success criteria and identify material assumptions, risks, open questions, and capabilities. Decide what must be resolved first and whether a product, design, architecture, research, or specification pass would improve the result. Use only the durable artifacts needed for alignment, and make intentional exclusions explicit.
 
 Your first public action in a new team must be one concise kickoff message. Post it before creating any member. Summarize the consequential framing, your approach, and the first actionable step. Handle the purpose directly only when it is genuinely small enough to complete and validate well in one focused turn. Otherwise, establish the lightweight task list and staffing plan the current work needs before substantive work begins.`
-    : `This team does not have a purpose yet. Your first public action must be one concise message asking the user what they want to work on. Follow the user-request process under Communicate, then call finish_agent_turn with a brief waitingFor note. Do not create tasks or members or begin work until the user provides enough direction to define the purpose.
+    : `This team does not have a purpose yet. Your first public action must be one concise message asking the user what they want to work on. Follow the user-request process under Communicate, initialize the team's missing avatar from its name as described below, then call finish_agent_turn with a brief waitingFor note. Avatar setup is allowed while waiting for a purpose, but do not create tasks or members or begin project work until the user provides enough direction to define the purpose.
 
 When the user responds, use update_team to set a concise purpose. After that succeeds, evaluate what the purpose requires, post a concise kickoff with the consequential framing and first actionable step, and only then create tasks or members.`;
   const leadGuidance = agent.isLead
@@ -78,6 +86,9 @@ Your job is to establish a clear team purpose with the user and coordinate the w
 ### Frame and kick off
 ${kickoffGuidance}
 
+### Establish the team identity
+If read_team shows no team avatar, you MUST design and save one with update_team({avatar:{mark,color}}) during your initial turn, after the kickoff or question and before finish_agent_turn. Use the team's name and purpose, or its name alone when its purpose is not defined yet. This is team setup, not substantive project work, and must not wait for the user's answer. Author a simple SVG outline recognizable at 20 pixels in a 24 by 24 viewBox, with a six-digit hex background color. Supply path data, not SVG markup or a file path. This represents the team, not your fixed lead identity. On later turns, retry a missing avatar during normal work. Keep an existing avatar across renames and purpose changes unless the user asks for a redesign or the team's identity materially changes. When asked for a new team icon, design and save a replacement through the same tool. Do not use an image-generation service for team icons.
+
 ### Staff and delegate
 Keep dependent work sequential. If one member's output will shape another's work, create the downstream member only after that output exists. Planned tasks may remain pending and unowned. Staff them only when their required inputs exist and the owner can begin immediately. Once staffed, assign the directly responsible member. Assign yourself only for work you intend to perform. Do not create a member merely to hold or wait. Keep future roles in the plan until they are needed. When a role becomes actionable, create the member with a focused role that establishes a high bar for the craft, judgment, and ownership expected from them. Then delegate a clear outcome with the context, constraints, and quality bar needed to succeed. Mention the owner in every assignment or follow-up request so it wakes them. State each assignment once in its handoff message.
 
@@ -86,8 +97,6 @@ Stay engaged after delegation. Ask the right questions, challenge weak assumptio
 
 ### Track and adapt
 Keep the team name, purpose, working directory, tasks, preview, shared artifacts, and roster current. If the work needs a directory and none was provided, create one and assign it with update_team. When the user materially revises what the team is for, update the purpose before adapting the plan. Keep the task list focused on the current effort and completed outcomes that remain useful to review, not a log of every activity. Keep top-level tasks focused on discrete value. Use subtasks to decompose an outcome into independently tracked work or to group closely related work beneath that value. Pending means work has not started. In progress means its owner is actively advancing it. Blocked means progress cannot continue without a specific input, dependency, or decision. Done means the stated outcome exists and every retained subtask is done. Reopen work when evidence disproves completion and remove obsolete work, but do not discard useful completed outcomes merely to shorten the list.
-
-If read_team shows no team avatar, design a distinctive team icon reflecting its name and purpose and save it with update_team({avatar:{mark,color}}) during your normal turn, after the initial kickoff or question. Author a simple SVG outline recognizable at 20 pixels, with a six-digit hex background color. This represents the team, not your fixed lead identity. Keep it across renames and purpose changes unless the user asks for a redesign or the team's identity materially changes. When asked for a new team icon, design and save a replacement through the same tool. Do not use an image-generation service for team icons.
 
 Give each task a short, unique, stable ID such as t1 or t12, not a UUID. Batch progress updates with edit_team_tasks. Reserve update_team's whole-tree replacement for initial planning or restructuring, preserving retained IDs and outcomes.
 

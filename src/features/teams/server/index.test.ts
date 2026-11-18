@@ -17,6 +17,7 @@ import { setSessionStatus } from "@workspace/server/state";
 import { deleteSessionState } from "@workspace/server/state/sessions";
 import startTeams from "./startup";
 import { getTeamAgentConfiguration } from "./agent";
+import * as providerCatalog from "@providers/server";
 
 let currentDb: Bun.SQL | undefined;
 
@@ -166,42 +167,47 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
   expect((await teams.getAgent(team.id))?.status).toBeUndefined();
 });
 
-test("creating a Team starts its lead without creating a directory", async () => {
-  await openTeams();
-  const root = await mkdtemp(join(tmpdir(), "agent-teams-team-create-"));
-  onTestFinished(async () => {
-    await rm(root, { recursive: true, force: true });
-  });
-  const directory = join(root, "nested", "workspace");
-  const leadStarted = Promise.withResolvers<Parameters<typeof sessionRuntime.createSession>>();
-  const create = spyOn(sessionRuntime, "createSession").mockImplementation(async (...args) => {
-    leadStarted.resolve(args);
-    return {
-      disposition: "started",
-      waitForCompletion: async () => ({ status: "completed" }),
-    };
-  });
-  onTestFinished(() => create.mockRestore());
+test.each([undefined, "Ship a useful release."])(
+  "creating a Team with purpose %s starts avatar setup without creating a directory",
+  async (purpose) => {
+    await openTeams();
+    const root = await mkdtemp(join(tmpdir(), "agent-teams-team-create-"));
+    onTestFinished(async () => {
+      await rm(root, { recursive: true, force: true });
+    });
+    const directory = join(root, "nested", "workspace");
+    const leadStarted = Promise.withResolvers<Parameters<typeof sessionRuntime.createSession>>();
+    const create = spyOn(sessionRuntime, "createSession").mockImplementation(async (...args) => {
+      leadStarted.resolve(args);
+      return {
+        disposition: "started",
+        waitForCompletion: async () => ({ status: "completed" }),
+      };
+    });
+    onTestFinished(() => create.mockRestore());
 
-  const team = await createTeam({
-    name: "Bitmap studio",
-    directory,
-    model: TEAM_DEFAULTS.model,
-  });
-  const [leadId, message, options] = await leadStarted.promise;
+    const team = await createTeam({
+      name: "Bitmap studio",
+      purpose,
+      directory,
+      model: TEAM_DEFAULTS.model,
+    });
+    const [leadId, message, options] = await leadStarted.promise;
 
-  expect(team.directory).toBe(directory);
-  expect(team.purpose).toBeUndefined();
-  await expect(stat(directory)).rejects.toThrow();
-  expect(leadId).toBe(team.id);
-  expect(message).toMatchObject({
-    content: "This team was just created. Begin working toward its purpose.",
-  });
-  expect(options).toMatchObject({
-    sessionType: "worker",
-    name: "Lead · Bitmap studio",
-  });
-});
+    expect(team.directory).toBe(directory);
+    expect(team.purpose).toBe(purpose);
+    await expect(stat(directory)).rejects.toThrow();
+    expect(leadId).toBe(team.id);
+    if (!("content" in message)) throw new Error("Expected the lead's initial prompt.");
+    expect(message.content).toContain("update_team({avatar:{mark,color}})");
+    expect(message.content).toContain("Before finishing this first turn");
+    expect(message.content).toContain("must not wait for a purpose");
+    expect(options).toMatchObject({
+      sessionType: "worker",
+      name: "Lead · Bitmap studio",
+    });
+  },
+);
 
 test.each([false, true])(
   "team deletion publishes once and attempts all session cleanup (failure=%s)",
@@ -971,6 +977,8 @@ test("a Team Agent publishes focus and settles temporary turn state", async () =
 });
 
 test("session completion and startup clear working status, preserving waits and subsequent turns", async () => {
+  const models = spyOn(providerCatalog, "listModels").mockResolvedValue([]);
+  onTestFinished(() => models.mockRestore());
   const teams = await openTeams();
   const team = await createStoredTeam(teams, { name: "Activity", ...TEAM_DEFAULTS });
   const { member } = await teams.createMember(teamAgent(team.id, "active", "Active"));

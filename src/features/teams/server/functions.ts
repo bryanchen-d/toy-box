@@ -21,9 +21,11 @@ import { teamMessageSearchInputSchema } from "@teams/model/search";
 import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
 import { resolveTeamAdviceInputSchema } from "@teams/model/advice";
 import { z } from "zod";
-export const listTeams = createServerFn({ method: "GET" }).handler((): Promise<TeamList> =>
-  teams.listTeams(),
-);
+export const listTeams = createServerFn({ method: "GET" }).handler(async (): Promise<TeamList> => {
+  const { ensureAdminTeam } = await import("./admin");
+  await ensureAdminTeam();
+  return teams.listTeams();
+});
 
 export const getTeamPerformance = createServerFn({ method: "GET" })
   .validator(zodValidator(teamIdentitySchema.extend({ bucket: z.enum(PERFORMANCE_BUCKETS) })))

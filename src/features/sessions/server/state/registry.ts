@@ -15,7 +15,8 @@ import {
   getSessionDirectory,
   resumeSession as resumeProviderSession,
 } from "../providers";
-import { getSessionConfiguration } from "@/server/sessionConfiguration";
+import { getSessionConfiguration, getSessionTools } from "@/server/sessionConfiguration";
+import { getToolConfigurationKey } from "@sessions/server/tools/definition";
 import { broadcast } from "@workspace/server/events";
 import { deleteSessionWorkspaceState, unpinSession } from "@workspace/server/state";
 import { createSessionWorktree, deleteSessionWorktree } from "./worktrees";
@@ -24,6 +25,7 @@ import {
   deleteOwnedSessions,
   detachManagedSession,
   resolveSessionType,
+  assertSessionCanBeDeleted,
 } from "@/server/managedSessions";
 import { sharedMap } from "@/shared/server/processState";
 import { addHyperSession, hasHyperSession } from "@workspace/server/state/hyperSessions";
@@ -36,7 +38,10 @@ const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 type CachedSession = {
   session: SessionConnection;
   configurationKey?: string;
+  toolConfigurationKey?: string;
+  connectedAt?: number;
   executionLease: boolean;
+  operations: number;
   idleReleaseTimer?: ReturnType<typeof setTimeout>;
   // Join the same teardown when acquisitions and release overlap.
   disconnecting?: Promise<void>;
@@ -136,7 +141,14 @@ export async function createSession(
     throw error;
   }
   const now = new Date().toISOString();
-  cachedSessions.set(sessionId, { session, configurationKey, executionLease: true });
+  cachedSessions.set(sessionId, {
+    session,
+    configurationKey,
+    toolConfigurationKey: getToolConfigurationKey(sessionConfiguration.tools),
+    connectedAt: Date.now(),
+    executionLease: true,
+    operations: 0,
+  });
 
   // Publish the execution directory immediately so clients can resolve its location.
   broadcast({
@@ -213,7 +225,14 @@ async function acquireConfiguredSession(
         ...sessionConfiguration,
         directory: directory ?? homedir(),
       });
-      cachedSessions.set(sessionId, { session, configurationKey, executionLease: false });
+      cachedSessions.set(sessionId, {
+        session,
+        configurationKey,
+        toolConfigurationKey: getToolConfigurationKey(sessionConfiguration.tools),
+        connectedAt: Date.now(),
+        executionLease: false,
+        operations: 0,
+      });
       return session;
     })().finally(() => {
       sessionAcquisitions.delete(sessionId);
@@ -239,6 +258,51 @@ export function releaseSession(sessionId: string): void {
 export async function releaseIdleSession(sessionId: string): Promise<void> {
   const cached = cachedSessions.get(sessionId);
   if (cached) await releaseCachedSessionIfIdle(sessionId, cached);
+}
+
+/** An explicit idle-only operation; unlike retention cleanup, busy targets fail visibly. */
+export async function refreshIdleSessionConnection(sessionId: string) {
+  const cached = cachedSessions.get(sessionId);
+  if (sessionAcquisitions.has(sessionId) || cached?.executionLease || cached?.operations) {
+    throw new Error(
+      "Session is busy or starting. Ask the owner to stop it before refreshing its connection.",
+    );
+  }
+  if (!cached) return { state: "disconnected" as const, resumesOnNextMessage: true };
+  await disconnectCachedSession(sessionId, cached);
+  return { state: "released" as const, resumesOnNextMessage: true };
+}
+
+/** Inspect our cached handle, not remote network liveness; never acquire or release it. */
+export async function getSessionConnectionStatus(sessionId: string) {
+  const cached = cachedSessions.get(sessionId);
+  if (!cached) {
+    return {
+      state: sessionAcquisitions.has(sessionId)
+        ? ("connecting" as const)
+        : ("disconnected" as const),
+    };
+  }
+  const currentTools =
+    cached.toolConfigurationKey === undefined
+      ? undefined
+      : getToolConfigurationKey(
+          await getSessionTools(sessionId, await resolveSessionType(sessionId)),
+        );
+  return {
+    state: cached.disconnecting
+      ? ("disconnecting" as const)
+      : cached.executionLease || cached.operations
+        ? ("in_use" as const)
+        : ("cached" as const),
+    connectedAt: cached.connectedAt,
+    toolConfiguration:
+      currentTools === undefined
+        ? ("untracked" as const)
+        : currentTools === cached.toolConfigurationKey
+          ? ("current" as const)
+          : ("stale" as const),
+  };
 }
 
 /**
@@ -272,13 +336,19 @@ async function runSessionOperation<T>(
   }
   const session = cached?.session ?? (await acquireConfiguredSession(sessionId));
   const acquired = cachedSessions.get(sessionId);
-  if (acquired?.session === session) cancelSessionRelease(acquired);
+  if (acquired?.session === session) {
+    cancelSessionRelease(acquired);
+    acquired.operations = (acquired.operations ?? 0) + 1;
+  }
 
   try {
     return await operation(session);
   } finally {
     const current = cachedSessions.get(sessionId);
-    if (current?.session === session) scheduleSessionRelease(sessionId, current);
+    if (current?.session === session) {
+      current.operations--;
+      scheduleSessionRelease(sessionId, current);
+    }
   }
 }
 
@@ -320,6 +390,7 @@ export async function deleteSession(
   sessionId: string,
   options?: { publish?: boolean },
 ): Promise<void> {
+  assertSessionCanBeDeleted(sessionId);
   await deleteOwnedSessions(sessionId);
   await removeSessionRuntime(sessionId);
   const record = await readSession(sessionId);
@@ -380,6 +451,7 @@ async function releaseCachedSessionIfIdle(sessionId: string, cached: CachedSessi
   if (
     cachedSessions.get(sessionId) !== cached ||
     cached.executionLease ||
+    cached.operations ||
     sessionAcquisitions.has(sessionId)
   ) {
     return;
@@ -390,7 +462,7 @@ async function releaseCachedSessionIfIdle(sessionId: string, cached: CachedSessi
 
 function scheduleSessionRelease(sessionId: string, cached: CachedSession): void {
   cancelSessionRelease(cached);
-  if (cached.executionLease || cached.disconnecting) return;
+  if (cached.executionLease || cached.operations || cached.disconnecting) return;
 
   cached.idleReleaseTimer = setTimeout(() => {
     cached.idleReleaseTimer = undefined;

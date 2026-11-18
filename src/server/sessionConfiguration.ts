@@ -23,7 +23,7 @@ import {
   sessionTitleTools,
   STANDARD_SESSION_INSTRUCTIONS,
 } from "@sessions/server/tools";
-import type { Tool } from "@sessions/server/tools/definition";
+import { getToolConfigurationKey, type Tool } from "@sessions/server/tools/definition";
 import { getPersistedWorker } from "@workers/server/database";
 import {
   SUB_SESSION_INSTRUCTIONS,
@@ -104,15 +104,7 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
           model,
           configuration.directory,
           configuration.additionalInstructions,
-          configuration.tools.map(
-            ({ name, description, parameters, alwaysAvailable, isTerminal }) => [
-              name,
-              description,
-              parameters?.toJSONSchema(),
-              alwaysAvailable,
-              isTerminal,
-            ],
-          ),
+          getToolConfigurationKey(configuration.tools),
         ]),
       };
     }
@@ -124,7 +116,7 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
   const ownsSubSessions = worker?.type !== "session";
   return {
     configurationKey: undefined,
-    tools: getSessionTools(policy, { appId, ownsSubSessions }),
+    tools: toolsForPolicy(policy, { appId, ownsSubSessions }),
     additionalInstructions: [
       ...policy.instructions,
       ...(policy.teams ? [TEAM_REFERENCE_INSTRUCTIONS] : []),
@@ -133,7 +125,22 @@ export async function getSessionConfiguration(sessionId: string, sessionType: Se
   };
 }
 
-function getSessionTools(
+/** Inspect current tool declarations without acquiring a provider or resolving a model. */
+export async function getSessionTools(sessionId: string, sessionType: SessionType) {
+  const worker = sessionType === "worker" ? await getPersistedWorker(sessionId) : undefined;
+  if (sessionType === "worker" && !worker)
+    throw new Error("Worker sessions require persisted ownership.");
+  if (worker?.type === "team") {
+    const { getTeamAgentTools } = await import("@teams/server/agent");
+    return getTeamAgentTools(worker);
+  }
+  return toolsForPolicy(worker?.type === "inbox" ? inboxPolicy : sessionTypePolicies[sessionType], {
+    appId: worker?.type === "app" ? worker.appId : undefined,
+    ownsSubSessions: worker?.type !== "session",
+  });
+}
+
+function toolsForPolicy(
   policy: SessionTypePolicy,
   { appId, ownsSubSessions }: { appId?: string; ownsSubSessions: boolean },
 ): SessionTool[] {

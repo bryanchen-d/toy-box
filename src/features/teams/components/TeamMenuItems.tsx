@@ -4,6 +4,7 @@ import type { Team } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
 import { CopyTeamUri } from "./CopyTeamUri";
+import { ADMIN_TEAM_ID } from "@teams/model/admin";
 
 /** A Team's actions, shared by every menu that offers them. */
 export function TeamMenuItems({
@@ -49,10 +50,14 @@ export function TeamMenuItems({
           <FolderOpen /> Browse files
         </DropdownMenuItem>
       )}
-      <DropdownMenuSeparator />
-      <DropdownMenuItem variant="destructive" onClick={onDelete}>
-        <Trash2 /> Delete team
-      </DropdownMenuItem>
+      {team.id !== ADMIN_TEAM_ID && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <Trash2 /> Delete team
+          </DropdownMenuItem>
+        </>
+      )}
     </>
   );
 }

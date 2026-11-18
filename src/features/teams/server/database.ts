@@ -66,6 +66,7 @@ import { attachmentSchema } from "@/shared/attachments/model";
 import { createMessageSearchMatcher, MESSAGE_SEARCH_LIMIT } from "@/shared/messages/search";
 import type { TeamMessageMatch } from "@teams/model/search";
 import type { TeamWake } from "@teams/model/performance";
+import { ADMIN_TEAM_ID } from "@teams/model/admin";
 
 const teamAttachmentSchema = z.union([attachmentSchema, z.string().min(1).max(4_096)]);
 export type StoredAttachment = z.output<typeof teamAttachmentSchema>;
@@ -122,6 +123,17 @@ export class TeamDatabase {
     return row ? teamFromRow(row) : null;
   }
 
+  /** Apply a default only while no authored avatar exists. */
+  async initializeAvatar(teamId: string, avatar: NonNullable<Team["avatar"]>) {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireTeam(db, teamId);
+      return updateTeamFields(db, team, team.avatar ? {} : { avatar }, {
+        type: "agent",
+        agentId: teamId,
+      });
+    });
+  }
+
   async editTeam({ teamId, ...changes }: EditTeamInput) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireTeam(db, teamId);
@@ -130,6 +142,8 @@ export class TeamDatabase {
   }
 
   async deleteTeam(teamId: string): Promise<string[] | null> {
+    if (teamId === ADMIN_TEAM_ID)
+      throw new Error("The built-in Admin team cannot be deleted. Pause it instead.");
     return inStateTransaction(this.db, async (db) => {
       const workerDatabase = new WorkerDatabase(db);
       const workers = await workerDatabase.list({ type: "team", teamId });

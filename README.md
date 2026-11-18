@@ -33,6 +33,26 @@ Beyond simple session management, Agent Teams provides several helpful workflows
 
 Restart Agent Teams and reload the page after installing, removing, or updating a provider to refresh the model catalog.
 
+### Your Admin team
+
+Once an enabled provider has an available model, Agent Teams automatically creates **Admin** in
+the Teams sidebar. This is a persistent team, not a temporary chat. You do not need to create it
+or supply an objective: its built-in purpose is to help you keep Agent Teams healthy, inspect
+sessions, explain failures with evidence, and refresh idle connections while preserving history.
+It uses your default model when created and stays dormant until you message it.
+Admin has a default shield/check avatar immediately. Other teams are instructed to design and
+save their own avatars during their first lead turn, even before a purpose has been chosen.
+
+Try: **“Check all teams and agent sessions. Explain anything that needs attention, but don't
+change anything.”** Then, if appropriate: **“Refresh the idle connection for this session.”**
+Admin refuses busy sessions; stop the target's work yourself before asking it to refresh.
+A refresh releases the old connection, and the next normal message reconnects with current tools.
+
+You can rename, edit, or pause Admin, but cannot delete it or its lead. It never schedules
+recurring monitoring or adds agents unless you ask. Startup preserves your edits and history.
+Only the built-in team's lead receives its administrative tools; naming another team Admin
+does not grant them.
+
 ### Storage location
 
 Set `AGENT_TEAMS_HOME` to an absolute directory before starting the server to relocate

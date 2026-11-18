@@ -859,6 +859,20 @@ describe("team database", () => {
     ]);
   });
 
+  test("default avatar initialization does not overwrite a concurrent authored icon", async () => {
+    const teams = await openTeams();
+    const team = await createStoredTeam(teams, { name: "Identity", ...TEAM_DEFAULTS });
+    const authored = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
+    const fallback = { mark: "M4 20L12 4l8 16Z", color: "#0f766e" };
+    const [, initialized] = await Promise.all([
+      teams.updateTeam(team.id, { avatar: authored }),
+      teams.initializeAvatar(team.id, fallback),
+    ]);
+    expect(initialized.team.avatar).toEqual(authored);
+    expect(initialized.events).toEqual([]);
+    expect((await teams.getTeam(team.id))?.avatar).toEqual(authored);
+  });
+
   test("team icons persist quietly, can be replaced or cleared, and survive renames", async () => {
     const teams = await openTeams();
     const team = await createStoredTeam(teams, { name: "Design", ...TEAM_DEFAULTS });

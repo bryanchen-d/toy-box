@@ -10,8 +10,14 @@ import { draftSessionId, type DraftKey } from "@workspace/model/state/drafts";
 import { getSavedDrafts } from "@workspace/server/state/drafts";
 import { getSessionStates } from "@workspace/server/state/sessions";
 import { getSettings } from "@workspace/server/state/settings";
+import { ADMIN_TEAM_ID } from "@teams/model/admin";
 
 const RECENT_SESSION_LIMIT = 250;
+
+export function assertSessionCanBeDeleted(sessionId: string): void {
+  if (sessionId === ADMIN_TEAM_ID)
+    throw new Error("The built-in Admin lead cannot be deleted. Pause the Admin team instead.");
+}
 
 /** Read the public Session catalog with feature-owned visibility and relationships. */
 export async function readSessionCatalog(

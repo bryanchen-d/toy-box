@@ -4,12 +4,19 @@ import { getSessionState } from "@workspace/server/state/sessions";
 import { WorkerDatabase } from "@workers/server/database";
 import { TeamDatabase } from "./database";
 import { publishTeamChange, wakeDueTeamAgents } from "./index";
+import { ensureAdminTeam } from "./admin";
 
 /** Working status belongs to an execution; waiting survives it and can schedule a wake. */
 export default async function startTeams(): Promise<VoidFunction> {
   const db = await getStateDatabase();
   const teams = new TeamDatabase(db);
+  await ensureAdminTeam();
   const unsubscribe = subscribeWorkspaceEvents((event) => {
+    if (event.type === "providers.changed" || event.type === "settings.changed") {
+      void ensureAdminTeam().catch((error: unknown) =>
+        console.error("Failed to provision the Admin team:", error),
+      );
+    }
     if (event.type === "session.idle" || event.type === "session.unread") {
       void clearWorkingStatus(event.sessionId);
     }

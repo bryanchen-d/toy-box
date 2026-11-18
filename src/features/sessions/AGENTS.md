@@ -431,5 +431,24 @@ Session execution.
   connection only when that effective configuration changed; active delivery keeps its existing
   session. Callers do not coordinate configuration refresh. This preserves durable history,
   workspace identity, and worktree state.
+- `check_session_status` is an agent-facing, read-only tool available to Hyper and ordinary
+  session coordination, not a sidebar button. Omit `sessionId` for a paged overview (50 entries
+  by default, at most 100); pass an ID for detail. Application composition in
+  `src/server/sessionDiagnostics.ts` combines the retained local catalog, all managed ownership,
+  and live runtimes without discovering provider histories or replaying private conversations.
+  Results preserve `running` and `queuedCount`, distinguish starting, running, background,
+  waiting for input, and idle, and name team leads, members, and parent Session IDs.
+  Connection diagnostics describe the local cached handle, not remote network liveness.
+  Tool freshness compares current declarations without model discovery, even for paused teams;
+  registrations that predate tracking report `untracked`, never an assumed match.
+  Connection and provider-event timestamps are process-local observations, absent when unknown,
+  and provider activity is retained only while the live execution exists. Reads neither acquire
+  nor release connections. Quiet or background work is not automatically considered stuck.
+- The built-in Admin lead receives those diagnostics through its own checked tool surface.
+  Its `refresh_session_connection` operation rejects active or starting work before touching a
+  handle, then releases only the selected idle connection. A later message resumes the same
+  history; the refresh itself starts no turn. Registry acquisition and its execution lease
+  recheck busy state, and detach failures remain visible. Admin's protected lead cannot be
+  deleted through generic Session or Worker deletion either.
 - Generic workspace composition may render and arrange a session, but it must not copy session
   state into layout state.

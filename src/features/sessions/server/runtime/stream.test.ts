@@ -656,6 +656,41 @@ describe("SessionStream activity", () => {
 });
 
 describe("SessionStream question answers", () => {
+  test("diagnostics distinguish background, waiting, and idle without private transcript output", async () => {
+    const sessionId = `runtime-diagnostics-${crypto.randomUUID()}`;
+    cleanUpStreamAfterTest(sessionId);
+    onTestFinished(() => deleteSessionState(sessionId));
+    const { session, emit } = makeControllableSession();
+    const stream = SessionStream.getOrCreate(sessionId, session);
+    const { getSessionRuntimeDiagnostics } = await import("./index");
+    expect(getSessionRuntimeDiagnostics(sessionId).lastProviderEventAt).toBeUndefined();
+    emit({ type: "status", status: "background" });
+    const background = getSessionRuntimeDiagnostics(sessionId);
+    expect(background).toMatchObject({
+      running: true,
+      phase: "background",
+      activity: "background",
+      lastProviderEventAt: expect.any(Number),
+      queuedCount: 0,
+    });
+    emit({ type: "tool_start", toolCallId: "question", toolName: "ask_user", arguments: {} });
+    emit({
+      type: "question_requested",
+      toolCallId: "question",
+      requestId: "input",
+      question: { question: "Private question", allowFreeform: true },
+    });
+    const waiting = getSessionRuntimeDiagnostics(sessionId);
+    expect(waiting).toMatchObject({ running: true, phase: "waiting", waitingForInput: true });
+    expect(JSON.stringify(waiting)).not.toContain("Private question");
+    stream.finish();
+    expect(getSessionRuntimeDiagnostics(sessionId)).toMatchObject({
+      running: false,
+      phase: "idle",
+      queuedCount: 0,
+    });
+  });
+
   test("answers only the pending request owned by the live canonical state", async () => {
     const sessionId = "session-question-answer";
     cleanUpStreamAfterTest(sessionId);
@@ -1976,6 +2011,12 @@ describe("createSession", () => {
     const snapshot = runtime.getSessionSnapshot(sessionId);
     const subscription = runtime.streamSession({ sessionId });
     expect(runtime.getSessionRuntimeStatus(sessionId).running).toBe(true);
+    expect(runtime.getSessionRuntimeDiagnostics(sessionId)).toMatchObject({
+      running: true,
+      phase: "starting",
+      queuedCount: 0,
+    });
+    expect(() => runtime.refreshSessionConnection(sessionId)).toThrow("busy or starting");
 
     creating.resolve({ session: makeFakeSession() });
     await created;

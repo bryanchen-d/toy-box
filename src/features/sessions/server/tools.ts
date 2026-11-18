@@ -1,6 +1,6 @@
 import { defineTool } from "@sessions/server/tools/definition";
 import { z } from "zod";
-import { sessionNameSchema } from "@sessions/model/protocol";
+import { sessionNameSchema, sessionStatusInputSchema } from "@sessions/model/protocol";
 import { modelConfigurationSchema } from "@providers/model";
 import { previewUpdateSchema } from "@/shared/preview";
 
@@ -8,7 +8,7 @@ export const STANDARD_SESSION_INSTRUCTIONS =
   "Keep this session's title recognizable. Before completing the first turn, you MUST call `update_session_title` once with a concise 2-6 word title after understanding the user's initial intent. On later turns, call it again before responding only when the session's focus has changed materially, not for ordinary follow-ups or refinements. Do not mention routine title updates to the user.";
 
 export const HYPER_SESSION_INSTRUCTIONS =
-  "This is Agent Teams' Hyper session, a global floating session window for observing other sessions, managing the Agent Teams environment, answering questions, and performing tasks.";
+  "This is Agent Teams' Hyper session, a global floating session window for observing other sessions, managing the Agent Teams environment, answering questions, and performing tasks. Use check_session_status without a sessionId for a read-only workspace overview, or with a sessionId to inspect one session. It reports runtime phase, team ownership, queued prompts, observed provider activity, and cached tool-definition freshness without starting or interrupting work. Background or quiet does not mean stuck. Connection status describes our local handle, not remote network liveness. An untracked tool configuration is unknown, not current. Report evidence before recommending recovery, and never stop work or delete sessions just to diagnose it.";
 
 const updateSessionTitleTool = defineTool("update_session_title", {
   description:
@@ -73,16 +73,13 @@ export const sessionHistoryTools = [
   }),
 ] as const;
 
-const checkSessionStatus = defineTool("check_session_status", {
+export const checkSessionStatusTool = defineTool("check_session_status", {
   description:
-    "Checks another session's current runtime status. " +
-    "Returns whether it is running, including while it starts, and how many prompts are queued.",
-  parameters: z.object({
-    sessionId: z.string().describe("The ID of the session to check"),
-  }),
-  handler: async ({ sessionId }) => {
-    const { getSessionRuntimeStatus } = await import("@sessions/server/runtime");
-    return JSON.stringify(getSessionRuntimeStatus(sessionId));
+    "Read-only session diagnostics. Pass sessionId for one session, or omit it for a paged overview of retained local sessions and all managed agents (limit defaults to 50, maximum 100; offset pages further). Returns running and queuedCount plus starting/running/background/waiting/idle phase, ownership, observed provider activity, and local connection/tool-registration state. Never starts, resumes, interrupts, or reads private session history. Does not scan native provider catalogs. Cached handles do not prove network liveness, and inactivity is not proof of a stuck agent. Tool freshness compares declarations only, not model or instruction changes. Missing sessions fail explicitly.",
+  parameters: sessionStatusInputSchema,
+  handler: async (input): Promise<string> => {
+    const { checkSessionStatus } = await import("@/server/sessionDiagnostics");
+    return JSON.stringify(await checkSessionStatus(input));
   },
 });
 
@@ -142,7 +139,7 @@ const deliverMessage = defineTool("deliver_message", {
   },
 });
 
-export const coordinationTools = [checkSessionStatus, waitForSessions, deliverMessage] as const;
+export const coordinationTools = [checkSessionStatusTool, waitForSessions, deliverMessage] as const;
 
 const sessionExecutionParameters = {
   model: modelConfigurationSchema

@@ -19,8 +19,38 @@ accountable for the purpose and for the quality of every member's outcome.
 
 ## How a Team unfolds
 
+### Built-in Admin team
+
+Each workspace provisions one ordinary, durable **Admin** team when an enabled provider supplies
+a model. Startup and browser catalog reads retry provisioning after provider setup. A stable
+reserved Team ID, not its editable name or purpose, identifies it. An existing team named Admin
+is never promoted; the built-in team instead takes an available name such as Admin 2.
+The default purpose is to help the owner inspect Agent Teams, explain failures with evidence,
+and refresh idle connections without losing history or work. Its model follows the workspace
+default at creation; later edits and pauses survive restart.
+
+Provisioning commits the normal Team and lead Worker, reserves a draft Session and artifacts,
+and assigns a default teal shield/check avatar without model work, routines, or extra members.
+A missing Admin avatar is initialized quietly; an authored replacement is never overwritten.
+The first message creates the lead's
+ordinary private Worker Session; subsequent messages use normal delivery. Admin otherwise
+shares the same transcript, roster, tasks, panes, and streams as any other Team.
+It can be renamed, edited, and paused, but neither the Team nor its lead Session can be deleted.
+
+Only its intrinsic lead receives `check_session_status` and `refresh_session_connection`.
+Both check the invoking Session's persisted identity and reject a paused Admin team.
+The latter validates the exact target and rejects self, unknown, running, or starting targets.
+It releases only an idle provider handle: it never wakes the target, interrupts background work,
+or deletes history. The next normal message resumes with current tools. Busy targets require
+the owner to stop them first. Requests to diagnose do not authorize recovery, and connectors
+or other teams do not confer the owner's permission. No background health polling is installed.
+
+### Ordinary team lifecycle
+
 1. **Create.** The Team and its lead commit together, and the lead starts immediately. With a
    purpose, it frames the work and posts a kickoff. Without one, it asks the user what to work on.
+   In that same initial turn, the lead must attempt to design and save the team's avatar before
+   finishing. Without a purpose, it uses the team's name rather than deferring avatar setup.
 2. **Staff.** As work becomes actionable, the lead creates members with focused roles. Each one
    onboards by reading the Team and establishing its role and avatar.
 3. **Coordinate.** One audience policy routes every message, and mentions wake exactly the agents
@@ -131,7 +161,7 @@ projections for persistence and runtime configuration; private read positions st
   working directory. Name, purpose, and directory changes create a durable system message;
   preview changes also create a system message, like sharing an artifact. Ordinary task updates
   stay out of the transcript and do not create unread state or list movement.
-- The lead designs a missing team avatar during its next normal turn after the initial kickoff
+- The lead designs a missing team avatar in its initial turn after the kickoff
   or question, and saves or replaces it through `update_team({avatar:{mark,color}})`.
   This uses no image-generation service, separate generation job, or additional wake. Keep the
   icon across renames and purpose changes unless deliberately redesigned. Null clears it.
@@ -719,6 +749,8 @@ presents one deleted identity everywhere.
   `resources.ts` resolves client URLs before publication or snapshot delivery.
   `tools.ts` owns agent-facing projections and the Session, lead, and member tool sets; `agent.ts` composes each agent's
   execution, and `startup.ts` clears finished working statuses and starts the wake interval.
+  `admin.ts` provisions the built-in team without execution and checks its lead's authority;
+  `adminTools.ts` exposes its read-only diagnostics and idle-only connection refresh.
 - `queries.ts`, `stream.ts`, `mutations.ts`, `queryCache.ts`, and `useTeam.ts` own client data:
   catalog and streamed detail queries, the SSE adapter, mutations, catalog event patches, and one
   open Team's visibility and read lifecycle.
