@@ -1,5 +1,6 @@
 import { subscribeSessionCompletions } from "@sessions/server/runtime";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
+import { getProcessValue } from "@/shared/server/processState";
 import {
   noteWorking,
   remindOwnersOfIdleSubSessions,
@@ -11,6 +12,12 @@ import { ensureWorkersSwept } from "./supervisor";
 
 const TIMER_CHECK_MS = 30_000;
 
+// A dev reload reruns startup without stopping the run it replaces, whose observers would
+// otherwise report each finished execution once more per reload.
+const running = getProcessValue("workers-startup", () => ({
+  stop: undefined as VoidFunction | undefined,
+}));
+
 /**
  * Sweeps abandoned Workers, wakes each sub session's owner with every report it finishes, starts
  * each sub session's scheduled wake when it is due, and reminds owners of sub sessions left idle,
@@ -18,6 +25,7 @@ const TIMER_CHECK_MS = 30_000;
  * they start and stop, so a run the server's last stop interrupted is reported to its owner.
  */
 export default async function startWorkers(): Promise<VoidFunction> {
+  running.stop?.();
   const unsubscribe = subscribeSessionCompletions((sessionId, completion) => {
     reportToOwner(sessionId, completion).catch((error: unknown) =>
       console.error(`Could not report sub session ${sessionId} to its owner:`, error),
@@ -40,6 +48,13 @@ export default async function startWorkers(): Promise<VoidFunction> {
   });
   const timers = setInterval(runDueTimers, TIMER_CHECK_MS);
   timers.unref?.();
+  const stop = () => {
+    unsubscribe();
+    unsubscribeRuns();
+    clearInterval(timers);
+    if (running.stop === stop) running.stop = undefined;
+  };
+  running.stop = stop;
   await ensureWorkersSwept().catch((error: unknown) =>
     console.error("Unable to sweep abandoned workers on startup:", error),
   );
@@ -47,11 +62,7 @@ export default async function startWorkers(): Promise<VoidFunction> {
     console.error("Unable to report interrupted sub sessions on startup:", error),
   );
   runDueTimers();
-  return () => {
-    unsubscribe();
-    unsubscribeRuns();
-    clearInterval(timers);
-  };
+  return stop;
 }
 
 function runDueTimers(): void {

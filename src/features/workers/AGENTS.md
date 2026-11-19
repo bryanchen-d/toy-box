@@ -78,8 +78,10 @@ subagents instead. Each tool acts only on the invoking session's own sub session
 - Closing cancels its work and deletes it, which also closes any pane linked to it.
 - Each execution a sub session finishes, whoever prompted it, wakes its owner at once with a
   `sub_session_report` system message holding its final answer or error (`server/startup.ts`
-  subscribes to Sessions' completions). An answer of exactly `NO_UPDATE`, or none, wakes no one,
-  and an aborted run reports nothing. The owner checks the report against its brief.
+  subscribes to Sessions' completions; a dev reload's rerun replaces the previous run's
+  subscriptions and timers, so each execution reports once). An answer of exactly `NO_UPDATE`, or
+  none, wakes no one, and an aborted run reports nothing. The owner checks the report against its
+  brief.
 - A run that stopped before it could finish reports `interrupted`, with its brief: one that failed
   while its node was out of reach, and, at startup, one under way when the server stopped. Workers
   notes each sub session's runs in its metadata (`working`) from the workspace's running and idle
