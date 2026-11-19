@@ -43,7 +43,7 @@ import { TeamTasks } from "./TeamTasks";
 import { TeamThread } from "./TeamThread";
 import { TeamMessageSearch } from "./TeamMessageSearch";
 import { TeamOverview } from "./overview/TeamOverview";
-import { isTeamPanel, type TeamPanel } from "./panels";
+import { isTeamPanel, teamPanelAlerts, type TeamPanel } from "./panels";
 import { TeamTranscript, type TeamTranscriptHandle } from "./transcript/TeamTranscript";
 import type { TranscriptView } from "./transcript/transcriptRows";
 import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
@@ -421,7 +421,7 @@ function TeamContent({
           panel={isTeamPanel(asideKind) ? asideKind : undefined}
           asideOpen={asideKind !== undefined}
           hasCanvas={!!canvas}
-          alerts={new Set<TeamPanel>(securityAlert ? ["security"] : [])}
+          alerts={teamPanelAlerts(state?.advice ?? [], securityAlert)}
           variant={variant}
           onToggle={togglePanel}
           onToggleAside={() => {

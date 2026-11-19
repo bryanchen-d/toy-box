@@ -626,7 +626,8 @@ reorders locally until its optimistic arrangement replaces the list.
 
 The pane's right edge is `TeamPanelBar`, with a top show/hide button followed by one toggle per
 panel: overview, canvas (available once the lead sets one), members, tasks, artifacts, routines,
-and security, which is marked while one of the Team's agents has an open finding.
+performance, and security. Performance is marked while the team has open advice, until every item is
+applied or dismissed; Security is marked while one of the Team's agents has an open finding.
 The top button closes any aside; its chevron points right to close and left to reopen
 the last selected panel while the pane remains mounted, or overview if none was selected or its
 canvas is no longer available. One aside shows beside chat at a time. Choosing a panel replaces
