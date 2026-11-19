@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { CatchBoundary, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { teamQueries } from "@teams/queries";
@@ -97,6 +98,7 @@ function TeamContent({
   });
   const transcriptRef = useRef<TeamTranscriptHandle>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  const asideToggleRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<TeamComposerHandle>(null);
   const threadComposerRef = useRef<TeamComposerHandle>(null);
   const editSavedDraft = useEditSavedDraft();
@@ -246,7 +248,32 @@ function TeamContent({
         openPanel,
       }}
     >
-      <div className="flex h-full min-h-0">
+      <div
+        className="flex h-full min-h-0"
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Escape" ||
+            !isVisible ||
+            !asideKind ||
+            event.defaultPrevented ||
+            event.repeat ||
+            event.nativeEvent.isComposing ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey ||
+            !(event.target instanceof Node) ||
+            !event.currentTarget.contains(event.target)
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          asideToggleRef.current?.focus({ preventScroll: true });
+          // Compact panes must reveal chat before its editor can take focus.
+          flushSync(closeAside);
+          composerRef.current?.focus();
+        }}
+      >
         <div className="@container/team h-full min-h-0 min-w-0 flex-1">
           {referenceThread.error && selectedSequence !== undefined && (
             <p role="alert" className="p-3 text-sm text-destructive">
@@ -423,6 +450,7 @@ function TeamContent({
           </ResizablePanelGroup>
         </div>
         <TeamPanelBar
+          toggleRef={asideToggleRef}
           panel={isTeamPanel(asideKind) ? asideKind : undefined}
           asideOpen={asideKind !== undefined}
           hasCanvas={!!canvas}

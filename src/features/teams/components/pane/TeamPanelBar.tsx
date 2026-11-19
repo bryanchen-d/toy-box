@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import {
   Clock3,
   Files,
@@ -30,6 +31,7 @@ const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
 
 /** The Team pane's right edge: one toggle per panel, so each is a click from chat. */
 export function TeamPanelBar({
+  toggleRef,
   panel,
   asideOpen,
   hasCanvas,
@@ -38,6 +40,7 @@ export function TeamPanelBar({
   onToggle,
   onToggleAside,
 }: {
+  toggleRef?: RefObject<HTMLButtonElement | null>;
   panel: TeamPanel | undefined;
   asideOpen: boolean;
   hasCanvas: boolean;
@@ -62,11 +65,13 @@ export function TeamPanelBar({
         <TooltipTrigger
           render={
             <Button
+              ref={toggleRef}
               type="button"
               variant="ghost"
               size="icon-sm"
               aria-label={toggleLabel}
               aria-expanded={asideOpen}
+              aria-keyshortcuts={asideOpen ? "Escape" : undefined}
               className="text-muted-foreground hover:text-foreground"
               onClick={onToggleAside}
             >
@@ -75,7 +80,7 @@ export function TeamPanelBar({
           }
         />
         <TooltipContent side="left" sideOffset={6}>
-          {toggleLabel}
+          {asideOpen ? `${toggleLabel} (Esc)` : toggleLabel}
         </TooltipContent>
       </Tooltip>
       {TEAM_PANELS.map((kind) => {

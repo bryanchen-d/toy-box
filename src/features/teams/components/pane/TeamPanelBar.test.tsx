@@ -25,6 +25,7 @@ test.each(["normal", "compact"] as const)(
     expect(buttons).toHaveLength(TEAM_PANELS.length + 1);
     expect(buttons[0]).toContain('aria-label="Open panel"');
     expect(buttons[0]).toContain('aria-expanded="false"');
+    expect(buttons[0]).not.toContain("aria-keyshortcuts");
     expect(buttons[0]).toContain("lucide-panel-right-open");
     expect(buttons[1]).toContain('aria-label="Overview"');
     expect(buttons[2]).toContain('aria-label="Canvas"');
@@ -52,6 +53,7 @@ test.each([...TEAM_PANELS, "thread"] as const)(
 
     expect(buttons[0]).toContain('aria-label="Close panel"');
     expect(buttons[0]).toContain('aria-expanded="true"');
+    expect(buttons[0]).toContain('aria-keyshortcuts="Escape"');
     expect(buttons[0]).toContain("lucide-panel-right-close");
     expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(panel ? 1 : 0);
     if (panel) {

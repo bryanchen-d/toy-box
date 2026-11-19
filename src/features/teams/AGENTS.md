@@ -644,7 +644,11 @@ applied or dismissed; Security is marked while one of the Team's agents has an o
 The top button closes any aside; its chevron points right to close and left to reopen
 the last selected panel while the pane remains mounted, or overview if none was selected or its
 canvas is no longer available. One aside shows beside chat at a time. Choosing a panel replaces
-the current one, and choosing it again returns to chat. A thread, a
+the current one, and choosing it again returns to chat. Escape within the focused Team pane
+closes its aside just like the top button and focuses the chat editor once chat is visible.
+If closing a thread leaves chat hidden behind another panel, focus stays on the panel toggle. Dialogs, menus,
+and inputs that consume Escape keep priority; one key press closes only one layer.
+A thread, a
 message search result, or a members or agent reference opens over the panel, and closing it returns
 to the panel. The icon left of the thread's header title closes its thread; the title itself is plain
 text. A normal pane opens
