@@ -31,8 +31,6 @@ type TeamPane = {
   replyInThread: (message: TeamConversationMessage) => void;
   /** A message still being sent has no committed sequence to reply to yet. */
   isSending: (messageId: string) => boolean;
-  /** Begins a mention, so the picker can address or add an agent. */
-  mention: () => void;
   /** Brings a shared artifact's editor forward, opening it when it isn't showing. */
   openArtifact: (file: WorkspaceFile) => void;
   /** Shows one of the Team's panels beside chat, as its panel bar button would. */

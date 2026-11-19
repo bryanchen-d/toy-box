@@ -329,8 +329,8 @@ Ordinary Sessions retain their ID-based `read_team` and receive the same inspect
 reference instructions. Missing targets fail rather than resolving another identity by name.
 
 `model/references.ts` owns team, members, Agent, and message URI identity. The members address
-selects the Team's roster, not a second entity. Team menus, Members menus, Agent row menus (including
-the lead), and conversation message actions copy raw URIs with clipboard success/failure feedback.
+selects the Team's roster, not a second entity. Team menus, the Members menu, Agent editors, and
+conversation message actions copy raw URIs with clipboard success/failure feedback.
 Message text copying remains separate; uncommitted optimistic messages cannot copy a URI.
 `components/TeamReferences.tsx` renders bare URIs and Markdown references in Team and Session
 messages as inline icon pills while leaving code literal. Authored labels are preserved; bare
@@ -723,9 +723,11 @@ presents one deleted identity everywhere.
   newest user, agent, or connector message citing its ID highlighted in its thread, as a search
   result does, or says that none does yet. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
-  members panel adds an agent through the composer's mention and removes members after
-  confirmation, alongside its roster table, which lists each agent's open sub sessions with their
-  live state; each opens beside the team.
+  members panel's header adds an agent through a New agent dialog and edits the Team; clicking an
+  agent's name opens its editor (the lead's is the Team's), which copies its URI and removes it after
+  confirmation. Its roster table lists each agent's open sub sessions with their live state, each
+  opening beside the team, and holds every free-text cell to one truncated line per item whose full
+  text shows on hover. Models and AI credits stay hidden until shown from the Members menu.
 - The performance panel has two tabs. Stats charts a chosen metric (messages, notifications,
   steered, queued, woke idle, AI credits, busy hours, or tokens) per hour, day, or week, stacked by
   agent, or reply time as one line per agent under a chosen aggregation (P50, P90, mean, or max).

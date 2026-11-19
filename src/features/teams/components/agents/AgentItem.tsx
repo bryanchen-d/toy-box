@@ -12,17 +12,19 @@ import { AgentAvatar } from "./AgentAvatar";
 
 /** One agent in a Team. The ring around its avatar shows whether it's working or waiting, the
  *  count on it how many sub sessions it has, and the line beneath its name says on what it's
- *  working, or what it's for while idle. */
+ *  working, or what it's for while idle. With `onEdit`, its name opens the agent's editor. */
 export function AgentItem({
   agent,
   action,
   role = "listitem",
   showDetail = true,
+  onEdit,
 }: {
   agent: TeamAgent;
   action?: ReactNode;
   role?: "listitem" | "presentation";
   showDetail?: boolean;
+  onEdit?: () => void;
 }) {
   const preview = useSessionPreview();
   const presence = useTeamPane().presence[agent.id] ?? { state: "idle" };
@@ -54,7 +56,19 @@ export function AgentItem({
       </SessionPreview>
       <span className="flex min-w-0 flex-1 flex-col">
         <ScrollableFade className="whitespace-nowrap text-xs">
-          <span className="shrink-0">{agent.name}</span>
+          {onEdit ? (
+            <button
+              type="button"
+              aria-label={`Edit ${agent.name}`}
+              title={`Edit ${agent.name}`}
+              className="shrink-0 text-left hover:underline"
+              onClick={onEdit}
+            >
+              {agent.name}
+            </button>
+          ) : (
+            <span className="shrink-0">{agent.name}</span>
+          )}
         </ScrollableFade>
         {detail && (
           <ScrollableFade

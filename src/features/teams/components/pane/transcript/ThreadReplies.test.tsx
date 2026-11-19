@@ -39,7 +39,6 @@ function render(content: ReactNode): string {
         openMessage: noop,
         replyInThread: noop,
         isSending: () => false,
-        mention: noop,
         openArtifact: noop,
         openPanel: noop,
       }}

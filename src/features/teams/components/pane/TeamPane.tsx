@@ -242,7 +242,6 @@ function TeamContent({
         openMessage,
         replyInThread,
         isSending: (id) => state?.optimisticMessageIds?.includes(id) ?? false,
-        mention: () => composerRef.current?.mention(),
         openArtifact,
         openPanel,
       }}

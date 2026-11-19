@@ -11,7 +11,7 @@ import { teamAgentIdentity, teamLead, type Team, type TeamMember } from "@teams/
 import { TeamMembers } from "./TeamMembers";
 import { TeamPaneProvider } from "./TeamPaneContext";
 
-test("the team table includes lead and members, nested work, waiting details and model settings", () => {
+test("the team table includes lead and members, nested work and waiting details, without models by default", () => {
   const team: Team = {
     id: "team",
     name: "Release",
@@ -91,7 +91,6 @@ test("the team table includes lead and members, nested work, waiting details and
           openMessage: noop,
           replyInThread: noop,
           isSending: () => false,
-          mention: noop,
           openArtifact: noop,
           openPanel: noop,
         }}
@@ -111,9 +110,6 @@ test("the team table includes lead and members, nested work, waiting details and
     "Review API",
     "API decision",
     "checks back at",
-    "claude-opus-5.5 (High)",
-    "gpt-6 (Extra High)",
-    "Workspace default",
     "Render check",
     "On brchen-db3 · Working",
     "Preview Builder&#x27;s session · 1 sub session · 1 working · 1 on brchen-db3",
@@ -124,10 +120,19 @@ test("the team table includes lead and members, nested work, waiting details and
   expect(html).not.toContain(lead.role);
   expect(html).not.toContain("Build integration features");
   expect(html).not.toContain("Investigating a long diagnostic from the build");
+  for (const text of ["claude-opus-5.5", "gpt-6", "Workspace default"]) {
+    expect(html).not.toContain(text);
+  }
   expect(html.match(/Waiting for API decision/g)).toHaveLength(1);
   expect(html.indexOf("Builder")).toBeLessThan(html.indexOf("Critic"));
-  for (const agent of agents) expect(html).toContain(`aria-label="Actions for ${agent.name}"`);
-  expect(html).toContain('aria-label="Actions for Members"');
+  // Each name opens its editor; the header holds the roster's actions, so rows have no menus.
+  for (const agent of agents) {
+    expect(html).toContain(`aria-label="Edit ${agent.name}"`);
+    expect(html).not.toContain(`aria-label="Actions for ${agent.name}"`);
+  }
+  for (const label of ["Add an agent", "Edit team", "Actions for Members"]) {
+    expect(html).toContain(`aria-label="${label}"`);
+  }
   expect(html).not.toContain("AI credits");
 });
 
@@ -163,7 +168,6 @@ function renderUsage(usage?: SessionUsage) {
           openMessage: noop,
           replyInThread: noop,
           isSending: () => false,
-          mention: noop,
           openArtifact: noop,
           openPanel: noop,
         }}

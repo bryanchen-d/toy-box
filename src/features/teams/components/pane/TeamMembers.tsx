@@ -1,28 +1,30 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { UserMinus, UserPlus, Users } from "lucide-react";
+import { Pencil, UserPlus, Users } from "lucide-react";
 import { AgentEditor } from "@teams/components/agents/AgentEditor";
 import { AgentItem } from "@teams/components/agents/AgentItem";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { teamTasksForAgent, compareTeamAgents, type Team, type TeamTask } from "@teams/model";
-import { teamMutations } from "@teams/mutations";
 import { formatModelConfiguration } from "@providers/model";
 import { teamQueries } from "@teams/queries";
 import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
 import { selectSessionChildren, sessionQueries } from "@sessions/queries";
 import { SubSessionList } from "@workers/components/SubSessions";
-import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
+import { TruncatedText } from "@/shared/ui/truncated-text";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { CopyTeamUri } from "@teams/components/CopyTeamUri";
 import { RowMenu } from "./overview/RowMenu";
-import {
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/shared/ui/dropdown-menu";
+import { DropdownMenuCheckboxItem } from "@/shared/ui/dropdown-menu";
+
+/** The dialog open over the roster: the Team's, which also configures its lead, one member's, or a
+ *  new member's. */
+type MembersDialog =
+  | { type: "team" }
+  | { type: "member"; agentId: string }
+  | { type: "new_member" };
 
 export function TeamMembers({
   team,
@@ -33,13 +35,13 @@ export function TeamMembers({
   isVisible?: boolean;
   selectedAgentId?: string;
 }) {
-  const { lead, members, presence, mention } = useTeamPane();
-  const [editingId, setEditingId] = useState<string>();
-  const [removingId, setRemovingId] = useState<string>();
-  const [showModel, setShowModel] = useState(true);
+  const { lead, members, presence } = useTeamPane();
+  const [dialog, setDialog] = useState<MembersDialog>();
+  const [showModel, setShowModel] = useState(false);
   const [showCredits, setShowCredits] = useState(false);
-  const editingMember = members.find(({ id }) => id === editingId);
-  const removingMember = members.find(({ id }) => id === removingId);
+  const editingMember =
+    dialog?.type === "member" ? members.find(({ id }) => id === dialog.agentId) : undefined;
+  const closeDialog = () => setDialog(undefined);
   const agents = [lead, ...[...members].sort(compareTeamAgents)];
   const usage = useQuery({
     ...teamQueries.usage(team.id),
@@ -54,6 +56,10 @@ export function TeamMembers({
   useLayoutEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "center" });
   }, [selectedAgentId]);
+  // The fixed layout shares the panel's width evenly among the four text columns, whose lines
+  // truncate rather than widen the table. The minimum keeps each at least 10rem beside the
+  // fixed-width columns shown: Agent (10rem), State (5rem), Model (12rem), and AI credits (8rem).
+  const minWidth = `${55 + (showModel ? 12 : 0) + (showCredits ? 8 : 0)}rem`;
 
   return (
     <section
@@ -61,6 +67,27 @@ export function TeamMembers({
       className="flex h-full min-h-0 min-w-0 flex-col bg-panel"
     >
       <TeamPanelHeader icon={Users} title={`Team members (${agents.length})`}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Add an agent"
+          title="Add an agent"
+          disabled={team.paused}
+          onClick={() => setDialog({ type: "new_member" })}
+        >
+          <UserPlus />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit team"
+          title="Edit team"
+          onClick={() => setDialog({ type: "team" })}
+        >
+          <Pencil />
+        </Button>
         <RowMenu name="Members">
           <CopyTeamUri target={{ type: "members", teamId: team.id }} label="Copy members URI" />
           <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>
@@ -70,20 +97,9 @@ export function TeamMembers({
             Show AI credits
           </DropdownMenuCheckboxItem>
         </RowMenu>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Add an agent"
-          title="Add an agent"
-          disabled={team.paused}
-          onClick={mention}
-        >
-          <UserPlus />
-        </Button>
       </TeamPanelHeader>
       <p className="border-b px-4 py-2 text-xs text-muted-foreground">
-        Model settings apply on the next turn. Hover an agent to inspect live activity.
+        Click an agent&apos;s name to edit it. Hover its avatar to inspect live activity.
       </p>
       {selectedAgentId && !agents.some(({ id }) => id === selectedAgentId) && (
         <p role="alert" className="px-4 py-2 text-sm text-destructive">
@@ -120,24 +136,33 @@ export function TeamMembers({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
-        <table aria-label="Team members" className="w-full min-w-[54rem] text-left text-xs">
+        <table
+          aria-label="Team members"
+          className="w-full table-fixed text-left text-xs"
+          style={{ minWidth }}
+        >
           <thead className="sticky top-0 z-10 bg-panel text-muted-foreground">
             <tr className="border-b [&>th]:px-3 [&>th]:py-3 [&>th]:font-medium">
-              <th scope="col">Agent</th>
-              <th scope="col">State</th>
+              <th scope="col" className="w-40">
+                Agent
+              </th>
+              <th scope="col" className="w-20">
+                State
+              </th>
               <th scope="col">Current task</th>
               <th scope="col">Sub sessions</th>
               <th scope="col">Pending tasks</th>
               <th scope="col">Blocking</th>
-              {showModel && <th scope="col">Model</th>}
+              {showModel && (
+                <th scope="col" className="w-48">
+                  Model
+                </th>
+              )}
               {showCredits && (
-                <th scope="col" className="text-right">
+                <th scope="col" className="w-32 text-right">
                   AI credits spent
                 </th>
               )}
-              <th scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -158,41 +183,52 @@ export function TeamMembers({
                   ref={agent.id === selectedAgentId ? selectedRef : undefined}
                   className={`border-b align-top [&>td]:px-3 [&>td]:py-3 ${agent.id === selectedAgentId ? "bg-accent/30" : ""}`}
                 >
-                  <td className="min-w-40">
-                    <AgentItem agent={agent} role="presentation" showDetail={false} />
+                  <td>
+                    <AgentItem
+                      agent={agent}
+                      role="presentation"
+                      showDetail={false}
+                      onEdit={() =>
+                        setDialog(
+                          agent.id === lead.id
+                            ? { type: "team" }
+                            : { type: "member", agentId: agent.id },
+                        )
+                      }
+                    />
                   </td>
                   <td className="capitalize">{activity.state}</td>
-                  <td className="max-w-64">
+                  <td>
                     <TaskTitles
                       tasks={current}
                       empty={activity.state === "working" ? activity.text : undefined}
                     />
                   </td>
-                  <td className="max-w-64">
+                  <td>
                     <SubSessionList sessions={subSessionsByOwner?.[agent.id] ?? []} />
                   </td>
-                  <td className="max-w-64">
+                  <td>
                     <TaskTitles tasks={pending} />
                   </td>
-                  <td className="max-w-64">
+                  <td>
                     {activity.state === "waiting" && (
-                      <p className="mb-1 text-amber-700 dark:text-amber-400">
+                      <TruncatedText className="mb-1 text-amber-700 dark:text-amber-400">
                         Waiting for {activity.text}
                         {activity.wakeAt && (
                           <>
                             ; checks back at <ClockTime date={activity.wakeAt} />
                           </>
                         )}
-                      </p>
+                      </TruncatedText>
                     )}
                     {(blocked.length > 0 || activity.state !== "waiting") && (
                       <TaskTitles tasks={blocked} />
                     )}
                   </td>
                   {showModel && (
-                    <td className="max-w-60 break-words">
+                    <td>
                       {model ? (
-                        formatModelConfiguration(model)
+                        <TruncatedText>{formatModelConfiguration(model)}</TruncatedText>
                       ) : (
                         <span className="text-muted-foreground">Workspace default</span>
                       )}
@@ -207,58 +243,22 @@ export function TeamMembers({
                       />
                     </td>
                   )}
-                  <td>
-                    <RowMenu name={agent.name}>
-                      <CopyTeamUri
-                        target={{ type: "agent", teamId: team.id, agentId: agent.id }}
-                        label="Copy agent URI"
-                      />
-                      <DropdownMenuItem onClick={() => setEditingId(agent.id)}>
-                        Edit {agent.name}
-                      </DropdownMenuItem>
-                      {agent.id !== lead.id && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setRemovingId(agent.id)}
-                          >
-                            <UserMinus /> Remove from team
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </RowMenu>
-                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      {editingId === lead.id && (
+      {dialog?.type === "team" && (
         <TeamDialog
           team={team}
           onOpenChange={(open) => {
-            if (!open) setEditingId(undefined);
+            if (!open) closeDialog();
           }}
         />
       )}
-      {editingMember && (
-        <AgentEditor agent={editingMember} onClose={() => setEditingId(undefined)} />
-      )}
-      {removingMember && (
-        <DestructiveConfirmationDialog
-          key={removingMember.id}
-          title={`Remove ${removingMember.name}?`}
-          description={`This removes ${removingMember.name} from #${team.name} and deletes their private team session and assigned routines. Their messages and reactions remain attributed to Deleted agent.`}
-          confirmLabel="Remove"
-          pendingLabel="Removing…"
-          mutation={teamMutations.removeMember(removingMember.id)}
-          onOpenChange={(open) => {
-            if (!open) setRemovingId(undefined);
-          }}
-        />
-      )}
+      {editingMember && <AgentEditor agent={editingMember} onClose={closeDialog} />}
+      {dialog?.type === "new_member" && <AgentEditor teamId={team.id} onClose={closeDialog} />}
     </section>
   );
 }
@@ -293,10 +293,14 @@ function TaskTitles({ tasks, empty }: { tasks: readonly TeamTask[]; empty?: stri
   return tasks.length > 0 ? (
     <ul className="space-y-1">
       {tasks.map((task) => (
-        <li key={task.id}>{task.title}</li>
+        <li key={task.id}>
+          <TruncatedText>{task.title}</TruncatedText>
+        </li>
       ))}
     </ul>
+  ) : empty ? (
+    <TruncatedText className="text-muted-foreground">{empty}</TruncatedText>
   ) : (
-    <span className="text-muted-foreground">{empty ?? "None"}</span>
+    <span className="text-muted-foreground">None</span>
   );
 }

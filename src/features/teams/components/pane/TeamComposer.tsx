@@ -47,8 +47,6 @@ const teamReferences: ComposerReferences = (reference) =>
 export type TeamComposerHandle = {
   /** Addresses the draft to an agent by mentioning it first. */
   reply: (agent: Pick<TeamAgent, "name">) => void;
-  /** Begins a mention, so its menu can address or add an agent. */
-  mention: () => void;
   focus: () => void;
 };
 
@@ -117,11 +115,6 @@ export function TeamComposer({
   useImperativeHandle(handleRef, () => ({
     reply: (agent) => {
       draft.setValue(addressedDraft(draft.value, agent));
-      draft.focus();
-    },
-    mention: () => {
-      const { value } = draft;
-      draft.setValue(value === "" || /\s$/.test(value) ? `${value}@` : `${value} @`);
       draft.focus();
     },
     focus: draft.focus,

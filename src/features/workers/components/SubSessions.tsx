@@ -9,6 +9,7 @@ import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { useWorkspaceSelector, useWorkspaceSessionActivity } from "@workspace/hooks/state";
 import type { WorkspaceState } from "@workspace/model/state/reducer";
 import { RelativeTime } from "@/shared/ui/relative-time";
+import { TruncatedText } from "@/shared/ui/truncated-text";
 import { cn } from "@/shared/utils";
 import { describeSubSessions } from "../model/subSessions";
 
@@ -121,14 +122,13 @@ export function SubSessionList({ sessions }: { sessions: readonly Session[] }) {
 
 function SubSessionItem({ session }: { session: Session }) {
   const { openSession } = useWorkspaceSurface();
-  const title = session.title || "Sub session";
+  const title = <TruncatedText>{session.title || "Sub session"}</TruncatedText>;
   return (
     <li>
       {openSession ? (
         <button
           type="button"
-          className="text-left hover:underline"
-          title={`Open ${title}`}
+          className="block max-w-full text-left hover:underline"
           onClick={() => openSession(session.id)}
         >
           {title}
@@ -136,7 +136,9 @@ function SubSessionItem({ session }: { session: Session }) {
       ) : (
         title
       )}
-      <SubSessionStatus session={session} className="block" />
+      <TruncatedText>
+        <SubSessionStatus session={session} />
+      </TruncatedText>
     </li>
   );
 }
