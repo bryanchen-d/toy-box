@@ -159,16 +159,23 @@ export function connectorsAddressedBy<C extends Pick<Connector, "name" | "kind">
   );
 }
 
-/** Where forwarded content came from. A requester who isn't the owner speaks only as context. */
+/**
+ * Where forwarded content came from. A requester who isn't the owner speaks only as context. `ts`
+ * and `threadTs` name the message and its thread's root as its source does, such as Slack
+ * timestamps, so an answer can name the exact thread without looking it up.
+ */
 export const connectorOriginSchema = z.object({
   kind: z.string().trim().min(1).max(50),
   permalink: z.url().max(2_000).optional(),
   channel: z.string().max(200).optional(),
+  ts: z.string().max(100).optional(),
+  threadTs: z.string().max(100).optional(),
   requester: z
     .object({
       id: z.string().max(200),
       name: z.string().max(200).optional(),
       isOwner: z.boolean(),
+      isBot: z.boolean().optional(),
     })
     .optional(),
 });

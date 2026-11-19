@@ -60,7 +60,10 @@ Every request carries `X-Connector-Client`. Event content is free-form Markdown;
 classify events with `kind`, but Agent Teams presents every kind alike and ignores fields it
 doesn't use. An event that starts a conversation names its team with `to`. An event that answers a
 message names it with `replyTo`, the ID Agent Teams sent that message with. Forwarded content
-carries `origin`: where it came from and whether its requester is the owner.
+carries `origin`: where it came from and whether its requester is the owner or a bot. It may also
+name where the content sits in its source, as `channel`, the message's `ts`, and its thread root's
+`threadTs`, which agents pass back when they ask the connector to reply in that thread or act on
+that message.
 
 Messages and events may carry `attachments`: up to 4 files of `{ name, mimeType, base64 }`, each a
 PNG, JPEG, GIF, or WebP image, Markdown, plain text, or PDF of at most 10 MB, named without a

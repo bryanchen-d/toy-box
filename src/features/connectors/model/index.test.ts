@@ -117,7 +117,10 @@ describe("connector events", () => {
         origin: {
           kind: "slack",
           permalink: "https://example.slack.com/archives/C1/p1",
-          requester: { id: "U1", name: "alex", isOwner: false },
+          channel: "C1",
+          ts: "1795048880.680219",
+          threadTs: "1795048880.680219",
+          requester: { id: "B1", name: "VS Code Bot", isOwner: false, isBot: true },
           future: true,
         },
         to: { teamId: "team-1" },
@@ -128,7 +131,10 @@ describe("connector events", () => {
       origin: {
         kind: "slack",
         permalink: "https://example.slack.com/archives/C1/p1",
-        requester: { id: "U1", name: "alex", isOwner: false },
+        channel: "C1",
+        ts: "1795048880.680219",
+        threadTs: "1795048880.680219",
+        requester: { id: "B1", name: "VS Code Bot", isOwner: false, isBot: true },
       },
       to: { teamId: "team-1" },
     });
