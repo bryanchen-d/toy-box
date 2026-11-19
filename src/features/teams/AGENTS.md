@@ -203,7 +203,11 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   replying to each other can't loop without mentioning each other.
 - Send a user or Agent message to each connector it opens by addressing, in the conversation its
   thread holds, and post a connector's events back into that thread. The composer shows addressed
-  connectors as recipients beside the agents a message wakes.
+  connectors as recipients beside the agents a message wakes. `readConnectorUse` reads a
+  connector's last week from those records for its use dialog: each message sent to it (a user or
+  agent message in one of its threads that opens by addressing it), each event it posted, each
+  `connector_undelivered` note, and the threads they passed in. `summarizeConnectorUse`
+  (`model/connectorUse.ts`) counts them by day, week, thread, and team.
 - Address another team. Teams are flat peers that leads organize into larger efforts by talking,
   not by sharing members; a lead belongs to exactly one team. A user or lead message that opens
   with another team's handle (`teamHandle`, derived from its name and unique across teams; `@lead`

@@ -8,9 +8,10 @@ import { connectorQueries } from "../queries";
 import { ConnectorDialog } from "./ConnectorDialog";
 import { ConnectorListItem } from "./ConnectorListItem";
 import { PoolDialog } from "./PoolDialog";
+import { ServiceDialog } from "./ServiceDialog";
 
-/** App-level connectors that every team can talk to, with their live connection status. A pool's
- *  row opens its use; a service's opens its settings. */
+/** App-level connectors that every team can talk to, with their live connection status. A row
+ *  opens the connector's use; its menu edits it. */
 export function ConnectorPanel({
   isExpanded,
   onExpandedChange,
@@ -21,10 +22,11 @@ export function ConnectorPanel({
   const { data: connectors } = useSuspenseQuery(connectorQueries.list());
   // undefined: closed; null: adding; an ID: editing that connector.
   const [dialog, setDialog] = useState<string | null>();
-  // The pool whose use is showing.
-  const [poolId, setPoolId] = useState<string>();
+  // The connector whose use is showing.
+  const [usedId, setUsedId] = useState<string>();
   const editing = connectors.find(({ id }) => id === dialog);
-  const pool = connectors.find(({ id }) => id === poolId);
+  const used = connectors.find(({ id }) => id === usedId);
+  const UseDialog = used?.kind === "agentPool" ? PoolDialog : ServiceDialog;
 
   return (
     <>
@@ -58,24 +60,22 @@ export function ConnectorPanel({
           <ConnectorListItem
             key={connector.id}
             connector={connector}
-            onOpen={() =>
-              connector.kind === "agentPool" ? setPoolId(connector.id) : setDialog(connector.id)
-            }
+            onOpen={() => setUsedId(connector.id)}
             onEdit={() => setDialog(connector.id)}
           />
         ))}
       </SidebarPanel>
 
-      {pool && (
-        <PoolDialog
-          key={pool.id}
-          connector={pool}
+      {used && (
+        <UseDialog
+          key={used.id}
+          connector={used}
           onEdit={() => {
-            setPoolId(undefined);
-            setDialog(pool.id);
+            setUsedId(undefined);
+            setDialog(used.id);
           }}
           onOpenChange={(open) => {
-            if (!open) setPoolId(undefined);
+            if (!open) setUsedId(undefined);
           }}
         />
       )}

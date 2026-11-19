@@ -11,6 +11,7 @@ import {
   type TeamMessage,
 } from "./model";
 import {
+  getConnectorUse,
   getTeamPerformance,
   getTeamThreadSequence,
   getTeamUsage,
@@ -76,6 +77,14 @@ export const teamQueries = {
       queryFn: ({ signal }) => getTeamPerformance({ data: { teamId, bucket }, signal }),
       staleTime: 30_000,
       refetchInterval: 60_000,
+    }),
+  /** What teams exchanged with a connector in the last week, refreshed while something shows it. */
+  connectorUse: (connectorId: string) =>
+    queryOptions({
+      queryKey: [...teamQueries.all(), "connector-use", connectorId] as const,
+      queryFn: ({ signal }) => getConnectorUse({ data: { connectorId }, signal }),
+      staleTime: 0,
+      refetchInterval: 15_000,
     }),
   detail: (teamId: string) =>
     queryOptions({

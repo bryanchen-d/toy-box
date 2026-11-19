@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { cn } from "@/shared/utils";
 import { sessionQueries } from "@sessions/queries";
 import { useTeams } from "@teams/useTeams";
 import { countSubSessionUse } from "@workers/model/subSessions";
@@ -23,6 +22,7 @@ import {
 } from "@workers/components/SubSessions";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { poolNodes, type ConnectorEntry } from "../model";
+import { CONNECTION_STATES, ConnectionDot, UseTile } from "./ConnectorUse";
 
 export function PoolDialog({
   connector,
@@ -59,20 +59,10 @@ export function PoolDialog({
         <ul aria-label="Nodes" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {nodes.map((node) => (
             <li key={node.name} className="flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className={cn(
-                  "size-2 rounded-full",
-                  node.state === "connected"
-                    ? "bg-green-500"
-                    : node.state === "unreachable"
-                      ? "bg-destructive"
-                      : "bg-amber-500",
-                )}
-              />
+              <ConnectionDot state={node.state} />
               {node.name}
               <span className="text-muted-foreground">
-                · {NODE_STATES[node.state]}
+                · {CONNECTION_STATES[node.state]}
                 {node.draining ? " · draining" : ""}
               </span>
             </li>
@@ -80,13 +70,16 @@ export function PoolDialog({
         </ul>
 
         <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-          <Tile label="Working now" value={String(open.filter(({ working }) => working).length)} />
-          <Tile label="Open now" value={String(open.length)} />
-          <Tile
+          <UseTile
+            label="Working now"
+            value={String(open.filter(({ working }) => working).length)}
+          />
+          <UseTile label="Open now" value={String(open.length)} />
+          <UseTile
             label="Created · 24 h / 7 days"
             value={use ? `${use.day.created} / ${use.week.created}` : pending}
           />
-          <Tile
+          <UseTile
             label="Closed · 24 h / 7 days"
             value={use ? `${use.day.closed} / ${use.week.closed}` : pending}
           />
@@ -156,12 +149,6 @@ export function PoolDialog({
   );
 }
 
-const NODE_STATES = {
-  connected: "Connected",
-  connecting: "Connecting",
-  unreachable: "Unreachable",
-} as const;
-
 function OpenSubSession({
   subSession: { session },
   owner,
@@ -198,15 +185,6 @@ function OpenSubSession({
       </span>
       <SubSessionStatus session={session} />
     </li>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-base font-medium tabular-nums">{value}</dd>
-    </div>
   );
 }
 

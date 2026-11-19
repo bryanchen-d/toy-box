@@ -665,6 +665,72 @@ export class TeamDatabase {
     return row?.conversation_id ?? conversationId;
   }
 
+  /**
+   * What passed between teams and a connector from `since` on, for its use: its events, the user and
+   * agent messages in its threads (which `content` shows whether they addressed it), the messages it
+   * never received, and the start of each of its threads with any message since.
+   */
+  async listConnectorUse(connectorId: string, since: string) {
+    const [received, written, undelivered, threads] = await Promise.all([
+      this.db<{ team_id: string; thread_sequence: number; timestamp: string }[]>`
+        SELECT team_id, COALESCE(thread_sequence, sequence) AS thread_sequence, timestamp
+        FROM team_messages
+        WHERE sender_type = 'connector' AND sender_connector_id = ${connectorId}
+          AND timestamp >= ${since}
+      `,
+      this.db<{ team_id: string; thread_sequence: number; timestamp: string; content: string }[]>`
+        SELECT message.team_id, thread.thread_sequence, message.timestamp,
+          substr(message.content, 1, 1000) AS content
+        FROM team_messages AS message
+        JOIN team_connector_threads AS thread
+          ON thread.team_id = message.team_id
+          AND thread.thread_sequence = COALESCE(message.thread_sequence, message.sequence)
+        WHERE thread.connector_id = ${connectorId} AND message.sender_type IN ('user', 'agent')
+          AND message.timestamp >= ${since}
+      `,
+      this.db<{ team_id: string; thread_sequence: number | null; timestamp: string }[]>`
+        SELECT team_id, json_extract(content, '$.threadSequence') AS thread_sequence, timestamp
+        FROM team_messages
+        WHERE sender_type = 'system' AND timestamp >= ${since}
+          AND json_extract(content, '$.type') = 'connector_undelivered'
+          AND json_extract(content, '$.connectorId') = ${connectorId}
+      `,
+      this.db<
+        {
+          team_id: string;
+          thread_sequence: number;
+          sender_connector_id: string | null;
+          content: string;
+        }[]
+      >`
+        SELECT thread.team_id, thread.thread_sequence, root.sender_connector_id,
+          substr(root.content, 1, 1000) AS content
+        FROM team_connector_threads AS thread
+        JOIN team_messages AS root
+          ON root.team_id = thread.team_id AND root.sequence = thread.thread_sequence
+        WHERE thread.connector_id = ${connectorId}
+          AND EXISTS (
+            SELECT 1 FROM team_messages AS message
+            WHERE message.team_id = thread.team_id AND message.timestamp >= ${since}
+              AND (message.sequence = thread.thread_sequence
+                OR message.thread_sequence = thread.thread_sequence)
+          )
+      `,
+    ]);
+    return {
+      received: received.map(passage),
+      written: written.map((row) => ({ ...passage(row), content: row.content })),
+      undelivered: undelivered.map(passage),
+      threads: threads.map((row) => ({
+        teamId: row.team_id,
+        threadSequence: row.thread_sequence,
+        openedBy:
+          row.sender_connector_id === connectorId ? ("connector" as const) : ("team" as const),
+        content: row.content,
+      })),
+    };
+  }
+
   /** The thread another team holds its side of this thread's conversation in, if any. */
   async getPeerThread(
     teamId: string,
@@ -1382,6 +1448,15 @@ type TeamAdviceRow = {
   created_at: string;
   resolved_at: string | null;
 };
+
+/** Where and when one message passed between a team and a connector. */
+function passage(row: { team_id: string; thread_sequence: number | null; timestamp: string }) {
+  return {
+    teamId: row.team_id,
+    ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
+    at: row.timestamp,
+  };
+}
 
 function adviceFromRow(row: TeamAdviceRow): TeamAdvice {
   return {

@@ -26,6 +26,7 @@ const {
   noteUndeliveredConnectorMessage,
   noteUnreachableConnectorMessage,
   listConnectorDirectory,
+  readConnectorUse,
 } = await import("./connectors");
 const { teamTools, teamMemberTools } = await import("./tools");
 const judge = await import("@security/server/judge");
@@ -467,6 +468,72 @@ test("the directory lists every team a connector may address", async () => {
   expect(await listConnectorDirectory()).toEqual([
     { id: expect.any(String), name: "Docs", purpose: "Ship the release notes." },
   ]);
+});
+
+test("a connector's use counts what teams sent it, received from it, and it never received, by thread", async () => {
+  const { connectors, team, connector } = await open();
+  const asked = await postTeamMessage({
+    id: "ask",
+    teamId: team.id,
+    content: "@bryanbot post the release notes",
+  });
+  const [sent] = await queued(connectors, connector.id);
+  // Talking in the thread without addressing the connector sends it nothing.
+  await postTeamMessage({
+    id: "aside",
+    teamId: team.id,
+    content: "Thanks, @bryanbot is on it",
+    threadSequence: asked.sequence,
+  });
+  await applyConnectorEvent(connector, event("Posted.", { conversationId: sent!.conversationId }));
+  await applyConnectorEvent(
+    connector,
+    event("New message in #build from VS Code Bot:\nCI build failed", {
+      conversationId: "watched",
+      to: { teamId: team.id },
+    }),
+  );
+  await noteUndeliveredConnectorMessage(connector, sent!, "expired");
+  const watched = (await new TeamDatabase(currentDb!).getConnectorThread(connector.id, "watched"))!;
+
+  const use = await readConnectorUse(connector.id);
+  expect(use.threads).toEqual(
+    expect.arrayContaining([
+      {
+        teamId: team.id,
+        threadSequence: asked.sequence,
+        openedBy: "team",
+        excerpt: "@bryanbot post the release notes",
+      },
+      {
+        teamId: team.id,
+        threadSequence: watched.threadSequence,
+        openedBy: "connector",
+        excerpt: "New message in #build from VS Code Bot: CI build failed",
+      },
+    ]),
+  );
+  expect(use.threads).toHaveLength(2);
+  const passed = (kind: string, threadSequence: number) => ({
+    kind,
+    teamId: team.id,
+    threadSequence,
+    at: expect.any(String),
+  });
+  expect(use.exchanges).toEqual(
+    expect.arrayContaining([
+      passed("sent", asked.sequence),
+      passed("received", asked.sequence),
+      passed("received", watched.threadSequence),
+      passed("undelivered", asked.sequence),
+    ]),
+  );
+  expect(use.exchanges).toHaveLength(4);
+
+  expect(await readConnectorUse(connector.id, new Date(Date.now() + 8 * 24 * 60 * 60_000))).toEqual(
+    { threads: [], exchanges: [] },
+  );
+  await expect(readConnectorUse("missing")).rejects.toThrow("Connector not found.");
 });
 
 test("agents read where each user and connector message came from", async () => {

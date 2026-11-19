@@ -16,7 +16,9 @@ import {
 } from "@teams/model";
 import * as teams from ".";
 import * as advice from "./advice";
+import { readConnectorUse } from "./connectors";
 import { getTeamPerformance as readTeamPerformance } from "./performance";
+import { connectorIdInputSchema } from "@connectors/model";
 import { teamMessageSearchInputSchema } from "@teams/model/search";
 import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
 import { resolveTeamAdviceInputSchema } from "@teams/model/advice";
@@ -30,6 +32,11 @@ export const listTeams = createServerFn({ method: "GET" }).handler(async (): Pro
 export const getTeamPerformance = createServerFn({ method: "GET" })
   .validator(zodValidator(teamIdentitySchema.extend({ bucket: z.enum(PERFORMANCE_BUCKETS) })))
   .handler(({ data }) => readTeamPerformance(data.teamId, data.bucket));
+
+/** What teams exchanged with a connector in the last week, for its use dialog. */
+export const getConnectorUse = createServerFn({ method: "GET" })
+  .validator(zodValidator(connectorIdInputSchema))
+  .handler(({ data }) => readConnectorUse(data.connectorId));
 
 export const resolveTeamAdvice = createServerFn({ method: "POST" })
   .validator(zodValidator(resolveTeamAdviceInputSchema))

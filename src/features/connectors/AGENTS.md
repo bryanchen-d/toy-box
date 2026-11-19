@@ -193,8 +193,14 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
 `connector.upserted` and `connector.deleted` workspace events, and reconnects refetch it. The
 server publishes an entry only when what clients see of it changed. The Connectors sidebar panel
 shows each connector's status and queue, flagging an unreachable one in red and, while the panel is
-folded, on its header. Its dialog adds or edits one, offering the account's
-dev tunnels. Team panes resolve a connector author through the same lookup as agents.
+folded, on its header. Clicking a row opens the connector's use, a pool's as above. A service's
+(`components/ServiceDialog.tsx`) shows its connection, its queue, and how many messages teams sent
+it, received from it, and noted it never received in the last day and week. It also lists the
+week's conversations, each linking to its team thread, and the same counts by team, from Teams'
+`readConnectorUse`, refreshed every 15 seconds while open. Both kinds share
+`components/ConnectorUse.tsx`. The row's menu, or the use dialog's footer, opens the dialog that
+adds or edits a connector, offering the account's dev tunnels. Team panes resolve a connector
+author through the same lookup as agents.
 
 ## Boundaries and invariants
 

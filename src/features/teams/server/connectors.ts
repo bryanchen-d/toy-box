@@ -18,6 +18,11 @@ import {
   type ConnectorMessage,
 } from "@connectors/model";
 import { isTeamSystemMessage, type Team } from "@teams/model";
+import {
+  CONNECTOR_USE_MS,
+  type ConnectorExchange,
+  type ConnectorUseRecords,
+} from "@teams/model/connectorUse";
 import { getStateDatabase } from "@/server/database";
 import { sharedMap } from "@/shared/server/processState";
 import { TeamDatabase, type StoredAttachment, type StoredTeamMessage } from "./database";
@@ -293,6 +298,40 @@ async function noteUndelivered(
 export async function listConnectorDirectory() {
   const { teams } = await new TeamDatabase(await getStateDatabase()).listTeams();
   return teams.map(({ id, name, purpose }) => ({ id, name, ...(purpose ? { purpose } : {}) }));
+}
+
+/**
+ * What teams exchanged with a connector in the last week: what they sent it (a user or agent
+ * message in one of its threads that opens by addressing it), what it sent them, what it never
+ * received, and the threads those passed in.
+ */
+export async function readConnectorUse(
+  connectorId: string,
+  now = new Date(),
+): Promise<ConnectorUseRecords> {
+  const { listConnectors } = await import("@connectors/server");
+  const connector = (await listConnectors()).find(({ id }) => id === connectorId);
+  if (!connector) throw new Error("Connector not found.");
+  const use = await new TeamDatabase(await getStateDatabase()).listConnectorUse(
+    connectorId,
+    new Date(now.getTime() - CONNECTOR_USE_MS).toISOString(),
+  );
+  const exchanges: ConnectorExchange[] = [
+    ...use.received.map((passage) => ({ kind: "received" as const, ...passage })),
+    ...use.written
+      .filter(({ content }) => connectorsAddressedBy(content, [connector]).length > 0)
+      .map(({ content: _content, ...passage }) => ({ kind: "sent" as const, ...passage })),
+    ...use.undelivered.map((passage) => ({ kind: "undelivered" as const, ...passage })),
+  ];
+  const active = new Set(
+    exchanges.map(({ teamId, threadSequence }) => `${teamId}:${threadSequence}`),
+  );
+  return {
+    threads: use.threads
+      .filter(({ teamId, threadSequence }) => active.has(`${teamId}:${threadSequence}`))
+      .map(({ content, ...thread }) => ({ ...thread, excerpt: excerpt(content) })),
+    exchanges,
+  };
 }
 
 /**

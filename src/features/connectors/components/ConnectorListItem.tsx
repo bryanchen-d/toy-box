@@ -9,6 +9,7 @@ import { cn } from "@/shared/utils";
 import { useNodeSubSessions } from "@workers/components/SubSessions";
 import { connectorHandle, poolNodes, type ConnectorEntry } from "../model";
 import { connectorMutations } from "../mutations";
+import { ConnectionDot } from "./ConnectorUse";
 
 export function ConnectorListItem({
   connector,
@@ -16,7 +17,7 @@ export function ConnectorListItem({
   onEdit,
 }: {
   connector: ConnectorEntry;
-  /** Opens what the connector shows when clicked: a pool's use, or a service's settings. */
+  /** Opens the connector's use: a pool's sub sessions, or what teams exchange with a service. */
   onOpen: () => void;
   onEdit: () => void;
 }) {
@@ -33,15 +34,7 @@ export function ConnectorListItem({
     <>
       <SidebarListItem
         title={connector.name}
-        icon={
-          <span
-            aria-hidden
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              connected ? "bg-green-500" : unreachable ? "bg-destructive" : "bg-amber-500",
-            )}
-          />
-        }
+        icon={<ConnectionDot state={status.state} />}
         time={
           <span title={error} className={cn(unreachable && "text-destructive")}>
             {connected
