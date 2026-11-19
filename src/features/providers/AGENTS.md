@@ -100,8 +100,9 @@ Keep one model configuration and transcript shape across providers and all consu
 Each node an agent pool lists is its own provider, `node:<machine>`, registered by the pool's link
 ([Connectors](../connectors/AGENTS.md)) through `registerNodeProvider` for as long as the pool
 lists it. Node providers stay out of the catalog: a sub session asks for one by node, and
-`getSessionProvider` resolves it. A node no pool lists anymore resolves to
-`SessionConnectionUnavailableError`, so its sessions can still be closed.
+`getSessionProvider` resolves it. Sessions lists a node's sessions from their records instead, and
+the session catalog names each by its worker, since no provider titles it. A node no pool lists
+anymore resolves to `SessionConnectionUnavailableError`, so its sessions can still be closed.
 
 - `provider.ts` runs sessions through the node link's live client in the host's Copilot agent
   (`copilotcli`), each in its own folder under the node's scratch folder, in interactive mode, whose

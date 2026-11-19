@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { teamQueries } from "@teams/queries";
+import { sessionQueries } from "@sessions/queries";
 import type { SessionUsage } from "@sessions/model/usage";
+import { workspaceQueries } from "@workspace/queries";
+import { createEmptyWorkspaceState } from "@workspace/model/state/reducer";
+import { WorkspaceSurfaceProvider } from "@workspace/hooks/layout/surface";
 import { teamAgentIdentity, teamLead, type Team, type TeamMember } from "@teams/model";
 import { TeamMembers } from "./TeamMembers";
 import { TeamPaneProvider } from "./TeamPaneContext";
@@ -53,6 +57,22 @@ test("the team table includes lead and members, nested work, waiting details and
     critic: { aiCredits: 0, status: "complete" },
     removed: { aiCredits: 100, status: "complete" },
   });
+  const subSession = {
+    id: "render-check",
+    title: "Render check",
+    provider: { id: "node:brchen-db3" },
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+  client.setQueryData(sessionQueries.stateKey(), {
+    sessions: [subSession],
+    worktrees: {},
+    ownership: { [subSession.id]: { type: "worker", parentSessionId: "builder" } },
+  });
+  client.setQueryData(workspaceQueries.stateKey(), {
+    ...createEmptyWorkspaceState(),
+    sessionStates: { [subSession.id]: { status: "running", since: 0 } },
+  });
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TeamPaneProvider
@@ -75,7 +95,9 @@ test("the team table includes lead and members, nested work, waiting details and
           openPanel: noop,
         }}
       >
-        <TeamMembers team={team} />
+        <WorkspaceSurfaceProvider surface="main" panes={[]} onOpenApp={noop}>
+          <TeamMembers team={team} />
+        </WorkspaceSurfaceProvider>
       </TeamPaneProvider>
     </QueryClientProvider>,
   );
@@ -91,6 +113,9 @@ test("the team table includes lead and members, nested work, waiting details and
     "claude-opus-5.5 (High)",
     "gpt-6 (Extra High)",
     "Workspace default",
+    "Render check",
+    "On brchen-db3 · Working",
+    "Preview Builder&#x27;s session · 1 sub session · 1 working · 1 on brchen-db3",
   ]) {
     expect(html).toContain(text);
   }
@@ -121,6 +146,7 @@ function renderUsage(usage?: SessionUsage) {
   const lead = teamLead(team.id);
   const noop = () => {};
   const client = new QueryClient();
+  client.setQueryData(workspaceQueries.stateKey(), createEmptyWorkspaceState());
   if (usage) client.setQueryData(teamQueries.usage(team.id).queryKey, { team: usage });
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>

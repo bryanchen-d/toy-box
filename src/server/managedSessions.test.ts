@@ -217,6 +217,31 @@ describe("Session catalog projection", () => {
     expect(first.sessions).toHaveLength(250);
   });
 
+  test("a worker session no provider titles goes by its worker's name", async () => {
+    await openSessionTypeTestDatabase();
+    for (const sessionId of ["on-node", "titled"]) {
+      await registerWorkerSession({
+        createdAt: new Date(0).toISOString(),
+        type: "session",
+        sessionId,
+        parentSessionId: "owner",
+        ephemeral: false,
+        name: "Render check",
+      });
+    }
+    const sessions = [
+      { ...catalogSession("on-node", 0), provider: { id: "node:brchen-db3" }, title: undefined },
+      catalogSession("titled", 0),
+    ];
+
+    const catalog = await readSessionCatalog(async () => [sessions, {}]);
+
+    expect(catalog.sessions.map(({ id, title }) => [id, title])).toEqual([
+      ["on-node", "Render check"],
+      ["titled", "titled"],
+    ]);
+  });
+
   test.each(["creation", "deletion"])(
     "keeps backing Sessions classified during concurrent %s",
     async (change) => {

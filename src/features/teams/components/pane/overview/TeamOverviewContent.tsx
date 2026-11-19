@@ -4,10 +4,12 @@ import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import {
   teamTasksDiff,
   type Team,
+  type TeamAgent,
   type TeamArtifact,
   type TeamRoutine,
   type TeamTask,
 } from "@teams/model";
+import { SubSessionBadge, useSubSessionSummary } from "@workers/components/SubSessions";
 import { ArtifactPill } from "@workspace/components/outputs/ArtifactPill";
 import { SessionMetadataBadges } from "@sessions/components/location/SessionMetadataBadges";
 import { Badge } from "@/shared/ui/badge";
@@ -80,9 +82,7 @@ export function TeamOverviewContent({
         <div className="flex items-center gap-3">
           <div className="flex -space-x-1.5">
             {agents.map((agent) => (
-              <span key={agent.id} title={agent.name} className="rounded-full ring-2 ring-panel">
-                <AgentAvatar agent={agent} className="size-7" />
-              </span>
+              <OverviewAgentAvatar key={agent.id} agent={agent} />
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
@@ -174,6 +174,19 @@ export function TeamOverviewContent({
 
 function allTasks(tasks: readonly TeamTask[]): TeamTask[] {
   return tasks.flatMap((task) => [task, ...allTasks(task.children ?? [])]);
+}
+
+function OverviewAgentAvatar({ agent }: { agent: TeamAgent }) {
+  const subSessions = useSubSessionSummary(agent.id);
+  return (
+    <span
+      title={[agent.name, subSessions?.label].filter(Boolean).join(" · ")}
+      className="relative rounded-full ring-2 ring-panel"
+    >
+      <AgentAvatar agent={agent} className="size-7" />
+      <SubSessionBadge summary={subSessions} />
+    </span>
+  );
 }
 
 /** The purpose, clamped to three lines until the reader expands it. */

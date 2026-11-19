@@ -116,6 +116,15 @@ test("public IDs keep their provider and discovered native sessions resolve back
   });
 });
 
+test("a session on a node, which keeps no catalog, is listed from its record", async () => {
+  await setup();
+  await setSessionProvider("on-node", { id: "node:brchen-db3" });
+
+  expect(await listSessions()).toEqual([
+    expect.objectContaining({ id: "on-node", provider: { id: "node:brchen-db3" } }),
+  ]);
+});
+
 test("failed native preparation leaves the session a draft for retry", async () => {
   await setup();
   const session = { id: "retry", provider: { id: "codex", sessionId: "native" } };

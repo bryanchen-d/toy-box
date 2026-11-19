@@ -27,7 +27,11 @@ export async function readSessionCatalog(
   // sides so a concurrent change cannot expose a backing Session as ordinary.
   const ownershipBefore = await readSessionOwnership();
   const [sessions, worktrees] = await readCatalog();
-  const [ownershipAfter, settings] = await Promise.all([readSessionOwnership(), getSettings()]);
+  const [ownershipAfter, settings, workerNames] = await Promise.all([
+    readSessionOwnership(),
+    getSettings(),
+    readWorkerNames(),
+  ]);
   const ownership = { ...ownershipBefore, ...ownershipAfter };
   const retainedSessionIds = new Set([
     ...Object.keys(ownership),
@@ -50,7 +54,14 @@ export async function readSessionCatalog(
     if (sessionId && draft?.text.trim()) retainedSessionIds.add(sessionId);
   }
   return {
-    sessions: sessions.filter(({ id, provider }) => retainedSessionIds.has(id) || !provider),
+    sessions: sessions
+      .filter(({ id, provider }) => retainedSessionIds.has(id) || !provider)
+      // A worker session no provider titles, such as one on a node, goes by its worker's name.
+      .map((session) =>
+        session.title || !workerNames[session.id]
+          ? session
+          : { ...session, title: workerNames[session.id] },
+      ),
     worktrees,
     ownership,
   };
@@ -94,6 +105,15 @@ export async function detachManagedSession(sessionId: string): Promise<void> {
       broadcast({ type: "inbox.entry.deleted", entryId: sessionId });
     }
   }
+}
+
+async function readWorkerNames(): Promise<Record<string, string>> {
+  const database = await getStateDatabase({ createIfMissing: false });
+  if (!database) return {};
+  const rows = await database<{ session_id: string; name: string }[]>`
+    SELECT session_id, name FROM workers WHERE name IS NOT NULL
+  `;
+  return Object.fromEntries(rows.map(({ session_id, name }) => [session_id, name]));
 }
 
 async function readSessionOwnership(): Promise<SessionsState["ownership"]> {

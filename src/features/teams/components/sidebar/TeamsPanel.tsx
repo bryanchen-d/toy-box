@@ -3,6 +3,7 @@ import { Pause, Plus } from "lucide-react";
 import { TeamAvatar } from "@teams/components/TeamAvatar";
 import { WorkingAgents } from "@teams/components/agents/WorkingAgents";
 import { useTeams } from "@teams/useTeams";
+import { useOwnersOfWorkingSubSessions } from "@workers/components/SubSessions";
 import { SidebarListItem } from "@/shared/sidebar/SidebarListItem";
 import { SidebarPanel } from "@/shared/sidebar/SidebarPanel";
 import { Button } from "@/shared/ui/button";
@@ -30,6 +31,7 @@ export function TeamsPanel({
   onCreate: () => void;
 }) {
   const teams = useTeams();
+  const ownersOfWorkingSubSessions = useOwnersOfWorkingSubSessions();
   const [editTeamId, setEditTeamId] = useState<string>();
   const [deleteTeamId, setDeleteTeamId] = useState<string>();
 
@@ -87,8 +89,11 @@ export function TeamsPanel({
                     <Pause className="size-3 text-muted-foreground" aria-label="Team paused" />
                   )}
                   <WorkingAgents
+                    // An agent waiting on its sub sessions stays in view, its count marking why.
                     working={agents
-                      .filter(({ isRunning }) => isRunning)
+                      .filter(
+                        ({ id, isRunning }) => isRunning || ownersOfWorkingSubSessions.includes(id),
+                      )
                       .map((agent) => ({ agent }))}
                     variant="compact"
                   />

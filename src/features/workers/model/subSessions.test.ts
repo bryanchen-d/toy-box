@@ -1,11 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import {
+  describeSubSessions,
   dueWake,
   interruptedReport,
   isReminderDue,
   renderSubSessionBrief,
   subSessionReport,
 } from "./subSessions";
+
+describe("sub session summary", () => {
+  test("counts an owner's sub sessions, those at work, and those on each node", () => {
+    expect(
+      describeSubSessions([
+        { working: true, node: "brchen-db3" },
+        { working: false, node: "brchen-db3" },
+        { working: false },
+      ]),
+    ).toBe("3 sub sessions · 1 working · 2 on brchen-db3");
+  });
+
+  test("leaves out work and nodes when none apply", () => {
+    expect(describeSubSessions([{ working: false }])).toBe("1 sub session");
+  });
+});
 
 describe("sub session brief", () => {
   test("names the owner, sets the reporting rules, then gives each part of the brief in order", () => {

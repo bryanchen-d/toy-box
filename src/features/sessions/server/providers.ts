@@ -5,7 +5,11 @@ import {
   sessionProviders,
 } from "@providers/server";
 import type { Session, SessionType } from "../model";
-import { normalizeModelConfiguration, type ModelConfiguration } from "@providers/model";
+import {
+  normalizeModelConfiguration,
+  providerNode,
+  type ModelConfiguration,
+} from "@providers/model";
 import type { SessionConfiguration, SessionProvider } from "@providers/server/provider";
 import { setSessionProvider, readSession, readSessions } from "./state/sessions";
 import { buildSessionSystemPrompt } from "./instructions";
@@ -73,7 +77,10 @@ export async function listSessions(): Promise<Session[]> {
     }
   }
   return [
-    ...records.filter((session) => !session.provider),
+    // A node keeps no catalog, so a session on one is listed from its record.
+    ...records.filter(
+      (session) => !session.provider || providerNode(session.provider.id) !== undefined,
+    ),
     ...nativeSessions.map((native) => {
       const record = byNative.get(`${native.provider!.id}:${native.id}`);
       const id = record?.id ?? `${native.provider!.id}:${native.id}`;

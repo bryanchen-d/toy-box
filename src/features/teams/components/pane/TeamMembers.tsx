@@ -6,17 +6,14 @@ import { AgentItem } from "@teams/components/agents/AgentItem";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { teamTasksForAgent, compareTeamAgents, type Team, type TeamTask } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
-import { formatModelConfiguration, providerNode } from "@providers/model";
+import { formatModelConfiguration } from "@providers/model";
 import { teamQueries } from "@teams/queries";
 import { sumSessionUsage, type SessionUsage } from "@sessions/model/usage";
-import type { Session } from "@sessions/model";
 import { selectSessionChildren, sessionQueries } from "@sessions/queries";
-import { useWorkspaceSessionActivity } from "@workspace/hooks/state";
-import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
+import { SubSessionList } from "@workers/components/SubSessions";
 import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { Button } from "@/shared/ui/button";
 import { ClockTime } from "@/shared/ui/clock-time";
-import { RelativeTime } from "@/shared/ui/relative-time";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { CopyTeamUri } from "@teams/components/CopyTeamUri";
@@ -172,7 +169,7 @@ export function TeamMembers({
                     />
                   </td>
                   <td className="max-w-64">
-                    <SubSessions sessions={subSessionsByOwner?.[agent.id] ?? []} />
+                    <SubSessionList sessions={subSessionsByOwner?.[agent.id] ?? []} />
                   </td>
                   <td className="max-w-64">
                     <TaskTitles tasks={pending} />
@@ -301,56 +298,5 @@ function TaskTitles({ tasks, empty }: { tasks: readonly TeamTask[]; empty?: stri
     </ul>
   ) : (
     <span className="text-muted-foreground">{empty ?? "None"}</span>
-  );
-}
-
-/** The sessions an agent created to do one task each, oldest first; each opens beside the team. */
-function SubSessions({ sessions }: { sessions: readonly Session[] }) {
-  if (sessions.length === 0) return <span className="text-muted-foreground">None</span>;
-  return (
-    <ul className="space-y-1">
-      {[...sessions]
-        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
-        .map((session) => (
-          <SubSession key={session.id} session={session} />
-        ))}
-    </ul>
-  );
-}
-
-function SubSession({ session }: { session: Session }) {
-  const { openSession } = useWorkspaceSurface();
-  const activity = useWorkspaceSessionActivity(session.id);
-  const title = session.title || "Sub session";
-  const node = providerNode(session.provider?.id);
-  return (
-    <li>
-      {openSession ? (
-        <button
-          type="button"
-          className="text-left hover:underline"
-          title={`Open ${title}`}
-          onClick={() => openSession(session.id)}
-        >
-          {title}
-        </button>
-      ) : (
-        title
-      )}
-      <span className="block text-muted-foreground">
-        {node ? `On ${node} · ` : null}
-        {activity.waiting ? (
-          "Waiting for input"
-        ) : activity.background ? (
-          "Background tasks running"
-        ) : activity.running ? (
-          "Working"
-        ) : (
-          <>
-            Idle · <RelativeTime date={session.updatedAt} />
-          </>
-        )}
-      </span>
-    </li>
   );
 }

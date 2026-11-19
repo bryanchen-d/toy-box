@@ -194,6 +194,26 @@ export function interruptedReport(
   };
 }
 
+/**
+ * One line about an owner's sub sessions: how many it has, how many are at work, and how many
+ * run on each node, such as "3 sub sessions · 1 working · 2 on brchen-db3".
+ */
+export function describeSubSessions(
+  subSessions: readonly { working: boolean; node?: string }[],
+): string {
+  const count = subSessions.length;
+  const working = subSessions.filter((subSession) => subSession.working).length;
+  const byNode = new Map<string, number>();
+  for (const { node } of subSessions) {
+    if (node !== undefined) byNode.set(node, (byNode.get(node) ?? 0) + 1);
+  }
+  return [
+    `${count} sub session${count === 1 ? "" : "s"}`,
+    ...(working > 0 ? [`${working} working`] : []),
+    ...[...byNode].map(([node, onNode]) => `${onNode} on ${node}`),
+  ].join(" · ");
+}
+
 function clip(text: string): string {
   return text.length <= REPORT_MAX_LENGTH
     ? text

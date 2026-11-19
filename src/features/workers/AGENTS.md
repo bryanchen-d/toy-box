@@ -99,8 +99,12 @@ subagents instead. Each tool acts only on the invoking session's own sub session
 - Each report also sets a reminder in the same metadata. A sub session still open and idle a day
   later, with no wake of its own pending, reminds its owner once with a `sub_session_idle` system
   message that queues behind the owner's work. The owner's next message cancels it.
-- The team members table lists each agent's sub sessions with their live state, derived on the
-  client from session ownership; a standard session's nest under it in the sidebar.
+- `components/SubSessions.tsx` presents an owner's sub sessions, derived on the client from
+  session ownership and live workspace state: the team members table lists each agent's with its
+  node and state, a count on the agent's avatar (filled while any is at work) summarizes them, and
+  a hover preview of any owner's session lists them beneath its transcript. The sidebar keeps an
+  agent waiting on working sub sessions in its team row. A standard session's sub sessions also
+  nest under it in the sidebar.
 
 ## Algebra
 

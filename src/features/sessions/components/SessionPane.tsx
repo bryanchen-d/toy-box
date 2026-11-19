@@ -21,6 +21,7 @@ import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePan
 import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
 import { SessionMessageList } from "./transcript/MessageList";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
+import { SubSessionSection } from "@workers/components/SubSessions";
 
 type SessionPaneProps = {
   sessionId: string;
@@ -275,6 +276,8 @@ export function SessionPane({
           </CurrentSessionProvider>
         )}
       </div>
+
+      {isPassive && !isSessionNotFound && <SubSessionSection ownerId={sessionId} />}
 
       {!isPassive && !isSessionNotFound && (
         <div className="shrink-0 border-t bg-background px-4 pt-4 md:pb-4">

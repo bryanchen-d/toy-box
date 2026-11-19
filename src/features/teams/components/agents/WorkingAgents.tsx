@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TeamAgent } from "@teams/model";
 import { SessionPreview, useSessionPreview } from "@sessions/components/SessionPreview";
+import { SubSessionBadge, useSubSessionSummary } from "@workers/components/SubSessions";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/utils";
@@ -92,7 +93,9 @@ function WorkingAgentAvatar({
   onHover?: (sessionId?: string) => void;
 }) {
   const preview = useSessionPreview();
+  const subSessions = useSubSessionSummary(entry.agent.id);
   const { agent, text } = entry;
+  const label = [agent.name, subSessions?.label].filter(Boolean).join(" · ");
 
   return (
     <Tooltip>
@@ -101,7 +104,7 @@ function WorkingAgentAvatar({
           render={
             <span
               tabIndex={0}
-              aria-label={agent.name}
+              aria-label={label}
               className="relative rounded-full transition-[margin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onMouseEnter={(event) => {
                 preview.onMouseEnter(event);
@@ -118,11 +121,13 @@ function WorkingAgentAvatar({
             agent={agent}
             className="pointer-events-none size-6 ring-2 ring-[var(--surface-background,var(--color-panel))]"
           />
+          <SubSessionBadge summary={subSessions} />
         </TooltipTrigger>
       </SessionPreview>
       <TooltipContent sideOffset={4}>
         {agent.name}
         {text ? ` · ${text}` : ""}
+        {subSessions ? ` · ${subSessions.label}` : ""}
       </TooltipContent>
     </Tooltip>
   );
