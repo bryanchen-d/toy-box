@@ -165,16 +165,21 @@ export type AssistantMessage = {
 
 export type Message = UserMessage | SystemMessage | AssistantMessage;
 
-/** An identified user or system message submitted to a Session. */
+/**
+ * An identified user or system message submitted to a Session. While a turn runs, `immediate`
+ * steers it into that turn and `interrupt` stops that turn to start in its place.
+ */
 export type SessionMessage =
   | (Omit<UserMessage, "clientId" | "rewindable" | "timestamp"> & {
       clientId: string;
       model?: ModelConfiguration;
       immediate?: true;
+      interrupt?: true;
     })
   | (Omit<SystemMessage, "clientId" | "timestamp"> & {
       clientId: string;
       immediate?: true;
+      interrupt?: true;
     });
 
 /** Provider-native child activity nested under its spawning agent tool call. */

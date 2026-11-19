@@ -13,6 +13,7 @@ export const sessionSystemMessageSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("team_message"),
       senderName: z.string().min(1),
+      interrupt: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -87,7 +88,9 @@ export function systemMessagePrompt(message: SessionSystemMessage): string {
     case "file_edited":
       return `The user edited a file open in Agent Teams: ${JSON.stringify(message.file)}. A \`session\` file's \`path\` is relative to that session's artifacts folder, usually your own. A \`machine\` file's \`path\` is an absolute host path. Review its latest contents and respond only if a follow-up would help.`;
     case "team_message":
-      return `A new public message from ${message.senderName} is waiting in a team you belong to. Call \`read_team\` to consume messages since your last read.`;
+      return message.interrupt
+        ? `An urgent public message from ${message.senderName} is waiting in a team you belong to. If it stopped your previous turn, that turn's last step may not have finished. Call \`read_team\` to consume messages since your last read before you resume or redo anything.`
+        : `A new public message from ${message.senderName} is waiting in a team you belong to. Call \`read_team\` to consume messages since your last read.`;
     case "team_routine":
       return `Your routine ${JSON.stringify(message.title)} is due: ${JSON.stringify(message.prompt)}. Call \`read_team\`, then do it. If nothing needs the team's attention, finish quietly.`;
     case "team_follow_up":
@@ -117,7 +120,7 @@ export function systemMessageLabel(message: SessionSystemMessage): string {
     case "file_edited":
       return `Edited ${getPathBasename(message.file.path)}`;
     case "team_message":
-      return `Message from ${message.senderName}`;
+      return `${message.interrupt ? "Urgent message" : "Message"} from ${message.senderName}`;
     case "team_routine":
       return `Routine: ${message.title}`;
     case "team_follow_up":

@@ -236,6 +236,12 @@ const sendLeadMessageParameters = sendTeamMessageParameters.extend({
     .describe(
       "Flags this message as needing the user's decision, context, or action until the user next posts.",
     ),
+  interrupt: z
+    .boolean()
+    .optional()
+    .describe(
+      "Stops each agent this message wakes mid-turn, cancelling the step it is taking, and starts its next turn with this message. By default a message steers in at the agent's next step instead. Use only when letting the current step finish could cause harm or waste, such as relaying the user's stop or wait.",
+    ),
 });
 
 const sendTeamMessageTool = defineTool("send_team_message", {
@@ -249,6 +255,7 @@ const sendTeamMessageTool = defineTool("send_team_message", {
       content: args.content,
       attachmentPaths: args.attachments,
       request: args.request,
+      interrupt: args.interrupt,
       threadSequence: args.threadSequence,
     });
     const { queuedConnectorsForMessage } = await import("./connectors");
@@ -257,7 +264,7 @@ const sendTeamMessageTool = defineTool("send_team_message", {
   },
 });
 
-/** The same tool plus an input request, which only the lead can make. */
+/** The same tool plus an input request and an interrupt, which only the lead can make. */
 const sendLeadMessageTool = { ...sendTeamMessageTool, parameters: sendLeadMessageParameters };
 
 const reactToTeamMessageTool = defineTool("react_to_team_message", {

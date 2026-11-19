@@ -388,11 +388,14 @@ export async function sendTeamMessageFromAgent(
     content: string;
     attachmentPaths?: readonly string[];
     request?: boolean;
+    interrupt?: boolean;
     threadSequence?: number;
   },
 ): Promise<StoredTeamMessage> {
   const database = new TeamDatabase(await getStateDatabase());
   const agent = await requireTeamAgent(database, sessionId);
+  if (input.interrupt && agent.id !== agent.teamId)
+    throw new Error("Only the team lead can interrupt agents.");
   const { teamsAddressedFrom, admitAgentTeamMessage } = await import("./peers");
   const roster = await database.getRoster(agent.teamId);
   admitAgentTeamMessage(
@@ -403,18 +406,21 @@ export async function sendTeamMessageFromAgent(
       roster ? [roster.lead, ...roster.members] : [],
     ),
   );
-  return postMessage({
-    id: crypto.randomUUID(),
-    teamId: agent.teamId,
-    sender: {
-      type: "agent",
-      agentId: agent.id,
+  return postMessage(
+    {
+      id: crypto.randomUUID(),
+      teamId: agent.teamId,
+      sender: {
+        type: "agent",
+        agentId: agent.id,
+      },
+      content: input.content,
+      attachments: await resolveAttachmentPaths(sessionId, input.attachmentPaths),
+      request: input.request,
+      threadSequence: input.threadSequence,
     },
-    content: input.content,
-    attachments: await resolveAttachmentPaths(sessionId, input.attachmentPaths),
-    request: input.request,
-    threadSequence: input.threadSequence,
-  });
+    { interrupt: input.interrupt },
+  );
 }
 
 export async function setTeamMessageReactionFromAgent(
@@ -553,10 +559,13 @@ async function resolveAttachmentPaths(sessionId: string, paths: readonly string[
   );
 }
 
-/** Persist once, then apply the same audience plan for user, Agent, connector, and team senders. */
+/**
+ * Persist once, then apply the same audience plan for user, Agent, connector, and team senders. An
+ * interrupting message stops each woken agent's running turn instead of steering into it.
+ */
 export async function postMessage(
   input: Parameters<TeamDatabase["appendMessage"]>[0],
-  { authorName }: { authorName?: string } = {},
+  { authorName, interrupt }: { authorName?: string; interrupt?: boolean } = {},
 ): Promise<StoredTeamMessage> {
   const { teamId, sender, content, askedBy } = input;
   const database = new TeamDatabase(await getStateDatabase());
@@ -600,7 +609,7 @@ export async function postMessage(
     audience.map((member) =>
       wakeTeamAgent(
         member.id,
-        { type: "team_message", senderName },
+        { type: "team_message", senderName, ...(interrupt ? { interrupt: true } : {}) },
         { author, sequence: change.message.sequence },
       ).catch((error) => {
         console.error(`Failed to wake Team Agent ${member.id}:`, error);
@@ -703,7 +712,8 @@ export function publishTeamChange({ teamId, events, team }: TeamChange): void {
 
 /**
  * Delivers a wake into the agent's turn at once, then records how it landed, so the team can see
- * how often new input reaches its agents mid-turn. `cause` names the message that woke it, when one did.
+ * how often new input reaches its agents mid-turn. An urgent team message stops that turn instead.
+ * `cause` names the message that woke it, when one did.
  */
 export async function wakeTeamAgent(
   agentId: string,
@@ -716,7 +726,10 @@ export async function wakeTeamAgent(
   if (!team) throw new Error("Team not found.");
   if (team.paused) return;
   const at = new Date().toISOString();
-  const message = { systemMessage, immediate: true as const };
+  const message =
+    systemMessage.type === "team_message" && systemMessage.interrupt
+      ? { systemMessage, interrupt: true as const }
+      : { systemMessage, immediate: true as const };
   const { disposition } =
     agentId === ADMIN_TEAM_ID && !(await readSession(agentId))?.provider
       ? await createSession(agentId, message, {

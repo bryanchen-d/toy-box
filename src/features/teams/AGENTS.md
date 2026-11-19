@@ -276,8 +276,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - `wakeTeamAgent` records each delivery's outcome in `team_wakes`: its cause (message, routine, or
   follow-up), the message author and sequence when a message caused it, and the Sessions
   disposition. `started` woke an idle agent, `steered` joined its running turn at the next model
-  step without stopping current work, and `queued` waited for that turn to end. No team delivery
-  aborts a turn, so there is no interrupted outcome; only the user's Stop does that. Wakes before
+  step without stopping current work, `interrupted` stopped that turn, current step included, to
+  start a turn with the message, and `queued` waited for that turn to end. Every wake steers except
+  the lead's interrupting message; otherwise only the user's Stop aborts a turn. Wakes before
   recording began were backfilled by hand from provider histories; aborted turns aren't counted.
 - Advice (`model/advice.ts`) is one finding with its evidence and one typed action: `message_lead`
   tells the lead what to change, and `move_members` moves current members, never the lead, to an
@@ -388,7 +389,13 @@ Routines serve the purpose, so setting one never rewrites the purpose or adds ta
 Delegation never transfers accountability for the purpose or the quality of a member's outcome.
 During working communication, the lead flags what it needs from the user by setting
 `request` on `send_team_message`; the same transaction appends that flagged message and updates
-the pending cursor. Only the lead's version of the tool accepts the flag. Completion
+the pending cursor. Only the lead's version of the tool accepts the flag. A message steers into
+each woken agent's running turn at its next step, so the step underway still finishes. When that
+step could do harm, such as relaying the user's stop or wait, the lead sets `interrupt` instead:
+each woken agent's running turn stops, current tool call included, and its next turn starts with
+an urgent `team_message` that says the stopped step may not have finished. Only the lead's tool
+accepts it and `sendTeamMessageFromAgent` rejects it from anyone else. It isn't stored on the
+message; a wake records `interrupted` only when it stopped a running turn. Completion
 needs no separate operation:
 when a lead's task edit or replacement takes the list from incomplete to complete, meaning it has
 tasks and every task and subtask is done, the same transaction appends `tasks_completed`. Completion
@@ -729,7 +736,7 @@ presents one deleted identity everywhere.
   opening beside the team, and holds every free-text cell to one truncated line per item whose full
   text shows on hover. Models and AI credits stay hidden until shown from the Members menu.
 - The performance panel has two tabs. Stats charts a chosen metric (messages, notifications,
-  steered, queued, woke idle, AI credits, busy hours, or tokens) per hour, day, or week, stacked by
+  steered, interrupted, queued, woke idle, AI credits, busy hours, or tokens) per hour, day, or week, stacked by
   agent, or reply time as one line per agent under a chosen aggregation (P50, P90, mean, or max).
   Below, sortable tables list per-agent totals and each sender and receiver pair with its delivery
   outcomes and reply times. Advice lists open advice with its evidence and a plain statement of what

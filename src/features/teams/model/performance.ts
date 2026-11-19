@@ -32,10 +32,10 @@ export type RuntimeActivity = {
 
 /**
  * How a wake reached its agent: `started` a turn while the agent was idle, `steered` the turn it was
- * running by joining it at its next step without stopping current work, or `queued` behind that
- * turn.
+ * running by joining it at its next step without stopping current work, `interrupted` that turn by
+ * stopping it, current step included, to start a turn with the message, or `queued` behind it.
  */
-export const WAKE_DELIVERIES = ["started", "steered", "queued"] as const;
+export const WAKE_DELIVERIES = ["started", "steered", "interrupted", "queued"] as const;
 export type WakeDelivery = (typeof WAKE_DELIVERIES)[number];
 export type Deliveries = Record<WakeDelivery, number>;
 
@@ -111,7 +111,18 @@ export const EMPTY_RUNTIME: RuntimeActivity = {
   cacheWriteTokens: 0,
 };
 
-export const EMPTY_DELIVERIES: Deliveries = { started: 0, steered: 0, queued: 0 };
+export const EMPTY_DELIVERIES: Deliveries = { started: 0, steered: 0, interrupted: 0, queued: 0 };
+
+/** All recorded wakes, however each was delivered. */
+export function countDeliveries(deliveries: Deliveries): number {
+  return WAKE_DELIVERIES.reduce((total, delivery) => total + deliveries[delivery], 0);
+}
+
+export function addDeliveries(left: Deliveries, right: Deliveries): Deliveries {
+  return Object.fromEntries(
+    WAKE_DELIVERIES.map((delivery) => [delivery, left[delivery] + right[delivery]]),
+  ) as Deliveries;
+}
 
 export const AGGREGATIONS = ["p50", "p90", "mean", "max"] as const;
 export type Aggregation = (typeof AGGREGATIONS)[number];

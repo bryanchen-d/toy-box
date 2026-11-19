@@ -167,6 +167,36 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
   expect((await teams.getAgent(team.id))?.status).toBeUndefined();
 });
 
+test("only the lead interrupts the agents its message wakes, and each wake records it", async () => {
+  const teams = await openTeams();
+  const team = await createStoredTeam(teams, { name: "Interrupt", ...TEAM_DEFAULTS });
+  const { member } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "interrupted",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => deliver.mockRestore());
+
+  await expect(
+    sendTeamMessageFromAgent(member.id, { content: "@lead Stop.", interrupt: true }),
+  ).rejects.toThrow("Only the team lead can interrupt agents.");
+  expect(deliver).not.toHaveBeenCalled();
+
+  await sendTeamMessageFromAgent(team.id, {
+    content: "@builder Stop: don't delete the mirror.",
+    interrupt: true,
+  });
+  const systemMessage = {
+    type: "team_message" as const,
+    senderName: expect.any(String),
+    interrupt: true as const,
+  };
+  expect(deliver.mock.calls).toEqual([[member.id, { systemMessage, interrupt: true }]]);
+  expect(await teams.listWakesSince(team.id, "")).toEqual([
+    expect.objectContaining({ agentId: member.id, author: team.id, delivery: "interrupted" }),
+  ]);
+});
+
 test.each([undefined, "Ship a useful release."])(
   "creating a Team with purpose %s starts avatar setup without creating a directory",
   async (purpose) => {

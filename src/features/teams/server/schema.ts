@@ -159,7 +159,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       ON team_advice(team_id, status, created_at);
 
     -- Each time the team woke one of its agents, and whether that started a turn, steered the
-    -- running turn, or waited behind it. Rows outlive membership, like authored messages.
+    -- running turn, interrupted it, or waited behind it. Rows outlive membership, like authored
+    -- messages.
     CREATE TABLE IF NOT EXISTS team_wakes (
       team_id           TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       agent_id          TEXT NOT NULL,
@@ -168,7 +169,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       -- The author key of a waking message: an agent, connector, or team ID, or 'user'.
       author            TEXT,
       message_sequence  INTEGER,
-      disposition       TEXT NOT NULL CHECK (disposition IN ('started', 'steered', 'queued'))
+      disposition       TEXT NOT NULL
+                        CHECK (disposition IN ('started', 'steered', 'interrupted', 'queued'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_team_wakes_team_at ON team_wakes(team_id, at);

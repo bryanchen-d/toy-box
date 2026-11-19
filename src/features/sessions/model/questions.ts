@@ -24,3 +24,14 @@ export function hasBlockingSessionQuestion(session: { messages: readonly Message
       ) === true,
   );
 }
+
+/** The tool calls whose questions still await an answer. */
+export function pendingSessionQuestionIds(session: { messages: readonly Message[] }): string[] {
+  return session.messages.flatMap((message) =>
+    message.role === "assistant"
+      ? (message.toolCalls ?? [])
+          .filter((toolCall) => toolCall.question?.state === "pending")
+          .map(({ id }) => id)
+      : [],
+  );
+}

@@ -374,7 +374,7 @@ export async function streamSession(
 
 type MessageInput =
   | SessionLaunch["message"]
-  | { clientId?: string; systemMessage: SessionSystemMessage; immediate?: true };
+  | { clientId?: string; systemMessage: SessionSystemMessage; immediate?: true; interrupt?: true };
 
 type SessionCreationOptions = Omit<sessionRegistry.CreateSessionOptions, "model">;
 
@@ -513,6 +513,7 @@ function normalizeMessage(message: MessageInput): SessionMessage {
       role: "system",
       content: message.systemMessage,
       immediate: message.immediate,
+      interrupt: message.interrupt,
     };
   }
 

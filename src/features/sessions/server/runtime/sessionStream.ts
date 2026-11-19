@@ -22,7 +22,11 @@ import {
   type SessionActivity,
 } from "@sessions/model/activity";
 import { recordSessionActivity } from "@sessions/server/activity";
-import { hasBlockingSessionQuestion, hasPendingSessionQuestion } from "@sessions/model/questions";
+import {
+  hasBlockingSessionQuestion,
+  hasPendingSessionQuestion,
+  pendingSessionQuestionIds,
+} from "@sessions/model/questions";
 import type {
   SessionArtifact,
   SessionCompletion,
@@ -35,8 +39,11 @@ import { sharedMap } from "@/shared/server/processState";
 import { createSessionEventBus, type SessionStreamSubscription } from "./eventBus";
 import { publishSessionCompletion } from "./completions";
 
-/** A first message starts a turn; an immediate one steers the running turn; any other waits. */
-export type MessageDisposition = "started" | "steered" | "queued";
+/**
+ * A first message starts a turn; an immediate one steers the running turn; an interrupting one
+ * stops that turn and starts in its place; any other waits.
+ */
+export type MessageDisposition = "started" | "steered" | "interrupted" | "queued";
 type StreamEndReason = Extract<SessionEvent, { type: "end" }>["reason"];
 
 // Replay and per-observer count cap; the bus also owns their UTF-8 byte budget.
@@ -125,6 +132,9 @@ export class SessionStream {
   // Claimed synchronously before #startTurn awaits so concurrent deliveries
   // cannot both open the stream's first turn.
   #hasOpenedTurn = false;
+  // An interrupting message waits for the provider to confirm the abort and to end the stopped
+  // turn, in either order, so none of that turn's events can end the message's turn instead.
+  #interruption: { message: SessionMessage; aborted: boolean; ended: boolean } | undefined;
   #abortRequested = false;
   #finished = false;
   #lastProviderEventAt?: number;
@@ -165,11 +175,17 @@ export class SessionStream {
       return "started";
     }
 
+    if (message.interrupt && !this.#interruption && this.#sessionState.status !== "background") {
+      return this.#interrupt(deferMessage(message));
+    }
+
     const isSubmittingMessage = this.#sessionState.queuedMessages.some(
       ({ status }) => status === "submitting",
     );
     const queuedMessage =
-      message.immediate && isSubmittingMessage ? deferMessage(message) : message;
+      message.immediate && !isSubmittingMessage && !this.#interruption
+        ? message
+        : deferMessage(message);
 
     if (queuedMessage.immediate) {
       await this.#submitMessage(queuedMessage);
@@ -196,6 +212,7 @@ export class SessionStream {
   async steerQueuedMessage(clientId: string): Promise<boolean> {
     if (
       this.#abortRequested ||
+      this.#interruption ||
       this.#sessionState.queuedMessages.some(({ status }) => status === "submitting")
     ) {
       return false;
@@ -432,6 +449,14 @@ export class SessionStream {
       return;
     }
     if (event.type === "end") {
+      if (this.#interruption) {
+        // A stopped turn ends idle on every provider; Copilot reports its abort as an error first.
+        if (event.reason === "idle") {
+          this.#interruption.ended = true;
+          this.#continueInterruption();
+        }
+        return;
+      }
       if (event.reason === "error") {
         if (!this.#abortRequested) this.finish("error", event.error);
       } else {
@@ -443,9 +468,54 @@ export class SessionStream {
     if (this.#sessionState.status === "background") void this.#drainMessageQueue();
   }
 
+  /** Stop the running turn; `message` starts once the provider has ended it. */
+  async #interrupt(message: SessionMessage): Promise<MessageDisposition> {
+    const interruption = { message, aborted: false, ended: false };
+    this.#interruption = interruption;
+    this.#emit({ type: "message_queued", message });
+    this.#declineApprovals();
+    try {
+      await this.connection.abort();
+    } catch (error) {
+      // The turn may still be running, so the message waits for it like any other.
+      console.error(`Could not interrupt session ${this.sessionId}:`, error);
+      this.#interruption = undefined;
+      if (interruption.ended) void this.#drainMessageQueue(true);
+      return "queued";
+    }
+    // The stopped turn's questions go unanswered, as they would at a terminal end.
+    if (!this.#finished)
+      for (const toolCallId of pendingSessionQuestionIds(this.#sessionState))
+        this.#emit({ type: "question_cancelled", toolCallId });
+    interruption.aborted = true;
+    this.#continueInterruption();
+    return "interrupted";
+  }
+
+  #continueInterruption(): void {
+    const interruption = this.#interruption;
+    if (!interruption?.aborted || !interruption.ended) return;
+    this.#interruption = undefined;
+    if (this.#finished || this.#abortRequested) return;
+    // Steering the stopped turn never took was dropped with it, as Stop drops it.
+    for (const { clientId, status } of this.#sessionState.queuedMessages)
+      if (status === "submitted") this.#emit({ type: "message_cancelled", clientId });
+    const { clientId } = interruption.message;
+    const isQueued = this.#sessionState.queuedMessages.some(
+      (queued) => queued.clientId === clientId && queued.status === "queued",
+    );
+    // The owner may have cancelled the message meanwhile; then the queue decides what runs.
+    (isQueued ? this.#submitMessage(interruption.message) : this.#drainMessageQueue(true)).catch(
+      () => {
+        // #startTurn already finished the stream; this runs from a floating SDK handler.
+      },
+    );
+  }
+
   async #drainMessageQueue(finishWhenEmpty = false): Promise<void> {
     if (
       this.#abortRequested ||
+      this.#interruption ||
       this.#finished ||
       this.#sessionState.queuedMessages.some(({ status }) => status === "submitting") ||
       hasBlockingSessionQuestion(this.#sessionState)
@@ -570,7 +640,7 @@ function messageFromQueue(message: SessionState["queuedMessages"][number]): Sess
 }
 
 function deferMessage(message: SessionMessage): SessionMessage {
-  const { immediate: _immediate, ...deferred } = message;
+  const { immediate: _immediate, interrupt: _interrupt, ...deferred } = message;
   return deferred;
 }
 

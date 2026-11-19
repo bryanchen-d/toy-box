@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   aggregate,
   AGGREGATIONS,
+  countDeliveries,
   PERFORMANCE_BUCKETS,
   USER_AUTHOR,
   type AgentPerformance,
@@ -21,12 +22,18 @@ import { useTeamPane } from "./TeamPaneContext";
 
 const STEERED_TITLE =
   "Wakes that joined the agent's running turn at its next step, without stopping its current work, rather than starting a turn or waiting for it to end.";
+const INTERRUPTED_TITLE =
+  "Wakes from the lead's urgent messages that stopped the agent's running turn, current step included, to start a turn with the message.";
 
 /** What a count chart stacks per agent in one bucket. */
 const COUNT_METRICS = {
   messages: { label: "Messages", value: (point, id) => point.messages[id] ?? 0 },
   wakes: { label: "Notifications", value: (point, id) => point.wakes[id] ?? 0 },
   steered: { label: "Steered", value: (point, id) => point.deliveries[id]?.steered ?? 0 },
+  interrupted: {
+    label: "Interrupted",
+    value: (point, id) => point.deliveries[id]?.interrupted ?? 0,
+  },
   queued: { label: "Queued", value: (point, id) => point.deliveries[id]?.queued ?? 0 },
   started: { label: "Woke idle", value: (point, id) => point.deliveries[id]?.started ?? 0 },
   credits: { label: "AI credits", value: (point, id) => point.runtime[id]?.aiCredits ?? 0 },
@@ -126,9 +133,7 @@ function StatsContent({
   const sum = (pick: (entry: AgentPerformance) => number) =>
     data.agents.reduce((total, entry) => total + pick(entry), 0);
   const steered = sum(({ deliveries }) => deliveries.steered);
-  const delivered = sum(
-    ({ deliveries }) => deliveries.started + deliveries.steered + deliveries.queued,
-  );
+  const delivered = sum(({ deliveries }) => countDeliveries(deliveries));
   const replies = aggregate(
     data.series.flatMap(({ responses }) => Object.values(responses).flat()),
     aggregation,
@@ -201,7 +206,7 @@ function AgentsTable({ agents }: { agents: readonly AgentPerformance[] }) {
   const active = agents.filter(
     (entry) =>
       entry.messages + entry.wakes + entry.runtime.turns > 0 ||
-      entry.deliveries.started + entry.deliveries.steered + entry.deliveries.queued > 0,
+      countDeliveries(entry.deliveries) > 0,
   );
   if (active.length === 0) {
     return <p className="text-muted-foreground italic">No activity in this period.</p>;
@@ -297,9 +302,9 @@ function AddressesTable({ addresses }: { addresses: readonly TeamAddress[] }) {
 function deliveryColumns<
   Row extends { deliveries: AgentPerformance["deliveries"] },
 >(): SortableColumn<Row>[] {
-  const share = ({ deliveries: { started, steered, queued } }: Row) => {
-    const total = started + steered + queued;
-    return total > 0 ? steered / total : null;
+  const share = ({ deliveries }: Row) => {
+    const total = countDeliveries(deliveries);
+    return total > 0 ? deliveries.steered / total : null;
   };
   return [
     {
@@ -326,6 +331,13 @@ function deliveryColumns<
         const value = share(row);
         return value === null ? "—" : `${Math.round(value * 100)}%`;
       },
+    },
+    {
+      key: "interrupted",
+      label: "Interrupted",
+      title: INTERRUPTED_TITLE,
+      numeric: true,
+      sortValue: (row) => row.deliveries.interrupted,
     },
     {
       key: "queued",

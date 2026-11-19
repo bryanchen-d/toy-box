@@ -1,4 +1,5 @@
 import {
+  addDeliveries,
   aggregate,
   EMPTY_DELIVERIES,
   nextBucketStart,
@@ -65,20 +66,13 @@ export async function readTeamPerformanceForAgent(sessionId: string, bucket: Per
   const total = (values: Record<string, number>) =>
     Object.values(values).reduce((sum, value) => sum + value, 0);
   const deliveries = (values: Record<string, Deliveries>) =>
-    Object.values(values).reduce(
-      (sum, { started, steered, queued }) => ({
-        started: sum.started + started,
-        steered: sum.steered + steered,
-        queued: sum.queued + queued,
-      }),
-      { ...EMPTY_DELIVERIES },
-    );
+    Object.values(values).reduce(addDeliveries, EMPTY_DELIVERIES);
   return {
     bucket,
     from: performance.from,
     to: performance.to,
     deliveries:
-      "started: the wake began a turn while the agent was idle. steered: it joined the agent's running turn at its next step, without stopping current work. queued: it waited for that turn to end.",
+      "started: the wake began a turn while the agent was idle. steered: it joined the agent's running turn at its next step, without stopping current work. interrupted: the lead's urgent message stopped that turn, current step included, and started a new turn with it. queued: it waited for that turn to end.",
     agents: performance.agents.map(({ agentId, ...stats }) => ({
       agentId,
       name: name(agentId),

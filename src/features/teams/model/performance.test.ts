@@ -118,16 +118,19 @@ describe("team performance", () => {
       wake(1, "started", "lead"),
       wake(2, "steered", "lead"),
       wake(3, "steered", USER_AUTHOR),
-      wake(4, "queued"),
+      wake(4, "interrupted", "lead"),
+      wake(5, "queued"),
     ]);
     expect(performance.series[0]!.deliveries.builder).toEqual({
       started: 1,
       steered: 2,
+      interrupted: 1,
       queued: 1,
     });
     expect(performance.agents.find(({ agentId }) => agentId === "builder")?.deliveries).toEqual({
       started: 1,
       steered: 2,
+      interrupted: 1,
       queued: 1,
     });
     expect(
@@ -138,12 +141,17 @@ describe("team performance", () => {
         deliveries,
       })),
     ).toEqual([
-      { from: "lead", to: "builder", count: 0, deliveries: { started: 1, steered: 1, queued: 0 } },
+      {
+        from: "lead",
+        to: "builder",
+        count: 0,
+        deliveries: { started: 1, steered: 1, interrupted: 1, queued: 0 },
+      },
       {
         from: USER_AUTHOR,
         to: "builder",
         count: 0,
-        deliveries: { started: 0, steered: 1, queued: 0 },
+        deliveries: { started: 0, steered: 1, interrupted: 0, queued: 0 },
       },
     ]);
   });

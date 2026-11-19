@@ -34,6 +34,7 @@ import { createInitialSessionState } from "@sessions/model/reducer";
 import * as sessionRecords from "@sessions/server/state/sessions";
 import * as realActivity from "@sessions/server/activity";
 import { sumActivityHours, type ActivityHour } from "@sessions/model/activity";
+import { hasBlockingSessionQuestion } from "@sessions/model/questions";
 
 const realSnapshotCacheExports = { ...realSnapshotCache };
 const realWorkspaceStateExports = { ...realWorkspaceState };
@@ -923,6 +924,130 @@ describe("SessionStream abort", () => {
     releaseAbort();
     await stopping;
     expect(SessionStream.isRunning("session-abort-steering-race")).toBe(false);
+  });
+});
+
+describe("SessionStream interruption", () => {
+  const urgent: SessionMessage = {
+    clientId: "urgent",
+    role: "system",
+    content: { type: "team_message", senderName: "Lead", interrupt: true },
+  };
+
+  test.each(["before", "after"] as const)(
+    "an interrupting message starts in the same stream once the stopped turn ends %s its abort settles",
+    async (order) => {
+      const sessionId = `session-interrupt-${order}`;
+      cleanUpStreamAfterTest(sessionId);
+      const aborted = Promise.withResolvers<void>();
+      const abort = mock(() => aborted.promise);
+      const send = mock(async (_message: SessionMessage) => {});
+      const { session, emit } = makeControllableSession({ abort, send });
+      const stream = SessionStream.getOrCreate(sessionId, session);
+      await stream.deliver(userMessage("Delete the mirror", "work"));
+      // Steering the turn never takes, because the abort drops it.
+      expect(await stream.deliver({ ...userMessage("Hurry", "steer"), immediate: true })).toBe(
+        "steered",
+      );
+
+      const delivery = stream.deliver({ ...urgent, interrupt: true });
+      expect(abort).toHaveBeenCalledTimes(1);
+      // Copilot reports its abort as an error before the stopped turn ends idle.
+      emit({ type: "end", reason: "error" });
+      if (order === "before") emit({ type: "end", reason: "idle" });
+      else aborted.resolve();
+      await settle();
+      expect(send).toHaveBeenCalledTimes(2);
+
+      if (order === "before") aborted.resolve();
+      else emit({ type: "end", reason: "idle" });
+      expect(await delivery).toBe("interrupted");
+      await settle();
+      expect(send.mock.calls.map(([message]) => message.clientId)).toEqual([
+        "work",
+        "steer",
+        "urgent",
+      ]);
+      expect(send.mock.lastCall?.[0]).toEqual(urgent);
+      expect(SessionStream.isRunning(sessionId)).toBe(true);
+
+      emit({ type: "system_message", content: urgent.content, clientId: "urgent" } as SessionEvent);
+      expect(stream.getSessionState().queuedMessages).toEqual([]);
+      emit({ type: "end", reason: "idle" });
+      expect(SessionStream.isRunning(sessionId)).toBe(false);
+    },
+  );
+
+  test("steering waits behind a pending interruption instead of reaching the stopped turn", async () => {
+    const sessionId = "session-interrupt-steering";
+    cleanUpStreamAfterTest(sessionId);
+    const send = mock(async (_message: SessionMessage) => {});
+    const { session, emit } = makeControllableSession({ send });
+    const stream = SessionStream.getOrCreate(sessionId, session);
+    await stream.deliver(userMessage("Working", "work"));
+
+    expect(await stream.deliver({ ...urgent, interrupt: true })).toBe("interrupted");
+    expect(await stream.deliver({ ...userMessage("Also", "steer"), immediate: true })).toBe(
+      "queued",
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+
+    emit({ type: "end", reason: "idle" });
+    await settle();
+    expect(send.mock.calls.map(([message]) => message.clientId)).toEqual(["work", "urgent"]);
+    expect(stream.getSessionState().queuedMessages.map(({ clientId }) => clientId)).toEqual([
+      "urgent",
+      "steer",
+    ]);
+  });
+
+  test("an interruption leaves the stopped turn's question unanswered so the next turn can finish", async () => {
+    const sessionId = "session-interrupt-question";
+    cleanUpStreamAfterTest(sessionId);
+    onTestFinished(() => deleteSessionState(sessionId));
+    const { session, emit } = makeControllableSession();
+    const stream = SessionStream.getOrCreate(sessionId, session);
+    await stream.deliver(userMessage("Ask before deleting", "work"));
+    emit({ type: "tool_start", toolCallId: "ask", toolName: "ask_user", arguments: {} });
+    emit({
+      type: "question_requested",
+      toolCallId: "ask",
+      requestId: "input",
+      question: { question: "Delete the mirror?", allowFreeform: true },
+    });
+
+    expect(await stream.deliver({ ...urgent, interrupt: true })).toBe("interrupted");
+    emit({ type: "end", reason: "idle" });
+    await settle();
+    expect(hasBlockingSessionQuestion(stream.getSessionState())).toBe(false);
+
+    emit({ type: "system_message", content: urgent.content, clientId: "urgent" } as SessionEvent);
+    emit({ type: "end", reason: "idle" });
+    expect(SessionStream.isRunning(sessionId)).toBe(false);
+  });
+
+  test("an interruption the provider can't abort waits for the running turn", async () => {
+    const sessionId = "session-interrupt-abort-failure";
+    cleanUpStreamAfterTest(sessionId);
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    onTestFinished(() => errors.mockRestore());
+    const send = mock(async (_message: SessionMessage) => {});
+    const { session, emit } = makeControllableSession({
+      send,
+      abort: async () => {
+        throw new Error("abort exploded");
+      },
+    });
+    const stream = SessionStream.getOrCreate(sessionId, session);
+    await stream.deliver(userMessage("Working", "work"));
+
+    expect(await stream.deliver({ ...userMessage("Stop", "stop"), interrupt: true })).toBe(
+      "queued",
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    emit({ type: "end", reason: "idle" });
+    await settle();
+    expect(send.mock.lastCall?.[0]).toEqual(userMessage("Stop", "stop"));
   });
 });
 
