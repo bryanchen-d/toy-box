@@ -25,12 +25,15 @@ export function teamTaskItems({
   owners,
   artifacts,
   onArtifactOpen,
+  onTaskSelect,
   closeOnArtifactOpen = false,
 }: {
   tasks: readonly TeamTask[];
   owners: readonly TeamAgent[];
   artifacts: readonly TeamArtifact[];
   onArtifactOpen: (artifact: TeamArtifact) => void;
+  /** Leads from a task to where it was discussed. */
+  onTaskSelect?: (task: TeamTask) => void;
   closeOnArtifactOpen?: boolean;
 }): ChecklistItem[] {
   return tasks.map((task) => {
@@ -56,6 +59,12 @@ export function teamTaskItems({
             {task.ownerId && <TaskOwner owner={teamAgentIdentity(owners, task.ownerId)} />}
           </span>
         ) : undefined,
+      ...(onTaskSelect && {
+        select: {
+          label: `Show the latest message about ${task.id}: ${task.title}`,
+          onSelect: () => onTaskSelect(task),
+        },
+      }),
       children:
         task.children &&
         teamTaskItems({
@@ -63,6 +72,7 @@ export function teamTaskItems({
           owners,
           artifacts,
           onArtifactOpen,
+          onTaskSelect,
           closeOnArtifactOpen,
         }),
     };

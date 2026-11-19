@@ -19,7 +19,7 @@ import * as advice from "./advice";
 import { readConnectorUse } from "./connectors";
 import { getTeamPerformance as readTeamPerformance } from "./performance";
 import { connectorIdInputSchema } from "@connectors/model";
-import { teamMessageSearchInputSchema } from "@teams/model/search";
+import { teamMessageSearchInputSchema, teamTaskMessageInputSchema } from "@teams/model/search";
 import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
 import { resolveTeamAdviceInputSchema } from "@teams/model/advice";
 import { z } from "zod";
@@ -53,6 +53,10 @@ export const getTeamThreadSequence = createServerFn({ method: "GET" })
 export const searchTeamMessages = createServerFn({ method: "POST" })
   .validator(zodValidator(teamMessageSearchInputSchema))
   .handler(({ data }) => teams.searchTeamMessages(data.teamId, data.query, data.threadSequence));
+
+export const findTeamTaskMessage = createServerFn({ method: "GET" })
+  .validator(zodValidator(teamTaskMessageInputSchema))
+  .handler(({ data }) => teams.findTeamTaskMessage(data.teamId, data.taskId));
 
 export const createTeam = createServerFn({ method: "POST" })
   .validator(zodValidator(createTeamInputSchema))

@@ -202,3 +202,14 @@ export function teamTasksComplete(tasks: readonly TeamTask[]): boolean {
     tasks.every(({ status, children = [] }) => status === "done" && allDone(children));
   return tasks.length > 0 && allDone(tasks);
 }
+
+/** Whether text cites a task by its whole ID, as agents name tasks such as t12 in messages. */
+export function mentionsTeamTask(text: string, taskId: string): boolean {
+  for (let at = text.indexOf(taskId); at >= 0; at = text.indexOf(taskId, at + 1)) {
+    if (!isIdCharacter(text[at - 1]) && !isIdCharacter(text[at + taskId.length])) return true;
+  }
+  return false;
+}
+
+const isIdCharacter = (character: string | undefined) =>
+  character !== undefined && /[\w-]/.test(character);

@@ -7,6 +7,7 @@ import type {
   TeamMember,
 } from "@teams/model";
 import type { TeamAgentPresence } from "@teams/model/presence";
+import type { TeamMessageLocation } from "@teams/model/search";
 import type { WorkspaceFile } from "@files/model";
 import type { TeamPanel } from "./panels";
 
@@ -24,6 +25,8 @@ type TeamPane = {
   presence: Record<string, TeamAgentPresence>;
   /** Shows a thread by its top-level message's sequence. */
   openThread: (sequence: number) => void;
+  /** Shows a message highlighted in its thread, loading history through the thread first. */
+  openMessage: (location: TeamMessageLocation) => void;
   /** Answers a message in its thread, addressing the draft to the agent who wrote it. */
   replyInThread: (message: TeamConversationMessage) => void;
   /** A message still being sent has no committed sequence to reply to yet. */

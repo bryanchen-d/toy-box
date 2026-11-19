@@ -1,5 +1,6 @@
 import {
   teamIdentitySchema,
+  teamTaskSchema,
   teamThreadSequenceSchema,
   type TeamConversationMessage,
 } from "./index";
@@ -10,7 +11,15 @@ export const teamMessageSearchInputSchema = teamIdentitySchema.extend({
   threadSequence: teamThreadSequenceSchema.optional(),
 });
 
+/** Where a message is: its own sequence, and the sequence of the thread it starts or joins. */
+export type TeamMessageLocation = Pick<TeamConversationMessage, "sequence"> & {
+  threadSequence: number;
+};
+
 export type TeamMessageMatch = MessageSearchMatch &
-  Pick<TeamConversationMessage, "sequence" | "sender"> & {
-    threadSequence: number;
-  };
+  TeamMessageLocation &
+  Pick<TeamConversationMessage, "sender">;
+
+export const teamTaskMessageInputSchema = teamIdentitySchema.extend({
+  taskId: teamTaskSchema.shape.id,
+});

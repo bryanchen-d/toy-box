@@ -8,6 +8,7 @@ import {
   applyTeamTaskEdits,
   applyTeamArtifactArrangement,
   teamTasksComplete,
+  mentionsTeamTask,
   teamSystemMessageContentSchema,
   TEAM_LEAD_PROFILE,
   unassignTeamTasks,
@@ -64,7 +65,7 @@ import {
 import { z } from "zod";
 import { attachmentSchema } from "@/shared/attachments/model";
 import { createMessageSearchMatcher, MESSAGE_SEARCH_LIMIT } from "@/shared/messages/search";
-import type { TeamMessageMatch } from "@teams/model/search";
+import type { TeamMessageLocation, TeamMessageMatch } from "@teams/model/search";
 import type { TeamWake } from "@teams/model/performance";
 import { ADMIN_TEAM_ID } from "@teams/model/admin";
 
@@ -516,42 +517,22 @@ export class TeamDatabase {
       threadSequence === undefined ? null : await this.getThreadSequence(teamId, threadSequence);
     const findMatch = createMessageSearchMatcher(query);
     const matches: TeamMessageMatch[] = [];
-    let before = Number.MAX_SAFE_INTEGER;
-    for (;;) {
-      const rows = await this.db<
-        Pick<
-          TeamMessageRow,
-          | "sequence"
-          | "sender_type"
-          | "sender_agent_id"
-          | "sender_connector_id"
-          | "sender_team_id"
-          | "content"
-          | "thread_sequence"
-        >[]
-      >`
-        SELECT sequence, sender_type, sender_agent_id, sender_connector_id, sender_team_id, content,
-          thread_sequence
-        FROM team_messages
-        WHERE team_id = ${teamId} AND sequence < ${before} AND sender_type <> 'system'
-          AND (${thread} IS NULL OR sequence = ${thread} OR thread_sequence = ${thread})
-        ORDER BY sequence DESC
-        LIMIT 100
-      `;
-      for (const row of rows) {
-        const match = findMatch(row.content);
-        if (!match) continue;
-        matches.push({
-          sequence: row.sequence,
-          threadSequence: row.thread_sequence ?? row.sequence,
-          sender: authorFromRow(row),
-          ...match,
-        });
-        if (matches.length === MESSAGE_SEARCH_LIMIT) return matches;
-      }
-      if (rows.length < 100) return matches;
-      before = rows.at(-1)!.sequence;
+    for await (const row of conversationNewestFirst(this.db, teamId, { thread })) {
+      const match = findMatch(row.content);
+      if (!match) continue;
+      matches.push({ ...messageLocation(row), sender: authorFromRow(row), ...match });
+      if (matches.length === MESSAGE_SEARCH_LIMIT) break;
     }
+    return matches;
+  }
+
+  /** The newest conversation message that cites a task by its ID, and where it is. */
+  async findTaskMessage(teamId: string, taskId: string): Promise<TeamMessageLocation | null> {
+    await requireTeam(this.db, teamId);
+    for await (const row of conversationNewestFirst(this.db, teamId, { containing: taskId })) {
+      if (mentionsTeamTask(row.content, taskId)) return messageLocation(row);
+    }
+    return null;
   }
 
   /** The thread a message starts or belongs to: its top-level message, then every reply. */
@@ -1301,6 +1282,50 @@ async function resolveThreadSequence(
     throw new Error("Reply to a user or agent message in this team.");
   }
   return row.thread_sequence ?? sequence;
+}
+
+type ConversationRow = Pick<
+  TeamMessageRow,
+  | "sequence"
+  | "sender_type"
+  | "sender_agent_id"
+  | "sender_connector_id"
+  | "sender_team_id"
+  | "content"
+  | "thread_sequence"
+>;
+
+/**
+ * A team's user, agent, and connector messages, newest first in bounded pages, without hydrating
+ * attachments: optionally only one thread's, or only those whose text contains a literal string.
+ */
+async function* conversationNewestFirst(
+  db: Bun.SQL,
+  teamId: string,
+  { thread = null, containing = null }: { thread?: number | null; containing?: string | null },
+): AsyncGenerator<ConversationRow> {
+  let before = Number.MAX_SAFE_INTEGER;
+  for (;;) {
+    const rows = await db<ConversationRow[]>`
+      SELECT sequence, sender_type, sender_agent_id, sender_connector_id, sender_team_id, content,
+        thread_sequence
+      FROM team_messages
+      WHERE team_id = ${teamId} AND sequence < ${before} AND sender_type <> 'system'
+        AND (${thread} IS NULL OR sequence = ${thread} OR thread_sequence = ${thread})
+        AND (${containing} IS NULL OR instr(content, ${containing}) > 0)
+      ORDER BY sequence DESC
+      LIMIT 100
+    `;
+    yield* rows;
+    if (rows.length < 100) return;
+    before = rows.at(-1)!.sequence;
+  }
+}
+
+function messageLocation(
+  row: Pick<TeamMessageRow, "sequence" | "thread_sequence">,
+): TeamMessageLocation {
+  return { sequence: row.sequence, threadSequence: row.thread_sequence ?? row.sequence };
 }
 
 async function changeAgentStatus(

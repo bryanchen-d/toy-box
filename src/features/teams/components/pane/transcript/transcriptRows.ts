@@ -14,10 +14,11 @@ import {
 const RUN_WINDOW_MS = 10 * 60 * 1000;
 
 /**
- * Which messages the transcript shows: all of them, or only the user's own messages and the
- * agent messages for them, which leaves out coordination between agents and system changes.
+ * Which messages the transcript shows: all of them; only the user's own messages and the agent
+ * messages for them, which leaves out coordination between agents and system changes; or only the
+ * lead's questions that still need the user's reply.
  */
-export type TranscriptView = "all" | "yours";
+export type TranscriptView = "all" | "yours" | "requests";
 
 type TranscriptRowContent =
   | { type: "user"; message: TeamConversationMessage; thread?: TranscriptThread }
@@ -177,6 +178,19 @@ export function pendingRequestRow(
   return index < 0 ? undefined : { sequence, index };
 }
 
+/**
+ * Whether history before the loaded messages may hold messages the view shows. Every pending
+ * request follows the user's latest message, so the requests view needs nothing before one.
+ */
+export function viewNeedsOlderHistory(
+  messages: readonly TeamMessage[],
+  view: TranscriptView,
+  requestSequence: number | null,
+): boolean {
+  if (view !== "requests") return true;
+  return requestSequence !== null && !messages.some(({ sender }) => sender.type === "user");
+}
+
 /** "Today", "Yesterday", or the full day, adding the year only when it isn't the current one. */
 export function transcriptDayLabel(date: Date, now: Date): string {
   const days = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
@@ -307,17 +321,22 @@ function latestUserSequence(messages: readonly TeamMessage[]): number {
   );
 }
 
-function requestState(
-  message: TeamConversationMessage,
-  { latestUserSequence }: RowContext,
-): TeamRequestState {
-  return message.sequence > latestUserSequence ? "pending" : "acknowledged";
+function requestState(message: TeamConversationMessage, context: RowContext): TeamRequestState {
+  return isPending(message, context) ? "pending" : "acknowledged";
 }
 
-/** Your messages are the user's own and those for them; system changes stay in the full view. */
+function isPending({ sequence }: TeamConversationMessage, { latestUserSequence }: RowContext) {
+  return sequence > latestUserSequence;
+}
+
+/**
+ * Your messages are the user's own and those for them, and requests are the lead's questions that
+ * still need a reply; system changes stay in the full view.
+ */
 function isInView(message: TeamMessage, view: TranscriptView, context: RowContext): boolean {
   if (view === "all") return true;
   if (isTeamSystemMessage(message)) return false;
+  if (view === "requests") return message.request === true && isPending(message, context);
   return message.sender.type === "user" || isForUser(message, addresseeOf(message, context));
 }
 

@@ -341,6 +341,10 @@ export async function searchTeamMessages(teamId: string, query: string, threadSe
   return new TeamDatabase(await getStateDatabase()).searchMessages(teamId, query, threadSequence);
 }
 
+export async function findTeamTaskMessage(teamId: string, taskId: string) {
+  return new TeamDatabase(await getStateDatabase()).findTaskMessage(teamId, taskId);
+}
+
 /** One thread in full, read without changing anyone's read position. */
 export async function readTeamThread(teamId: string, threadSequence: number) {
   const database = new TeamDatabase(await getStateDatabase());

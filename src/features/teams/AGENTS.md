@@ -90,7 +90,9 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   stays with the artifact. Its optional `diff: DiffStats` uses `shared/diffStats.ts`, like Session
   diffs, and measures directly attributed work. `teamTasksDiff` derives totals from direct
   and descendant diffs, never storing aggregates. Unreported work differs from a measured zero;
-  totals summarize reported work, not necessarily the net repository diff.
+  totals summarize reported work, not necessarily the net repository diff. Messages link to a task
+  only by citing its whole ID in their text, as agents are asked to; `mentionsTeamTask` defines
+  that citation, so the task list leads to the newest citing message without a stored link.
 - `TeamAgent` is the shared public identity of anyone on the team, the lead or a member: ID,
   name, role, avatar, and status. A Team's agents, lead first, form its roster, which the overview
   presents as Team members.
@@ -682,13 +684,17 @@ presents one deleted identity everywhere.
   receives its kind's typed contents. Its shared row renders the resulting content and tooltip;
   grouping and the durable message model stay separate.
   A pane-local view, chosen beside the transcript's message search, shows
-  all messages or only the user's own and the agent messages that never collapse. Rows form from
+  all messages, only the user's own and the agent messages that never collapse, or only the lead's
+  questions that still need a reply (Needs your reply), where a question asked in a thread shows as
+  its thread's row. Rows form from
   the shown messages, so runs and dividers follow what the reader sees; changing the view lands
   the transcript afresh, and read state stays Team-wide.
   `useTranscriptViewport` owns the virtualizer and where the reader looks: landing on the first
   unread row or the end, following the reader's own post, revealing the pending request, and
   paging history. Paging continues while the first row, or an empty view, is in view, so a sparse
-  view fetches pages it may show nothing of instead of asking the server to filter.
+  view fetches pages it may show nothing of instead of asking the server to filter. It stops once
+  older history can hold nothing the view shows: every pending question follows the user's latest
+  message, so Needs your reply pages only until one is loaded, or not at all with nothing pending.
   TanStack Virtual's mutable instance stays inside that hook, which the compiler
   skips, and the transcript receives only values current for its render.
   The "New" position comes from the current read position on arrival and holds
@@ -711,7 +717,11 @@ presents one deleted identity everywhere.
   under a View all link that opens it: the roster's avatars and how many are working, task progress
   with up to three tasks in progress, the first three Shared artifacts, and the next routine to run.
   Its header holds the team menu.
-- The tasks panel holds the full task checklist. The routines panel lists routines by title with
+- The tasks panel holds the full task checklist. Its header's pane-local view shows open tasks
+  (the default), tasks in progress, or all of them. A filtered list keeps each shown task's parents
+  as context, opened, and their subtask counts still count every subtask. Choosing a task opens the
+  newest user, agent, or connector message citing its ID highlighted in its thread, as a search
+  result does, or says that none does yet. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
   members panel adds an agent through the composer's mention and removes members after
   confirmation, alongside its roster table, which lists each agent's open sub sessions with their

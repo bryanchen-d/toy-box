@@ -36,6 +36,7 @@ function render(content: ReactNode): string {
         agent: (id) => teamAgentIdentity([lead], id),
         presence: {},
         openThread: noop,
+        openMessage: noop,
         replyInThread: noop,
         isSending: () => false,
         mention: noop,

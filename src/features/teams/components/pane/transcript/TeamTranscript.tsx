@@ -14,6 +14,7 @@ import { ThreadActivity } from "./ThreadReplies";
 import {
   transcriptDayLabel,
   transcriptRows,
+  viewNeedsOlderHistory,
   type TranscriptRow,
   type TranscriptView,
 } from "./transcriptRows";
@@ -39,6 +40,7 @@ export function TeamTranscript({
 }) {
   const { lead, members } = useTeamPane();
   const rows = transcriptRows(messages, { lead, members, unreadAfter, view });
+  const needsOlderHistory = viewNeedsOlderHistory(messages, view, requestSequence);
   const {
     scrollRef,
     containerRef,
@@ -54,6 +56,7 @@ export function TeamTranscript({
     unreadAfter,
     requestSequence,
     oldestSequence: messages[0]?.sequence,
+    needsOlderHistory,
     loadPrevious: onLoadPrevious,
   });
   useImperativeHandle(handleRef, () => ({ followNextPost, showRequest }));
@@ -68,7 +71,16 @@ export function TeamTranscript({
       >
         {rows.length === 0 ? (
           <div className="@container min-h-full px-4 py-5">
-            <TeamPlaceholder />
+            {view === "requests" ? (
+              // A question may still wait in older pages until they load.
+              !needsOlderHistory && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  Nothing needs your reply.
+                </p>
+              )
+            ) : (
+              <TeamPlaceholder />
+            )}
             <WorkingActivity />
           </div>
         ) : (

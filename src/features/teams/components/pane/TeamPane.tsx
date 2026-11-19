@@ -3,6 +3,7 @@ import { CatchBoundary, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { teamQueries } from "@teams/queries";
 import { parseTeamReferenceHash } from "@teams/model/references";
+import type { TeamMessageLocation } from "@teams/model/search";
 import { AlertCircle } from "lucide-react";
 import {
   connectorAuthor,
@@ -39,7 +40,7 @@ import { TeamPaneProvider } from "./TeamPaneContext";
 import { TeamPanelBar } from "./TeamPanelBar";
 import { TeamRoutines } from "./TeamRoutines";
 import { TeamSecurity } from "./TeamSecurity";
-import { TeamTasks } from "./TeamTasks";
+import { TeamTasks, type TaskView } from "./TeamTasks";
 import { TeamThread } from "./TeamThread";
 import { TeamMessageSearch } from "./TeamMessageSearch";
 import { TeamOverview } from "./overview/TeamOverview";
@@ -102,6 +103,7 @@ function TeamContent({
   const { revealFile, focusedPaneAtom, teamAsideSizes, setTeamAsideSize, teamPanel, setTeamPanel } =
     useWorkspaceSurface();
   const [view, setView] = useState<TranscriptView>("all");
+  const [taskView, setTaskView] = useState<TaskView>("open");
   // A normal pane opens the surface's remembered panel; a compact one keeps its own, so a
   // narrow pane still opens on chat.
   const remembersPanel = variant === "normal" && setTeamPanel !== undefined;
@@ -194,6 +196,10 @@ function TeamContent({
     else setOpened({ type: "thread", sequence });
   }
 
+  function openMessage({ sequence, threadSequence }: TeamMessageLocation) {
+    setOpened({ type: "thread", sequence: threadSequence, selectedSequence: sequence });
+  }
+
   function openArtifact(file: WorkspaceFile) {
     if (revealFile) revealFile(file);
     else focusedPaneAtom.set(createEditorPaneId(file));
@@ -233,6 +239,7 @@ function TeamContent({
         agent: (id) => teamAgentIdentity(authors, id),
         presence: state?.presence ?? {},
         openThread,
+        openMessage,
         replyInThread,
         isSending: (id) => state?.optimisticMessageIds?.includes(id) ?? false,
         mention: () => composerRef.current?.mention(),
@@ -280,13 +287,7 @@ function TeamContent({
                         teamId={teamId}
                         isVisible={isVisible}
                         hotkeyTarget={chatRef}
-                        onSelect={(match) =>
-                          setOpened({
-                            type: "thread",
-                            sequence: match.threadSequence,
-                            selectedSequence: match.sequence,
-                          })
-                        }
+                        onSelect={openMessage}
                         actions={<TranscriptViewMenu view={view} onViewChange={setView} />}
                         // Chat meets the panel bar while no aside is open, so the row keeps its end
                         // clear of the pane's floating actions beyond the bar's 2.5rem.
@@ -395,7 +396,12 @@ function TeamContent({
                     />
                   )}
                   {aside.type === "tasks" && (
-                    <TeamTasks team={state.team} artifacts={state.artifacts} />
+                    <TeamTasks
+                      team={state.team}
+                      artifacts={state.artifacts}
+                      view={taskView}
+                      onViewChange={setTaskView}
+                    />
                   )}
                   {aside.type === "artifacts" && (
                     <TeamArtifacts teamId={teamId} artifacts={state.artifacts} />

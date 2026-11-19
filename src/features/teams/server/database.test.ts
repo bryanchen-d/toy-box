@@ -124,6 +124,20 @@ describe("team message search", () => {
     const system = change.events.find((event) => event.type === "message")!.message;
     await expect(teams.searchMessages(team.id, "needle", system.sequence)).rejects.toThrow();
   });
+
+  test("a task leads to the newest conversation message citing its whole ID", async () => {
+    const { teams, team, post } = await setup();
+    const root = await post("Starting t1 now", { user: true });
+    const reply = await post("t1 is ready for review", { threadSequence: root.sequence });
+    await post("t12 is next");
+    await teams.updateTeam(team.id, { purpose: "Ship t1" });
+    expect(await teams.findTaskMessage(team.id, "t1")).toEqual({
+      sequence: reply.sequence,
+      threadSequence: root.sequence,
+    });
+    expect(await teams.findTaskMessage(team.id, "t9")).toBeNull();
+    await expect(teams.findTaskMessage("missing", "t1")).rejects.toThrow("Team not found");
+  });
 });
 
 describe("team attention", () => {

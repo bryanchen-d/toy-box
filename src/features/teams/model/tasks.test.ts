@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   applyTeamTaskEdits,
+  mentionsTeamTask,
   teamTasksDiff,
   teamTasksComplete,
   teamTasksForAgent,
@@ -188,4 +189,15 @@ test("a task list is complete only when it has tasks and every subtask is done",
   expect(teamTasksComplete([{ ...task("t1"), status: "in_progress" }])).toBe(false);
   expect(teamTasksComplete([release("blocked")])).toBe(false);
   expect(teamTasksComplete([release("done"), { ...task("t3"), status: "done" }])).toBe(true);
+});
+
+test("a message cites a task only by its whole, exactly cased ID", () => {
+  for (const text of ["t1", "Finished t1.", "**t1**: done", "(t1, t2)", "`t1`", "t1's review"]) {
+    expect(mentionsTeamTask(text, "t1")).toBe(true);
+  }
+  for (const text of ["t12", "t1a", "at1", "t1-b", "T1", "t2"]) {
+    expect(mentionsTeamTask(text, "t1")).toBe(false);
+  }
+  expect(mentionsTeamTask("Moved t12 after t1", "t1")).toBe(true);
+  expect(mentionsTeamTask("Fix fix-auth first", "fix-auth")).toBe(true);
 });

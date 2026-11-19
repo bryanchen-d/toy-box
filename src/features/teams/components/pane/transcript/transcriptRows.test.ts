@@ -6,6 +6,7 @@ import {
   threadRows,
   transcriptDayLabel,
   transcriptRows,
+  viewNeedsOlderHistory,
   type AgentRunEntry,
   type TranscriptRow,
 } from "./transcriptRows";
@@ -418,6 +419,50 @@ describe("threads", () => {
       { type: "agent", agentId: "lead" },
       { type: "agent", agentId: "engine" },
     ]);
+  });
+});
+
+describe("needs your reply view", () => {
+  const requests = (messages: TeamMessage[]) =>
+    transcriptRows(messages, { lead, members, view: "requests" });
+  const question = (sequence: number, threadSequence?: number): TeamConversationMessage => ({
+    ...agentPost(sequence, "lead", undefined, `Question ${sequence}?`),
+    request: true,
+    ...(threadSequence === undefined ? {} : { threadSequence }),
+  });
+
+  test("shows every question since the user's latest message and nothing else", () => {
+    const rows = requests([
+      question(1),
+      userPost(2),
+      question(3),
+      agentPost(4, "lead", undefined, "The lift is ready."),
+      agentPost(5, "engine"),
+      event(6, { type: "member_joined", member }),
+      question(7),
+    ]);
+    expect(rowIds(rows)).toEqual([["3", "7"]]);
+  });
+
+  test("questions asked in a thread show as that thread's row", () => {
+    const rows = requests([userPost(1), agentPost(2, "engine"), question(3, 1), question(4, 1)]);
+    expect(rowIds(rows)).toEqual([["3", "4"]]);
+    expect(rows).toMatchObject([
+      { type: "thread", root: { id: "1" }, thread: { sequence: 1, request: "pending" } },
+    ]);
+  });
+
+  test("a reply anywhere acknowledges every question, leaving none", () => {
+    const reply = { ...(userPost(3) as TeamConversationMessage), threadSequence: 1 };
+    expect(requests([question(1), question(2, 1), reply])).toEqual([]);
+  });
+
+  test("needs older history only while a question may precede what's loaded", () => {
+    const loaded = [agentPost(5, "engine"), question(6)];
+    expect(viewNeedsOlderHistory(loaded, "requests", 6)).toBe(true);
+    expect(viewNeedsOlderHistory([userPost(4), ...loaded], "requests", 6)).toBe(false);
+    expect(viewNeedsOlderHistory([agentPost(5, "engine")], "requests", null)).toBe(false);
+    expect(viewNeedsOlderHistory([agentPost(5, "engine")], "yours", null)).toBe(true);
   });
 });
 

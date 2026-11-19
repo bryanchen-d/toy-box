@@ -16,7 +16,8 @@ import { pendingRequestRow, type TranscriptRow } from "./transcriptRows";
  * Afterward it follows the end while the reader is there and after the reader's own post, reveals
  * the pending request on demand, loading older history first when needed, and loads older history
  * as the first row comes into view. A view that shows only some messages keeps loading until the
- * first row leaves view or history ends, even when that means fetching pages it shows nothing of.
+ * first row leaves view, history ends, or older history can hold nothing the view shows, even when
+ * that means fetching pages it shows nothing of.
  *
  * TanStack Virtual's instance is mutable, so the compiler skips this hook and it returns only values
  * that are current for the render.
@@ -26,6 +27,7 @@ export function useTranscriptViewport({
   unreadAfter,
   requestSequence,
   oldestSequence,
+  needsOlderHistory,
   loadPrevious,
 }: {
   rows: readonly TranscriptRow[];
@@ -33,6 +35,8 @@ export function useTranscriptViewport({
   unreadAfter: number | null | undefined;
   requestSequence: number | null;
   oldestSequence: number | undefined;
+  /** Whether older history may hold rows the view shows. */
+  needsOlderHistory: boolean;
   loadPrevious: (throughSequence?: number) => Promise<void>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -110,10 +114,16 @@ export function useTranscriptViewport({
   }, [request, virtualizer]);
 
   useEffect(() => {
-    if (isReady && showsFirstRow && oldestSequence !== undefined && oldestSequence > 1) {
+    if (
+      isReady &&
+      showsFirstRow &&
+      needsOlderHistory &&
+      oldestSequence !== undefined &&
+      oldestSequence > 1
+    ) {
       void loadPrevious();
     }
-  }, [showsFirstRow, isReady, oldestSequence, loadPrevious]);
+  }, [showsFirstRow, isReady, needsOlderHistory, oldestSequence, loadPrevious]);
 
   return {
     scrollRef,
