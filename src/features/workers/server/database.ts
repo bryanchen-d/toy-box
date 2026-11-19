@@ -1,9 +1,10 @@
 // Persisted ownership and lifetime policy for worker sessions.
 
 import { sessionFile } from "@files/model";
-import { getStateDatabase } from "@/server/database";
+import { getStateDatabase, inStateTransaction } from "@/server/database";
 import { smallJsonSchema } from "@/shared/smallJson";
 import type { Worker, WorkerOwner } from "../model";
+import type { SubSessionRecord } from "../model/subSessions";
 
 /** Construct a reserved identity without starting a Session or publishing active work. */
 export function createWorker<
@@ -78,7 +79,13 @@ export class WorkerDatabase {
     const rows = await this.db<{ session_id: string }[]>`
       DELETE FROM workers WHERE session_id = ${sessionId} RETURNING session_id
     `;
-    return rows.length > 0;
+    if (rows.length === 0) return false;
+    // However a sub session ends, its Worker goes, so this is where its history closes.
+    await this.db`
+      UPDATE sub_session_history SET closed_at = ${Date.now()}
+      WHERE session_id = ${sessionId} AND closed_at IS NULL
+    `;
+    return true;
   }
 
   /** Moves a team Worker to another team; its Session and history stay with it. */
@@ -150,6 +157,56 @@ export async function unregisterWorkerSession(sessionId: string): Promise<boolea
   const db = await getStateDatabase({ createIfMissing: false });
   return db ? new WorkerDatabase(db).delete(sessionId) : false;
 }
+
+/** Persists a sub session's Worker together with the history that outlives it. */
+export async function admitSubSession(
+  worker: Extract<Worker, { type: "session" }>,
+  placement: { teamId?: string; node?: string },
+): Promise<void> {
+  await inStateTransaction(await getStateDatabase(), async (db) => {
+    await new WorkerDatabase(db).create(worker);
+    await db`
+      INSERT INTO sub_session_history ${db({
+        session_id: worker.sessionId,
+        owner_session_id: worker.parentSessionId,
+        team_id: placement.teamId ?? null,
+        node: placement.node ?? null,
+        name: worker.name ?? null,
+        created_at: Date.parse(worker.createdAt),
+      })}
+    `;
+  });
+}
+
+/** The sub sessions created or closed since `since`, newest first. */
+export async function readSubSessionHistory(since: Date): Promise<SubSessionRecord[]> {
+  const db = await getStateDatabase({ createIfMissing: false });
+  if (!db) return [];
+  const rows = await db<SubSessionHistoryRow[]>`
+    SELECT * FROM sub_session_history
+    WHERE created_at >= ${since.getTime()} OR closed_at >= ${since.getTime()}
+    ORDER BY created_at DESC, session_id
+  `;
+  return rows.map((row) => ({
+    sessionId: row.session_id,
+    ownerSessionId: row.owner_session_id,
+    ...(row.team_id ? { teamId: row.team_id } : {}),
+    ...(row.node ? { node: row.node } : {}),
+    ...(row.name ? { name: row.name } : {}),
+    createdAt: new Date(row.created_at).toISOString(),
+    ...(row.closed_at === null ? {} : { closedAt: new Date(row.closed_at).toISOString() }),
+  }));
+}
+
+type SubSessionHistoryRow = {
+  session_id: string;
+  owner_session_id: string;
+  team_id: string | null;
+  node: string | null;
+  name: string | null;
+  created_at: number;
+  closed_at: number | null;
+};
 
 function workerColumns(worker: WorkerOwner) {
   switch (worker.type) {

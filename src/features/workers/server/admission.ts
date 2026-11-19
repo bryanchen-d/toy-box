@@ -22,6 +22,8 @@ type SessionWorkerInput = SessionLaunch & {
   name?: Worker["name"];
   metadata?: unknown;
   ephemeral?: boolean;
+  /** Persist ownership with an owner-specific admission, before execution starts. */
+  admit?: (worker: Extract<Worker, { type: "session" }>) => Promise<unknown>;
 };
 
 export type WorkerSpawn<Owner extends WorkerOwner = WorkerOwner, Value = void> = SessionLaunch &
@@ -88,14 +90,17 @@ export async function spawnWorkerFromRequest(
 export async function spawnSessionWorker(
   input: SessionWorkerInput,
 ): Promise<{ sessionId: string }> {
-  const { sessionId } = await spawnWorker({
-    owner: { type: "session", parentSessionId: input.parentSessionId },
-    retention: input.ephemeral ? "ephemeral" : "durable",
+  const request = {
+    owner: { type: "session" as const, parentSessionId: input.parentSessionId },
+    retention: input.ephemeral ? ("ephemeral" as const) : ("durable" as const),
     ...(input.name === undefined ? {} : { name: input.name }),
     ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
     message: input.message,
     location: input.location,
-  });
+  };
+  const { sessionId } = input.admit
+    ? await spawnWorker({ ...request, admit: input.admit })
+    : await spawnWorker(request);
   return { sessionId };
 }
 

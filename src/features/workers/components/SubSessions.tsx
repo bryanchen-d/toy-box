@@ -1,5 +1,5 @@
 // An owner's sub sessions as the workspace presents them: a list of each one's place and state, a
-// count on the owner's avatar, and the owners whose sub sessions are at work.
+// count on the owner's avatar, the owners whose sub sessions are at work, and those on pool nodes.
 
 import { useQuery } from "@tanstack/react-query";
 import { providerNode } from "@providers/model";
@@ -121,9 +121,7 @@ export function SubSessionList({ sessions }: { sessions: readonly Session[] }) {
 
 function SubSessionItem({ session }: { session: Session }) {
   const { openSession } = useWorkspaceSurface();
-  const activity = useWorkspaceSessionActivity(session.id);
   const title = session.title || "Sub session";
-  const node = providerNode(session.provider?.id);
   return (
     <li>
       {openSession ? (
@@ -138,22 +136,57 @@ function SubSessionItem({ session }: { session: Session }) {
       ) : (
         title
       )}
-      <span className="block text-muted-foreground">
-        {node ? `On ${node} · ` : null}
-        {activity.waiting ? (
-          "Waiting for input"
-        ) : activity.background ? (
-          "Background tasks running"
-        ) : activity.running ? (
-          "Working"
-        ) : (
-          <>
-            Idle · <RelativeTime date={session.updatedAt} />
-          </>
-        )}
-      </span>
+      <SubSessionStatus session={session} className="block" />
     </li>
   );
+}
+
+/** Where a sub session runs and what it's doing, such as "On brchen-db3 · Working". */
+export function SubSessionStatus({ session, className }: { session: Session; className?: string }) {
+  const activity = useWorkspaceSessionActivity(session.id);
+  const node = providerNode(session.provider?.id);
+  return (
+    <span className={cn("text-muted-foreground", className)}>
+      {node ? `On ${node} · ` : null}
+      {activity.waiting ? (
+        "Waiting for input"
+      ) : activity.background ? (
+        "Background tasks running"
+      ) : activity.running ? (
+        "Working"
+      ) : (
+        <>
+          Idle · <RelativeTime date={session.updatedAt} />
+        </>
+      )}
+    </span>
+  );
+}
+
+export type NodeSubSession = { session: Session; ownerSessionId: string; working: boolean };
+
+/** The open sub sessions on any of these pool nodes, each with its owner and whether it's at work. */
+export function useNodeSubSessions(nodes: readonly string[]): NodeSubSession[] {
+  const { data: onNodes = [] } = useQuery({
+    ...sessionQueries.state(),
+    select: (state) =>
+      state.sessions.flatMap((session) => {
+        const node = providerNode(session.provider?.id);
+        const owner = state.ownership[session.id];
+        return node !== undefined &&
+          nodes.includes(node) &&
+          owner?.type === "worker" &&
+          owner.parentSessionId
+          ? [{ session, ownerSessionId: owner.parentSessionId }]
+          : [];
+      }),
+  });
+  const working = useWorkspaceSelector((workspace) =>
+    onNodes
+      .filter(({ session }) => isAtWork(workspace, session.id))
+      .map(({ session }) => session.id),
+  );
+  return onNodes.map((entry) => ({ ...entry, working: working.includes(entry.session.id) }));
 }
 
 function isAtWork(workspace: WorkspaceState, sessionId: string): boolean {

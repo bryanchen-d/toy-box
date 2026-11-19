@@ -32,5 +32,20 @@ export async function initializeWorkerSchema(db: Bun.SQL): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_workers_type_created
       ON workers(worker_type, created_at DESC, session_id);
+
+    -- Every sub session an owner created, kept after it closes so its use can be counted.
+    -- The owner's team and the node are recorded at creation, since both can disappear.
+    CREATE TABLE IF NOT EXISTS sub_session_history (
+      session_id        TEXT PRIMARY KEY,
+      owner_session_id  TEXT NOT NULL,
+      team_id           TEXT,
+      node              TEXT,
+      name              TEXT,
+      created_at        INTEGER NOT NULL,
+      closed_at         INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sub_session_history_created
+      ON sub_session_history(created_at);
   `);
 }

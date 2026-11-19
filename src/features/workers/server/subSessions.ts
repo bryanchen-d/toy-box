@@ -26,7 +26,7 @@ import {
 import type { Worker } from "../model";
 import { spawnSessionWorker } from "./admission";
 import { deleteWorker } from "./cleanup";
-import { getPersistedWorker } from "./database";
+import { admitSubSession, getPersistedWorker } from "./database";
 import { getWorker, listWorkers, updateWorker } from "./index";
 
 const REPORT_PREVIEW_LENGTH = 1_000;
@@ -92,6 +92,11 @@ async function admit(
       model: node ? await nodeModel(node, model) : model,
     },
     location: { directory, useWorktree },
+    admit: (worker) =>
+      admitSubSession(worker, {
+        ...(owner?.type === "team" ? { teamId: owner.teamId } : {}),
+        ...(node ? { node } : {}),
+      }),
   });
 }
 

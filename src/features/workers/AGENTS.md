@@ -105,6 +105,10 @@ subagents instead. Each tool acts only on the invoking session's own sub session
   a hover preview of any owner's session lists them beneath its transcript. The sidebar keeps an
   agent waiting on working sub sessions in its team row. A standard session's sub sessions also
   nest under it in the sidebar.
+- A sub session's Worker goes when it closes, so `sub_session_history` keeps one row per sub
+  session for counting use: its owner, the owner's team and the node, recorded with the Worker at
+  admission because either can disappear, and the time it closed, set wherever its Worker is
+  deleted. `listSubSessionHistory` returns the last week, which `countSubSessionUse` counts.
 
 ## Algebra
 

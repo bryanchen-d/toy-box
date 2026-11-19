@@ -214,6 +214,65 @@ export function describeSubSessions(
   ].join(" · ");
 }
 
+/** How far back the history of sub sessions is counted. */
+export const SUB_SESSION_HISTORY_MS = 7 * 24 * 60 * 60_000;
+
+/** A sub session as its history keeps it, including after it closes. */
+export type SubSessionRecord = {
+  sessionId: string;
+  ownerSessionId: string;
+  /** The team its owner belonged to when it was created. */
+  teamId?: string;
+  /** The pool node it ran on; absent when it ran on this machine. */
+  node?: string;
+  name?: string;
+  createdAt: string;
+  closedAt?: string;
+};
+
+/** How many sub sessions opened and closed in a period. */
+export type SubSessionCounts = { created: number; closed: number };
+
+/**
+ * How sub sessions were used: those created and closed in the last day and the last week, and
+ * how many each owner created in the week, most first.
+ */
+export function countSubSessionUse(
+  records: readonly SubSessionRecord[],
+  now: Date,
+): {
+  day: SubSessionCounts;
+  week: SubSessionCounts;
+  byOwner: { ownerSessionId: string; teamId?: string; created: number }[];
+} {
+  const dayStart = now.getTime() - 24 * 60 * 60_000;
+  const weekStart = now.getTime() - SUB_SESSION_HISTORY_MS;
+  const within = (at: string | undefined, start: number) =>
+    at !== undefined && Date.parse(at) >= start;
+  const counts = (start: number): SubSessionCounts => ({
+    created: records.filter(({ createdAt }) => within(createdAt, start)).length,
+    closed: records.filter(({ closedAt }) => within(closedAt, start)).length,
+  });
+  const byOwner = new Map<string, { ownerSessionId: string; teamId?: string; created: number }>();
+  for (const { ownerSessionId, teamId, createdAt } of records) {
+    if (!within(createdAt, weekStart)) continue;
+    const owner = byOwner.get(ownerSessionId) ?? {
+      ownerSessionId,
+      ...(teamId ? { teamId } : {}),
+      created: 0,
+    };
+    byOwner.set(ownerSessionId, { ...owner, created: owner.created + 1 });
+  }
+  return {
+    day: counts(dayStart),
+    week: counts(weekStart),
+    byOwner: [...byOwner.values()].sort(
+      (left, right) =>
+        right.created - left.created || left.ownerSessionId.localeCompare(right.ownerSessionId),
+    ),
+  };
+}
+
 function clip(text: string): string {
   return text.length <= REPORT_MAX_LENGTH
     ? text

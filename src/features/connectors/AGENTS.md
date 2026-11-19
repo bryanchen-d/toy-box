@@ -124,6 +124,10 @@ connection (`onConnected`). While it runs, the link registers each node as
 a session provider ([Providers](../providers/AGENTS.md#node-providers)), which runs sub sessions
 created for that node over the node's connection. A pool is a place, not something a team talks
 to: no message addresses it, and `read_team` lists it with its nodes instead of a mention.
+Clicking a pool's sidebar row opens its use (`components/PoolDialog.tsx`) rather than its
+settings: its nodes' states, the sub sessions open on them with each owner's agent and team, and
+how many were created and closed in the last day and week, from Workers' sub-session history. The
+row counts those at work.
 
 `server/index.ts` owns the registry of links, CRUD, and publication. Startup links every connector
 and returns cleanup that stops them. Starting a link replaces the registered one in a single step

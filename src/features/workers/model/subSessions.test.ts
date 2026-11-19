@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  countSubSessionUse,
   describeSubSessions,
   dueWake,
   interruptedReport,
   isReminderDue,
   renderSubSessionBrief,
   subSessionReport,
+  type SubSessionRecord,
 } from "./subSessions";
 
 describe("sub session summary", () => {
@@ -21,6 +23,56 @@ describe("sub session summary", () => {
 
   test("leaves out work and nodes when none apply", () => {
     expect(describeSubSessions([{ working: false }])).toBe("1 sub session");
+  });
+});
+
+describe("sub session use", () => {
+  const now = new Date("2026-11-19T12:00:00Z");
+  const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 60 * 60_000).toISOString();
+  const record = (
+    sessionId: string,
+    ownerSessionId: string,
+    createdHoursAgo: number,
+    closedHoursAgo?: number,
+  ): SubSessionRecord => ({
+    sessionId,
+    ownerSessionId,
+    teamId: "build",
+    createdAt: hoursAgo(createdHoursAgo),
+    ...(closedHoursAgo === undefined ? {} : { closedAt: hoursAgo(closedHoursAgo) }),
+  });
+
+  test("counts sub sessions created and closed in the last day and the last week", () => {
+    const use = countSubSessionUse(
+      [
+        record("open-today", "lead", 2),
+        record("closed-today", "lead", 5, 1),
+        record("opened-earlier-closed-today", "monitor", 30, 3),
+        record("closed-this-week", "monitor", 100, 90),
+        record("older", "monitor", 200, 190),
+      ],
+      now,
+    );
+
+    expect(use.day).toEqual({ created: 2, closed: 2 });
+    expect(use.week).toEqual({ created: 4, closed: 3 });
+  });
+
+  test("ranks owners by the sub sessions they created this week", () => {
+    const use = countSubSessionUse(
+      [
+        record("a", "lead", 2),
+        record("b", "monitor", 3),
+        record("c", "monitor", 4),
+        record("old", "lead", 200),
+      ],
+      now,
+    );
+
+    expect(use.byOwner).toEqual([
+      { ownerSessionId: "monitor", teamId: "build", created: 2 },
+      { ownerSessionId: "lead", teamId: "build", created: 1 },
+    ]);
   });
 });
 

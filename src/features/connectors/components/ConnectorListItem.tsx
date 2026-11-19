@@ -6,14 +6,18 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-me
 import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { SidebarListItem } from "@/shared/sidebar/SidebarListItem";
 import { cn } from "@/shared/utils";
-import { connectorHandle, type ConnectorEntry } from "../model";
+import { useNodeSubSessions } from "@workers/components/SubSessions";
+import { connectorHandle, poolNodes, type ConnectorEntry } from "../model";
 import { connectorMutations } from "../mutations";
 
 export function ConnectorListItem({
   connector,
+  onOpen,
   onEdit,
 }: {
   connector: ConnectorEntry;
+  /** Opens what the connector shows when clicked: a pool's use, or a service's settings. */
+  onOpen: () => void;
   onEdit: () => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -21,6 +25,9 @@ export function ConnectorListItem({
   const connected = status.state === "connected";
   const unreachable = status.state === "unreachable";
   const error = status.state === "connected" ? undefined : status.error;
+  const working = useNodeSubSessions(poolNodes(connector).map(({ name }) => name)).filter(
+    (subSession) => subSession.working,
+  ).length;
 
   return (
     <>
@@ -47,7 +54,13 @@ export function ConnectorListItem({
             <RelativeTime date={status.since} />
           </span>
         }
-        badge={pending > 0 ? <Badge variant="metadata">{pending} queued</Badge> : undefined}
+        badge={
+          pending > 0 ? (
+            <Badge variant="metadata">{pending} queued</Badge>
+          ) : working > 0 ? (
+            <Badge variant="metadata">{working} working</Badge>
+          ) : undefined
+        }
         menuItems={
           <>
             <DropdownMenuItem onClick={onEdit}>
@@ -61,7 +74,7 @@ export function ConnectorListItem({
             </DropdownMenuItem>
           </>
         }
-        onClick={onEdit}
+        onClick={onOpen}
         aria-label={`${connector.name}, mention as @${connectorHandle(connector)}`}
       />
       {deleteOpen && (

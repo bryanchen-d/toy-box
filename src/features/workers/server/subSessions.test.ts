@@ -29,15 +29,16 @@ const spawnMock = mock(async (input: SpawnInput) => {
   // Admission persists ownership before it returns its receipt.
   await Bun.sleep(5);
   const sessionId = `sub-${++nextSessionId}`;
-  await registerWorkerSession({
-    type: "session",
+  const worker = {
+    type: "session" as const,
     sessionId,
     parentSessionId: input.parentSessionId,
     createdAt: new Date(nextSessionId * 1000).toISOString(),
     ephemeral: false,
     ...(input.name ? { name: input.name } : {}),
     ...(input.metadata === undefined ? {} : { metadata: input.metadata as Worker["metadata"] }),
-  });
+  };
+  await (input.admit ? input.admit(worker) : registerWorkerSession(worker));
   if (input.message.model) providers.set(sessionId, input.message.model.provider);
   return { sessionId };
 });
@@ -85,8 +86,12 @@ mock.module("@connectors/server", () => ({
   listConnectors: async () => pools,
 }));
 
-const { registerWorkerSession, unregisterWorkerSession, getPersistedWorker } =
-  await import("./database");
+const {
+  registerWorkerSession,
+  unregisterWorkerSession,
+  getPersistedWorker,
+  readSubSessionHistory,
+} = await import("./database");
 const { createSessionGuard } = await import("@security/server/guard");
 const {
   closeSubSession,
@@ -484,6 +489,45 @@ describe("sub sessions on nodes and cut-short runs", () => {
     expect(subSessions.map(({ name, node }) => [name, node])).toEqual([
       ["UI check", "brchen-db3"],
       ["Local fix", undefined],
+    ]);
+  });
+
+  test("leave a history of who created each, where it ran, and when it closed", async () => {
+    await useNode();
+    await registerWorkerSession({
+      type: "team",
+      sessionId: "agent-riley",
+      teamId: "team-1",
+      createdAt: new Date(0).toISOString(),
+      ephemeral: false,
+      name: "Riley",
+    });
+    const remote = await createSubSession("agent-riley", {
+      name: "UI check",
+      brief,
+      node: "brchen-db3",
+    });
+    const local = await createSubSession("owner", { name: "Local fix", brief });
+
+    await closeSubSession("agent-riley", remote.sessionId);
+    // Deleting the session itself, as the user or its owner's removal does, closes it too.
+    await unregisterWorkerSession(local.sessionId);
+
+    const history = await readSubSessionHistory(new Date(0));
+    expect(
+      history.map(({ createdAt: _created, closedAt, ...record }) => [record, !!closedAt]),
+    ).toEqual([
+      [{ sessionId: local.sessionId, ownerSessionId: "owner", name: "Local fix" }, true],
+      [
+        {
+          sessionId: remote.sessionId,
+          ownerSessionId: "agent-riley",
+          teamId: "team-1",
+          node: "brchen-db3",
+          name: "UI check",
+        },
+        true,
+      ],
     ]);
   });
 

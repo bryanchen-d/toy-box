@@ -7,8 +7,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { connectorQueries } from "../queries";
 import { ConnectorDialog } from "./ConnectorDialog";
 import { ConnectorListItem } from "./ConnectorListItem";
+import { PoolDialog } from "./PoolDialog";
 
-/** App-level connectors that every team can talk to, with their live connection status. */
+/** App-level connectors that every team can talk to, with their live connection status. A pool's
+ *  row opens its use; a service's opens its settings. */
 export function ConnectorPanel({
   isExpanded,
   onExpandedChange,
@@ -19,7 +21,10 @@ export function ConnectorPanel({
   const { data: connectors } = useSuspenseQuery(connectorQueries.list());
   // undefined: closed; null: adding; an ID: editing that connector.
   const [dialog, setDialog] = useState<string | null>();
+  // The pool whose use is showing.
+  const [poolId, setPoolId] = useState<string>();
   const editing = connectors.find(({ id }) => id === dialog);
+  const pool = connectors.find(({ id }) => id === poolId);
 
   return (
     <>
@@ -53,10 +58,27 @@ export function ConnectorPanel({
           <ConnectorListItem
             key={connector.id}
             connector={connector}
+            onOpen={() =>
+              connector.kind === "agentPool" ? setPoolId(connector.id) : setDialog(connector.id)
+            }
             onEdit={() => setDialog(connector.id)}
           />
         ))}
       </SidebarPanel>
+
+      {pool && (
+        <PoolDialog
+          key={pool.id}
+          connector={pool}
+          onEdit={() => {
+            setPoolId(undefined);
+            setDialog(pool.id);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setPoolId(undefined);
+          }}
+        />
+      )}
 
       {(dialog === null || editing) && (
         <ConnectorDialog
