@@ -1968,6 +1968,48 @@ describe("projector", () => {
       ]);
     });
 
+    test("a subagent's own model change stays with its tool call, not the session", () => {
+      const context = createStreamingContext();
+      projectSdkEvent(
+        sdkEvent({
+          type: "subagent.started",
+          agentId: "native-agent-1",
+          data: {
+            toolCallId: "call-agent-1",
+            agentName: "explore",
+            agentDisplayName: "Explore Agent",
+            agentDescription: "Searches code.",
+            model: "gpt-5.6-luna",
+          },
+        }),
+        context,
+      );
+
+      expect(
+        projectSdkEvent(
+          { ...modelChange("gpt-5.6-luna", "low", "long_context"), agentId: "native-agent-1" },
+          context,
+        ),
+      ).toEqual([
+        {
+          type: "model_changed",
+          parentToolCallId: "call-agent-1",
+          model: {
+            provider: "copilot",
+            name: "gpt-5.6-luna",
+            reasoningEffort: "low",
+            contextTier: "long_context",
+          },
+        },
+      ]);
+      expect(
+        projectSdkEvent(
+          { ...modelChange("gpt-5.6-luna"), agentId: "unknown-agent" },
+          createStreamingContext(),
+        ),
+      ).toEqual([]);
+    });
+
     test("returns no events for unknown SDK event types", () => {
       expect(
         projectSdkEvent(sdkEvent({ type: "unknown.event", data: {} }), createStreamingContext()),

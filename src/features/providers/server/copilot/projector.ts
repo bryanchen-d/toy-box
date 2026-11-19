@@ -13,6 +13,7 @@ import type {
   ToolExecutionCompleteData,
 } from "@github/copilot-sdk";
 import type { JSONType } from "zod";
+import type { ModelConfiguration } from "@providers/model";
 import type { SessionEvent, SessionQuestionBase, ToolCall } from "@sessions/model";
 import type { Attachment } from "@/shared/attachments/model";
 import { decodeSystemMessage } from "@sessions/model/systemMessages";
@@ -218,18 +219,18 @@ function projectSdkEvent(event: SdkSessionEvent, state: ProjectionState): Sessio
         event.data.reasoningEffort,
         event.data.contextTier,
       );
-    case "session.model_change":
-      return [
-        {
-          type: "model_changed",
-          model: {
-            provider: "copilot",
-            name: event.data.newModel,
-            ...(event.data.reasoningEffort ? { reasoningEffort: event.data.reasoningEffort } : {}),
-            ...(event.data.contextTier != null ? { contextTier: event.data.contextTier } : {}),
-          },
-        },
-      ];
+    case "session.model_change": {
+      const model: ModelConfiguration = {
+        provider: "copilot",
+        name: event.data.newModel,
+        ...(event.data.reasoningEffort ? { reasoningEffort: event.data.reasoningEffort } : {}),
+        ...(event.data.contextTier != null ? { contextTier: event.data.contextTier } : {}),
+      };
+      if (!event.agentId) return [{ type: "model_changed", model }];
+      // A native subagent's model belongs to its tool call, never the session's.
+      const parentToolCallId = state.subagentParents.get(event.agentId);
+      return parentToolCallId ? [{ type: "model_changed", parentToolCallId, model }] : [];
+    }
     case "session.title_changed":
       return [{ type: "session_title_changed", title: event.data.title }];
     case "session.handoff":
