@@ -79,6 +79,7 @@ export type TeamRequestState = "pending" | "acknowledged";
 type RowContext = {
   lead: TeamAgent;
   members: readonly TeamAgent[];
+  coordinators?: Readonly<Record<string, string>>;
   latestUserSequence: number;
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
@@ -99,11 +100,14 @@ export function transcriptRows(
   {
     lead,
     members,
+    coordinators,
     unreadAfter,
     view = "all",
   }: {
     lead: TeamAgent;
     members: readonly TeamAgent[];
+    /** The team's connector coordinators, which connector messages wake. */
+    coordinators?: Readonly<Record<string, string>>;
     /** Where unread messages began on arrival; null or undefined marks none. */
     unreadAfter?: number | null;
     view?: TranscriptView;
@@ -112,6 +116,7 @@ export function transcriptRows(
   const context: RowContext = {
     lead,
     members,
+    coordinators,
     latestUserSequence: latestUserSequence(messages),
     threads: loadedThreads(messages),
   };
@@ -125,9 +130,22 @@ export function transcriptRows(
 export function threadRows(
   messages: readonly TeamMessage[],
   sequence: number,
-  { lead, members }: { lead: TeamAgent; members: readonly TeamAgent[] },
+  {
+    lead,
+    members,
+    coordinators,
+  }: {
+    lead: TeamAgent;
+    members: readonly TeamAgent[];
+    coordinators?: Readonly<Record<string, string>>;
+  },
 ): TranscriptRow[] {
-  const context: RowContext = { lead, members, latestUserSequence: latestUserSequence(messages) };
+  const context: RowContext = {
+    lead,
+    members,
+    coordinators,
+    latestUserSequence: latestUserSequence(messages),
+  };
   const thread = messages.filter(
     (message) => message.sequence === sequence || message.threadSequence === sequence,
   );
@@ -368,9 +386,9 @@ function agentRunEntry(
 /** Who an agent's message wakes, by name; none when it's for the user. */
 function addresseeOf(
   { content, sender, askedBy }: TeamConversationMessage,
-  { lead, members }: RowContext,
+  { lead, members, coordinators }: RowContext,
 ): string | undefined {
-  const audience = resolveTeamAudience({ content, sender, lead, members, askedBy });
+  const audience = resolveTeamAudience({ content, sender, lead, members, askedBy, coordinators });
   // Everyone but the sender reads as "Everyone"; a message that wakes no agent is for the user.
   return audience.length > 0 ? teamAudienceLabel(audience, members.length) : undefined;
 }

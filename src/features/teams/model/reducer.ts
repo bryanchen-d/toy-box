@@ -121,6 +121,16 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
           return { ...next, preview: content.preview ?? undefined };
         case "canvas_changed":
           return { ...next, canvasArtifactId: content.canvasArtifactId ?? undefined };
+        case "connector_coordinator_changed": {
+          const { [content.connectorId]: _previous, ...others } = team.connectorCoordinators ?? {};
+          const coordinators = content.agentId
+            ? { ...others, [content.connectorId]: content.agentId }
+            : others;
+          const { connectorCoordinators: _current, ...rest } = next;
+          return Object.keys(coordinators).length
+            ? { ...rest, connectorCoordinators: coordinators }
+            : rest;
+        }
         case "member_left":
           return { ...next, tasks: unassignTeamTasks(team.tasks, content.member.id) };
         case "tasks_completed":

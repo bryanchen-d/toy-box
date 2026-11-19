@@ -7,6 +7,7 @@ import {
   PanelsTopLeft,
   Pause,
   Pencil,
+  Plug,
   Unplug,
   UserMinus,
   UserPlus,
@@ -156,6 +157,17 @@ const SYSTEM_MESSAGES: {
     icon: <PanelsTopLeft className="size-3.5 shrink-0" />,
     present: ([{ canvasArtifactId }]) => ({
       content: canvasArtifactId ? "Team canvas updated" : "Team canvas cleared",
+    }),
+  },
+  connector_coordinator_changed: {
+    icon: <Plug className="size-3.5 shrink-0" />,
+    present: ([{ connectorId, agentId }], { agent }) => ({
+      content: agentId
+        ? `${agent(agentId).name} now coordinates ${agent(connectorId).name}`
+        : `${agent(connectorId).name}'s messages go to the lead again`,
+      tooltip: agentId
+        ? `${agent(connectorId).name}'s messages wake ${agent(agentId).name} instead of the lead, unless they mention agents or answer an agent's own message.`
+        : undefined,
     }),
   },
   member_joined: {

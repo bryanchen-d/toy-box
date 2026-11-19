@@ -45,7 +45,7 @@ export function TeamThread({
   onClose: () => void;
 }) {
   const pane = useTeamPane();
-  const { lead, members } = pane;
+  const { lead, members, coordinators } = pane;
   const paneRef = useRef<HTMLElement>(null);
   const [searchSelection, setSearchSelection] = useState<TeamMessageMatch | null>(null);
   const targetSequence = searchSelection?.sequence ?? selectedSequence;
@@ -53,7 +53,7 @@ export function TeamThread({
   const scrollRef = useRef<HTMLElement>(null);
   const followsEndRef = useRef(true);
   const landedRef = useRef(false);
-  const rows = threadRows(state.messages, sequence, { lead, members });
+  const rows = threadRows(state.messages, sequence, { lead, members, coordinators });
   const replyCount = state.messages.filter(
     ({ threadSequence }) => threadSequence === sequence,
   ).length;

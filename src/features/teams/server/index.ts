@@ -127,6 +127,14 @@ export async function updateTeamFromLead(sessionId: string, input: UpdateTeamInp
   if (input.directory && !isAbsolute(input.directory)) {
     throw new Error("Use an absolute working directory.");
   }
+  if (input.connectorCoordinators) {
+    const { listConnectors } = await import("@connectors/server");
+    const services = new Set(
+      (await listConnectors()).filter(({ kind }) => kind === "service").map(({ id }) => id),
+    );
+    const unknown = Object.keys(input.connectorCoordinators).find((id) => !services.has(id));
+    if (unknown) throw new Error(`Connector ${unknown} is not a connector teams can talk to.`);
+  }
   const change = await database.updateTeam(sessionId, input);
   publishTeamChange(change);
   return change.team;
@@ -601,6 +609,7 @@ export async function postMessage(
     lead,
     members,
     askedBy,
+    coordinators: change.team.connectorCoordinators,
     acknowledgedRequest: change.acknowledgedRequest,
   });
 

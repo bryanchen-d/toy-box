@@ -151,8 +151,13 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   top-level when it starts one, which then becomes that conversation's thread. Its ID derives from
   the connector and event IDs, so a replay applies once. It routes like any other message, except
   that one answering an agent's message, by `replyTo`, records that agent as `askedBy` and, without
-  mentions, wakes it while it is on the team. Otherwise, without mentions, it wakes the lead. It
-  never acknowledges the lead's pending request, because only the user answers one.
+  mentions, wakes it while it is on the team. Otherwise, without mentions, it wakes the team's
+  coordinator for that connector (`Team.connectorCoordinators`, which the lead sets) while that
+  agent is on the team, and the lead otherwise. A coordinator decides who handles each message,
+  reading its source, such as a Slack thread, when it needs more context. Agents post into an
+  outside thread from the team thread its messages arrive in, so one conversation stays in one
+  thread. A connector event never acknowledges the lead's pending request, because only the user
+  answers one.
 - Agents may send one conversation at most 20 messages an hour. The fuse resets on restart, the
   user is never throttled, and a throttled message is noted in the team.
 - `connector_undelivered` is the typed system message for a message that expired, was rejected, or

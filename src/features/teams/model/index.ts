@@ -53,6 +53,11 @@ export type Team = {
   tasks: TeamTask[];
   preview?: Preview;
   canvasArtifactId?: string;
+  /**
+   * The agent that coordinates each connector for this team, by connector ID: that connector's
+   * messages wake it instead of the lead, unless they mention agents or answer one's own message.
+   */
+  connectorCoordinators?: Record<string, string>;
   latestSequence: number;
   seenThrough: number;
   /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
@@ -464,6 +469,15 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("connector_coordinator_changed"),
+      actor: teamMessageActorSchema,
+      connectorId: durableIdSchema,
+      /** The agent that now coordinates the connector, or null when its messages go to the lead again. */
+      agentId: durableIdSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("artifact_shared"),
       actor: teamMessageActorSchema,
       // The message's own timestamp records when it was shared.
@@ -586,6 +600,9 @@ export const createTeamInputSchema = z
 
 export const teamIdentitySchema = z.object({ teamId: durableIdSchema }).strict();
 
+/** Agent IDs by connector ID; see `Team.connectorCoordinators`. */
+export const connectorCoordinatorsSchema = z.record(durableIdSchema, durableIdSchema);
+
 export const removeTeamMemberInputSchema = z.object({ agentId: durableIdSchema }).strict();
 
 const teamChangesSchema = z
@@ -627,6 +644,12 @@ const teamChangesSchema = z
       .describe(
         "The artifactId of a shared session-owned .toy app to present beside team chat, or null to clear it. Create, validate, and share the app first.",
       ),
+    connectorCoordinators: connectorCoordinatorsSchema
+      .nullable()
+      .optional()
+      .describe(
+        "The complete map from connectorId to the agentId of the team agent that coordinates that connector's messages, replacing the current map. Omit a connector to send its messages to the lead. Set null to clear every coordinator.",
+      ),
   })
   .strict();
 export type TeamChanges = z.output<typeof teamChangesSchema>;
@@ -641,7 +664,7 @@ export const editTeamInputSchema = teamChangesSchema
 
 export const updateTeamInputSchema = teamChangesSchema.omit({ model: true }).refine(hasChanges, {
   message:
-    "Update the name, avatar, purpose, directory, tasks, preview, canvas, or any combination of them.",
+    "Update the name, avatar, purpose, directory, tasks, preview, canvas, connector coordinators, or any combination of them.",
 });
 
 export const postTeamMessageInputSchema = z
@@ -687,6 +710,7 @@ export function resolveTeamAudience({
   lead,
   members,
   askedBy,
+  coordinators,
   acknowledgedRequest = false,
 }: {
   content: string;
@@ -695,6 +719,8 @@ export function resolveTeamAudience({
   members: readonly TeamAgent[];
   /** For a connector's reply, the agent whose message it answers. */
   askedBy?: string;
+  /** The team's connector coordinators, by connector ID; see `Team.connectorCoordinators`. */
+  coordinators?: Readonly<Record<string, string>>;
   /** Persistence established that this user reply acknowledged a pending request. */
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
@@ -712,9 +738,13 @@ export function resolveTeamAudience({
   );
   const senderId = sender.type === "agent" ? sender.agentId : undefined;
   if (!mentionAll && addressed.length === 0) {
-    // A reply answers whoever asked, while it's still on the team.
-    const asker = agents.find(({ id }) => id === askedBy);
-    if (asker) return [asker];
+    // A reply answers whoever asked, and any other connector message reaches the agent that
+    // coordinates that connector, each only while it's still on the team.
+    const coordinator =
+      sender.type === "connector" ? coordinators?.[sender.connectorId] : undefined;
+    const recipient =
+      agents.find(({ id }) => id === askedBy) ?? agents.find(({ id }) => id === coordinator);
+    if (recipient) return [recipient];
     return lead.id === senderId ? [] : [lead];
   }
   return agents.filter(

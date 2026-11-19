@@ -20,7 +20,8 @@ mock.module("@/server/database", () => ({
 
 const { TeamDatabase } = await import("./database");
 const { ConnectorDatabase } = await import("@connectors/server/database");
-const { postTeamMessage, sendTeamMessageFromAgent } = await import("./index");
+const { postTeamMessage, removeTeamMember, sendTeamMessageFromAgent, updateTeamFromLead } =
+  await import("./index");
 const {
   applyConnectorEvent,
   noteUndeliveredConnectorMessage,
@@ -281,6 +282,60 @@ test("a connector's reply to an agent's message wakes that agent instead of the 
       { systemMessage: { type: "team_message", senderName: "BryanBot" }, immediate: true },
     ],
   ]);
+});
+
+test("a connector's coordinator receives its messages instead of the lead, except answers to an agent's own request", async () => {
+  const { teams, connectors, team, connector, wakes } = await open();
+  const { member } = await teams.createMember(teamAgent(team.id, "comms", "Build Comms"));
+  await expect(
+    updateTeamFromLead(team.id, { connectorCoordinators: { [connector.id]: "someone-else" } }),
+  ).rejects.toThrow("Agent someone-else is not on this team.");
+  await expect(
+    updateTeamFromLead(team.id, { connectorCoordinators: { "missing-connector": member.id } }),
+  ).rejects.toThrow("Connector missing-connector is not a connector teams can talk to.");
+  expect(
+    await updateTeamFromLead(team.id, { connectorCoordinators: { [connector.id]: member.id } }),
+  ).toMatchObject({ connectorCoordinators: { [connector.id]: member.id } });
+  expect((await teams.listMessagesAfter(team.id)).at(-1)?.content).toEqual({
+    type: "connector_coordinator_changed",
+    actor: { type: "agent", agentId: team.id },
+    connectorId: connector.id,
+    agentId: member.id,
+  });
+
+  const ask = await sendTeamMessageFromAgent(team.id, { content: "@bryanbot is #build green?" });
+  const [sent] = await queued(connectors, connector.id);
+  wakes.mockClear();
+  await applyConnectorEvent(
+    connector,
+    event("New message in #build from VS Code Bot:\nCI build failed", {
+      conversationId: "watched",
+      to: { teamId: team.id },
+    }),
+  );
+  await applyConnectorEvent(
+    connector,
+    event("Not yet.", { conversationId: sent!.conversationId, replyTo: ask.id }),
+  );
+  await applyConnectorEvent(
+    connector,
+    event("@lead the build is green again", { conversationId: "watched" }),
+  );
+  expect(wakes.mock.calls.map(([sessionId]) => sessionId)).toEqual([member.id, team.id, team.id]);
+
+  // Without its coordinator on the team, a connector's messages reach the lead again.
+  await removeTeamMember(member.id);
+  wakes.mockClear();
+  await applyConnectorEvent(connector, event("Thanks!", { conversationId: "watched" }));
+  expect(wakes.mock.calls.map(([sessionId]) => sessionId)).toEqual([team.id]);
+
+  await updateTeamFromLead(team.id, { connectorCoordinators: {} });
+  expect((await teams.getTeam(team.id))?.connectorCoordinators).toBeUndefined();
+  expect((await teams.listMessagesAfter(team.id)).at(-1)?.content).toMatchObject({
+    type: "connector_coordinator_changed",
+    connectorId: connector.id,
+    agentId: null,
+  });
 });
 
 test("a connector's reply to the user's message, or to no message of the team, wakes the lead", async () => {

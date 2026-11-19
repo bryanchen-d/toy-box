@@ -21,8 +21,8 @@ export async function getTeamPerformance(
   now = new Date(),
 ): Promise<TeamPerformance> {
   const database = new TeamDatabase(await getStateDatabase());
-  const roster = await database.getRoster(teamId);
-  if (!roster) throw new Error("Team not found.");
+  const [roster, team] = await Promise.all([database.getRoster(teamId), database.getTeam(teamId)]);
+  if (!roster || !team) throw new Error("Team not found.");
   const starts = performanceWindow(now, bucket);
   const from = starts[0]!;
   const to = nextBucketStart(starts.at(-1)!, bucket);
@@ -36,6 +36,7 @@ export async function getTeamPerformance(
   return projectTeamPerformance(messages, {
     lead: roster.lead,
     members: roster.members,
+    coordinators: team.connectorCoordinators,
     bucket,
     starts,
     wakes,

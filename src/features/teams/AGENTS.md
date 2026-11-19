@@ -133,6 +133,11 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   machine files, and non-app artifacts. `canvas_changed` is a durable system message,
   reduced and replayed like preview changes. The artifact remains the source of truth:
   Teams stores no app code, app state, or alternate execution model.
+- `Team.connectorCoordinators` optionally names, per connector, the team agent that coordinates
+  its messages. The lead replaces the whole map through `update_team`; validation rejects agents
+  outside the team and connectors teams can't talk to. Each changed connector appends a durable
+  `connector_coordinator_changed` system message, reduced and replayed like canvas changes.
+  Removing a member leaves its entry, which routing ignores while that agent is off the team.
 - `TeamRoutine` is scheduled, recurring work that serves the purpose: a short title, a prompt, an
   optional `agentId` for a current team member (omitted for the lead), and
   a local-time cron schedule with one fixed minute, so it runs at most hourly. Adding, changing, and
@@ -195,8 +200,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   top-level message, rejecting system messages and messages outside the Team. Read one thread
   whole, without changing read state.
 - Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
-  or connector message wakes the lead, except that a connector's reply wakes its `askedBy` agent
-  while that agent is on the team. An unmentioned lead message wakes nobody. Explicit name-derived mentions
+  or connector message wakes the lead, except that a connector's reply wakes its `askedBy` agent,
+  and any other connector message wakes that connector's coordinator, each while that agent is on
+  the team. An unmentioned lead message wakes nobody. Explicit name-derived mentions
   wake exactly those agents, while `@everyone` wakes the lead and all members except the sender.
   An agent's handle addresses it anywhere in a message; any other handle, such as a connector's,
   addresses only among the mentions a message opens with and is otherwise plain text.

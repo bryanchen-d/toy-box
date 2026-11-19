@@ -12,6 +12,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       tasks           TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tasks)),
       preview         TEXT CHECK (preview IS NULL OR json_valid(preview)),
       canvas_artifact_id TEXT,
+      -- The agent each connector's unaddressed messages wake instead of the lead, by connector ID.
+      connector_coordinators TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(connector_coordinators)),
       latest_sequence INTEGER NOT NULL DEFAULT 0
         CHECK (typeof(latest_sequence) = 'integer' AND latest_sequence >= 0),
       revision        INTEGER NOT NULL DEFAULT 0

@@ -238,6 +238,7 @@ function TeamContent({
         lead,
         members,
         agents,
+        coordinators: state?.team.connectorCoordinators,
         agent: (id) => teamAgentIdentity(authors, id),
         presence: state?.presence ?? {},
         openThread,

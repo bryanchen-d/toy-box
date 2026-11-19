@@ -38,8 +38,8 @@ export function TeamTranscript({
   requestSequence: number | null;
   onLoadPrevious: (throughSequence?: number) => Promise<void>;
 }) {
-  const { lead, members } = useTeamPane();
-  const rows = transcriptRows(messages, { lead, members, unreadAfter, view });
+  const { lead, members, coordinators } = useTeamPane();
+  const rows = transcriptRows(messages, { lead, members, coordinators, unreadAfter, view });
   const needsOlderHistory = viewNeedsOlderHistory(messages, view, requestSequence);
   const {
     scrollRef,

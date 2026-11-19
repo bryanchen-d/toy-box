@@ -169,6 +169,24 @@ test("metadata messages update the public team alongside transcript activity", (
   ]);
 });
 
+test("coordinator changes set, replace, and clear one connector's coordinator at a time", () => {
+  const actor = { type: "agent" as const, agentId: "lead" };
+  const change = (sequence: number, connectorId: string, agentId: string | null) =>
+    system(sequence, { type: "connector_coordinator_changed", actor, connectorId, agentId });
+  const set = [change(102, "bryanbot", "comms"), change(103, "github", "triager")].reduce(
+    reduceTeamState,
+    snapshot(),
+  );
+  expect(set.team.connectorCoordinators).toEqual({ bryanbot: "comms", github: "triager" });
+  const replaced = reduceTeamState(set, change(104, "bryanbot", "release"));
+  expect(replaced.team.connectorCoordinators).toEqual({ bryanbot: "release", github: "triager" });
+  const cleared = [change(105, "bryanbot", null), change(106, "github", null)].reduce(
+    reduceTeamState,
+    replaced,
+  );
+  expect(cleared.team).not.toHaveProperty("connectorCoordinators");
+});
+
 test("a pending request survives paging and reading, receives reactions, and clears on a later user reply", () => {
   const otherReaction = { agentId: "designer", reaction: "done" as const };
   const question = {

@@ -20,6 +20,8 @@ type TeamPane = {
   members: readonly TeamMember[];
   /** The lead, then the members. */
   agents: readonly TeamAgent[];
+  /** The team's connector coordinators, by connector ID, once its state has arrived. */
+  coordinators?: Readonly<Record<string, string>>;
   /** The agent or connector with this ID, or a deleted identity once it has left. */
   agent: (id: string) => TeamAgentIdentity;
   presence: Record<string, TeamAgentPresence>;

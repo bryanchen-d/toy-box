@@ -10,6 +10,7 @@ import {
   teamTasksComplete,
   mentionsTeamTask,
   teamSystemMessageContentSchema,
+  connectorCoordinatorsSchema,
   TEAM_LEAD_PROFILE,
   unassignTeamTasks,
   type Team,
@@ -308,7 +309,22 @@ export class TeamDatabase {
           throw new Error("Choose a shared session-owned .toy app as the team canvas.");
         }
       }
-      return updateTeamFields(db, team, input, { type: "agent", agentId: leadId });
+      const coordinators = input.connectorCoordinators;
+      if (coordinators) {
+        const members = await new TeamDatabase(db).listMembers(team.id);
+        const agentIds = new Set([team.id, ...members.map(({ id }) => id)]);
+        const outsider = Object.values(coordinators).find((agentId) => !agentIds.has(agentId));
+        if (outsider) throw new Error(`Agent ${outsider} is not on this team.`);
+      }
+      return updateTeamFields(
+        db,
+        team,
+        // An empty map leaves every connector to the lead, as no map does.
+        coordinators && !Object.keys(coordinators).length
+          ? { ...input, connectorCoordinators: null }
+          : input,
+        { type: "agent", agentId: leadId },
+      );
     });
   }
 
@@ -1131,6 +1147,12 @@ async function updateTeamFields(
       actor,
       canvasArtifactId: next.canvasArtifactId ?? null,
     });
+  const coordinators = { ...current.connectorCoordinators, ...next.connectorCoordinators };
+  for (const connectorId of Object.keys(coordinators)) {
+    const agentId = next.connectorCoordinators?.[connectorId] ?? null;
+    if (agentId !== (current.connectorCoordinators?.[connectorId] ?? null))
+      updates.push({ type: "connector_coordinator_changed", actor, connectorId, agentId });
+  }
   if (!teamTasksComplete(current.tasks) && teamTasksComplete(next.tasks))
     updates.push({ type: "tasks_completed" });
   // User edits count as activity; task revisions alone stay quiet.
@@ -1185,6 +1207,7 @@ function teamColumns(
     | "tasks"
     | "preview"
     | "canvasArtifactId"
+    | "connectorCoordinators"
   >,
 ) {
   return {
@@ -1197,6 +1220,7 @@ function teamColumns(
     tasks: JSON.stringify(team.tasks),
     preview: team.preview ? JSON.stringify(team.preview) : null,
     canvas_artifact_id: team.canvasArtifactId ?? null,
+    connector_coordinators: JSON.stringify(team.connectorCoordinators ?? {}),
   };
 }
 
@@ -1507,6 +1531,7 @@ type TeamRow = {
   tasks: string;
   preview: string | null;
   canvas_artifact_id: string | null;
+  connector_coordinators: string;
   latest_sequence: number;
   revision: number;
   seen_through: number;
@@ -1556,6 +1581,7 @@ async function readTeamRows(db: Bun.SQL, teamId?: string) {
 }
 
 function teamFromRow(row: TeamRow): Team {
+  const coordinators = connectorCoordinatorsSchema.parse(JSON.parse(row.connector_coordinators));
   return {
     id: row.id,
     name: row.name,
@@ -1567,6 +1593,7 @@ function teamFromRow(row: TeamRow): Team {
     tasks: teamTasksSchema.parse(JSON.parse(row.tasks)),
     ...(row.preview ? { preview: previewSchema.parse(JSON.parse(row.preview)) } : {}),
     ...(row.canvas_artifact_id ? { canvasArtifactId: row.canvas_artifact_id } : {}),
+    ...(Object.keys(coordinators).length ? { connectorCoordinators: coordinators } : {}),
     latestSequence: row.latest_sequence,
     seenThrough: row.seen_through,
     completedSequence: row.completed_sequence,

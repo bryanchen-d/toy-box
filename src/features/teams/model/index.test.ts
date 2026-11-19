@@ -88,6 +88,34 @@ describe("team delivery policy", () => {
     // Mentions it opens with still decide who it wakes.
     expect(reply("@critic please check the post", "builder")).toEqual([members[0]]);
   });
+
+  test("an unmentioned connector message wakes the connector's coordinator, unless it answers an agent", () => {
+    const connector = { type: "connector", connectorId: "bryanbot" } as const;
+    const message = (askedBy?: string, coordinator = "builder", content = "CI build failed") =>
+      resolveTeamAudience({
+        content,
+        sender: connector,
+        lead,
+        members,
+        askedBy,
+        coordinators: { bryanbot: coordinator, other: "critic" },
+      });
+    expect(message()).toEqual([members[1]]);
+    expect(message("critic")).toEqual([members[0]]);
+    expect(message(lead.id)).toEqual([lead]);
+    expect(message(undefined, "removed")).toEqual([lead]);
+    expect(message(undefined, "builder", "@critic take this one")).toEqual([members[0]]);
+    // Coordinators apply only to their connector's messages.
+    expect(
+      resolveTeamAudience({
+        content: "Please review",
+        sender: user,
+        lead,
+        members,
+        coordinators: { bryanbot: "builder" },
+      }),
+    ).toEqual([lead]);
+  });
   test.each<{ acknowledgedRequest: boolean; expected: TeamAgent[] }>([
     { acknowledgedRequest: true, expected: [lead, members[1]!] },
     { acknowledgedRequest: false, expected: [members[1]!] },

@@ -124,7 +124,7 @@ const readThreadParameter = {
 
 const readTeamForSessionTool = defineTool("read_team", {
   description:
-    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. A reply's threadSequence names its thread. Pass threadSequence instead to read one whole thread. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. A reply's threadSequence names its thread. Pass threadSequence instead to read one whole thread. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: teamIdentitySchema
     .extend({
       beforeSequence: z.number().int().positive().optional(),
@@ -210,7 +210,7 @@ const waitForTeamAgentsTool = defineTool("wait_for_team_agents", {
 const readTeamForAgentTool = defineTool("read_team", {
   alwaysAvailable: true,
   description:
-    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z.object(readThreadParameter),
   handler: async ({ threadSequence }, invocation) => {
     const { readTeamForAgent, readTeamThreadForAgent } = await import("@teams/server");
@@ -317,7 +317,7 @@ const setTeamStatusTool = defineTool("set_agent_status", {
 
 const updateTeamTool = defineTool("update_team", {
   description:
-    "Updates this team's name, icon (avatar), purpose, working directory, tasks, preview, or canvas. Only the lead can update it. Design an avatar as SVG path data and a background color; use this same field to replace it when asked for a new team icon. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_team_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set avatar, purpose, directory, preview, or canvasArtifactId to null to clear it.",
+    "Updates this team's name, icon (avatar), purpose, working directory, tasks, preview, canvas, or connector coordinators. Only the lead can update it. Design an avatar as SVG path data and a background color; use this same field to replace it when asked for a new team icon. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_team_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set connectorCoordinators to the complete map from connectorId (from read_team's connectors) to the agentId of the team agent that coordinates that connector: its messages then wake that agent instead of you, unless they mention agents or answer an agent's own message. Set avatar, purpose, directory, preview, canvasArtifactId, or connectorCoordinators to null to clear it.",
   parameters: updateTeamInputSchema,
   handler: async (args, invocation) => {
     const { updateTeamFromLead } = await import("@teams/server");
@@ -571,6 +571,7 @@ function teamContextForTool({
   tasks,
   preview,
   canvasArtifactId,
+  connectorCoordinators,
   paused,
   model,
 }: Team) {
@@ -587,6 +588,7 @@ function teamContextForTool({
     tasks,
     preview,
     canvasArtifactId,
+    connectorCoordinators,
   };
 }
 

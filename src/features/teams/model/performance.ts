@@ -183,6 +183,7 @@ export function projectTeamPerformance(
   {
     lead,
     members,
+    coordinators,
     bucket,
     starts,
     wakes = [],
@@ -190,6 +191,7 @@ export function projectTeamPerformance(
   }: {
     lead: TeamAgent;
     members: readonly TeamAgent[];
+    coordinators?: Readonly<Record<string, string>>;
     bucket: PerformanceBucket;
     /** The window's bucket starts, oldest first. */
     starts: readonly Date[];
@@ -282,6 +284,8 @@ export function projectTeamPerformance(
       sender: message.sender,
       lead,
       members,
+      askedBy: message.askedBy,
+      coordinators,
     });
     for (const { id } of audience) {
       totalsFor(id).wakes += 1;
