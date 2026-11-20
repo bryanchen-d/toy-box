@@ -5,12 +5,13 @@ import { listModels } from "@providers/server";
 import { normalizeModelConfiguration } from "@providers/model";
 import { createSessionRecord } from "@sessions/server/state/registry";
 import { readSession } from "@sessions/server/state/sessions";
+import type { SessionStall } from "@sessions/server/runtime";
 import { createWorker, getPersistedWorker } from "@workers/server/database";
 import { sharedMap } from "@/shared/server/processState";
 import { teamHandle, type Team } from "@teams/model";
 import { ADMIN_TEAM_AVATAR, ADMIN_TEAM_ID, ADMIN_TEAM_PURPOSE } from "@teams/model/admin";
 import { TeamDatabase } from "./database";
-import { publishTeamChange } from "./index";
+import { publishTeamChange, wakeTeamAgent } from "./index";
 
 const provisioning = sharedMap<Promise<Team | null>>("admin-team-provisioning");
 
@@ -56,6 +57,29 @@ async function provision(): Promise<Team | null> {
   if (created) broadcast({ type: "team.upserted", team });
   else publishTeamChange(initialized);
   return team;
+}
+
+/**
+ * Tell Admin about a session waiting on a provider that stopped answering, so its lead can confirm
+ * it and ask the owner to stop it. Nothing is stopped here.
+ */
+export async function noteStalledSession(stall: SessionStall): Promise<void> {
+  const database = new TeamDatabase(await getStateDatabase());
+  if (!(await database.getTeam(ADMIN_TEAM_ID))) return;
+  const agent = await database.getAgent(stall.sessionId);
+  const team = agent && (await database.getTeam(agent.teamId));
+  const name = agent?.name ?? (await getPersistedWorker(stall.sessionId))?.name;
+  const change = await database.noteSessionStalled(ADMIN_TEAM_ID, {
+    type: "session_stalled",
+    sessionId: stall.sessionId,
+    ...(name ? { name } : {}),
+    ...(team ? { team: { id: team.id, name: team.name } } : {}),
+    since: stall.since,
+    queuedMessages: stall.queuedMessages,
+  });
+  publishTeamChange(change);
+  if (change.events.length)
+    await wakeTeamAgent(ADMIN_TEAM_ID, { type: "team_message", senderName: "Agent Teams" });
 }
 
 /** Tool exposure is convenience; invocation identity is the server-side authority. */

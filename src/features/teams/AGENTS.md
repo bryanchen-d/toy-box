@@ -43,7 +43,17 @@ The latter validates the exact target and rejects self, unknown, running, or sta
 It releases only an idle provider handle: it never wakes the target, interrupts background work,
 or deletes history. The next normal message resumes with current tools. Busy targets require
 the owner to stop them first. Requests to diagnose do not authorize recovery, and connectors
-or other teams do not confer the owner's permission. No background health polling is installed.
+or other teams do not confer the owner's permission. No agent polls for health.
+
+Instead, Sessions reports each live session that has waited 15 minutes on a silent provider
+(see [stalled sessions](../sessions/server/runtime/AGENTS.md)), and `noteStalledSession` posts it
+to Admin as a typed `session_stalled` notice naming the session, its agent and team when it has
+them, when its provider last spoke, and how many messages haven't reached it. The notice's ID
+derives from the session and that silence, so a repeated report posts nothing. It wakes Admin's
+lead, and a paused Admin saves it without waking anyone.
+The lead confirms the stall with `check_session_status` and flags one request asking the owner
+to stop the session and message it again; it never stops, refreshes, or messages it itself.
+The transcript row's name opens the stalled session's pane, where the owner can stop it.
 
 ### Ordinary team lifecycle
 
@@ -108,7 +118,8 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   connector messages contain Markdown and optional attachments: images and videos to look at, and
   Markdown, text, and PDF documents to read or pass on. Typed system
   messages record name, purpose, directory, preview, membership, artifact, and undelivered
-  connector-message changes. Agent senders retain only their stable Worker ID, so deleting
+  connector-message changes, and, in Admin, sessions that stalled. Agent senders retain only
+  their stable Worker ID, so deleting
   a member preserves prior content while the UI presents a deleted identity. A connector sender
   retains its connector ID, and its message may carry `origin`: where the content came from and
   whether its requester is the owner. See [Connectors](../connectors/AGENTS.md).
@@ -793,9 +804,11 @@ presents one deleted identity everywhere.
   The versioned SSE route delegates to that owner through `api.ts`.
   `resources.ts` resolves client URLs before publication or snapshot delivery.
   `tools.ts` owns agent-facing projections and the Session, lead, and member tool sets; `agent.ts` composes each agent's
-  execution, and `startup.ts` clears finished working statuses and starts the wake interval.
-  `admin.ts` provisions the built-in team without execution and checks its lead's authority;
-  `adminTools.ts` exposes its read-only diagnostics and idle-only connection refresh.
+  execution, and `startup.ts` clears finished working statuses, starts the wake interval, and
+  forwards stalled sessions to Admin.
+  `admin.ts` provisions the built-in team without execution, checks its lead's authority, and
+  posts stalled-session notices; `adminTools.ts` exposes its read-only diagnostics and idle-only
+  connection refresh.
 - `queries.ts`, `stream.ts`, `mutations.ts`, `queryCache.ts`, and `useTeam.ts` own client data:
   catalog and streamed detail queries, the SSE adapter, mutations, catalog event patches, and one
   open Team's visibility and read lifecycle.

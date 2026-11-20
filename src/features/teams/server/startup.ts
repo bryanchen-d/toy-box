@@ -1,16 +1,22 @@
 import { getStateDatabase } from "@/server/database";
+import { subscribeSessionStalls } from "@sessions/server/runtime";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
 import { getSessionState } from "@workspace/server/state/sessions";
 import { WorkerDatabase } from "@workers/server/database";
 import { TeamDatabase } from "./database";
 import { publishTeamChange, wakeDueTeamAgents } from "./index";
-import { ensureAdminTeam } from "./admin";
+import { ensureAdminTeam, noteStalledSession } from "./admin";
 
 /** Working status belongs to an execution; waiting survives it and can schedule a wake. */
 export default async function startTeams(): Promise<VoidFunction> {
   const db = await getStateDatabase();
   const teams = new TeamDatabase(db);
   await ensureAdminTeam();
+  const unsubscribeStalls = subscribeSessionStalls((stall) => {
+    void noteStalledSession(stall).catch((error: unknown) =>
+      console.error(`Could not tell Admin that session ${stall.sessionId} stalled:`, error),
+    );
+  });
   const unsubscribe = subscribeWorkspaceEvents((event) => {
     if (event.type === "providers.changed" || event.type === "settings.changed") {
       void ensureAdminTeam().catch((error: unknown) =>
@@ -28,6 +34,7 @@ export default async function startTeams(): Promise<VoidFunction> {
   const timer = setInterval(() => void wakeDueTeamAgents(), 30_000);
   timer.unref?.();
   return () => {
+    unsubscribeStalls();
     unsubscribe();
     clearInterval(timer);
   };

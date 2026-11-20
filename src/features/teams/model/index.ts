@@ -441,6 +441,21 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
       excerpt: z.string(),
     })
     .strict(),
+  /** Posted to the Admin team: a session waited 15 minutes on a provider that never answered. */
+  z
+    .object({
+      type: z.literal("session_stalled"),
+      sessionId: durableIdSchema,
+      /** Its agent's or worker's name when it stalled, when it has one. */
+      name: z.string().optional(),
+      /** The team it works for, when it is a team's agent. */
+      team: z.object({ id: durableIdSchema, name: teamNameSchema }).strict().optional(),
+      /** When its provider last said anything. */
+      since: z.string(),
+      /** Messages sent to it that haven't reached it. */
+      queuedMessages: z.number().int().nonnegative(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("team_renamed"),

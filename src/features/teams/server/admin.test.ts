@@ -9,10 +9,11 @@ import * as runtime from "@sessions/server/runtime";
 import * as settings from "@workspace/server/state/settings";
 import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import { ADMIN_TEAM_AVATAR, ADMIN_TEAM_ID, ADMIN_TEAM_PURPOSE } from "@teams/model/admin";
+import { isTeamSystemMessage } from "@teams/model";
 import { readSession, setSessionProvider } from "@sessions/server/state/sessions";
 import { createStoredTeam, teamAgent } from "./testFixtures";
 import { TeamDatabase } from "./database";
-import { ensureAdminTeam } from "./admin";
+import { ensureAdminTeam, noteStalledSession } from "./admin";
 import { adminTeamTools } from "./adminTools";
 import { getTeamAgentConfiguration, getTeamAgentTools } from "./agent";
 import { wakeTeamAgent } from "./index";
@@ -219,4 +220,57 @@ test("the first Admin message creates its ordinary worker session, while later m
     { sessionType: "worker", name: "Lead · Admin" },
   );
   expect(deliver).toHaveBeenCalledTimes(1);
+});
+
+function spyOnAdminWakes() {
+  const create = spyOn(runtime, "createSession").mockResolvedValue({
+    disposition: "started",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => create.mockRestore());
+  return create;
+}
+
+async function stallNotices(teams: TeamDatabase) {
+  return (await teams.listMessagesAfter(ADMIN_TEAM_ID)).flatMap((message) =>
+    isTeamSystemMessage(message) && message.content.type === "session_stalled"
+      ? [message.content]
+      : [],
+  );
+}
+
+test("a stalled agent is posted to Admin once, naming it and its team, and wakes the Admin lead", async () => {
+  const { teams } = await setup();
+  await ensureAdminTeam();
+  const build = await createStoredTeam(teams, {
+    name: "build",
+    model: { provider: "copilot", name: "fixture-model" },
+  });
+  await teams.createMember(teamAgent(build.id, "pipeline-engineer", "Pipeline Engineer"));
+  const create = spyOnAdminWakes();
+  const stall = {
+    sessionId: "pipeline-engineer",
+    since: "2026-11-20T14:24:13.825Z",
+    queuedMessages: 9,
+  };
+
+  await noteStalledSession(stall);
+  await noteStalledSession(stall);
+
+  expect(await stallNotices(teams)).toEqual([
+    {
+      type: "session_stalled",
+      sessionId: "pipeline-engineer",
+      name: "Pipeline Engineer",
+      team: { id: build.id, name: "build" },
+      since: "2026-11-20T14:24:13.825Z",
+      queuedMessages: 9,
+    },
+  ]);
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(create).toHaveBeenCalledWith(
+    ADMIN_TEAM_ID,
+    { systemMessage: { type: "team_message", senderName: "Agent Teams" }, immediate: true },
+    expect.anything(),
+  );
 });

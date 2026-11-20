@@ -799,6 +799,23 @@ export class TeamDatabase {
     });
   }
 
+  /** One notice per silence, so a repeated report of the same stall posts nothing. */
+  async noteSessionStalled(
+    teamId: string,
+    content: Extract<TeamSystemMessageContent, { type: "session_stalled" }>,
+  ) {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireTeam(db, teamId);
+      const id = `session-stalled:${content.sessionId}:${content.since}`;
+      const [existing] = await db`SELECT id FROM team_messages WHERE id = ${id}`;
+      return recordTeamChange(
+        db,
+        team,
+        existing ? [] : [await appendSystemMessage(db, teamId, content, id)],
+      );
+    });
+  }
+
   async setMessageReaction(input: {
     teamId: string;
     sequence: number;

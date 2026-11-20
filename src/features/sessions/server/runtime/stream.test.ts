@@ -18,7 +18,9 @@ import {
   searchSessionHistory,
   registerPendingSessionCompletion,
   rejectPendingSessionCompletion,
+  subscribeSessionStalls,
   waitForSessions,
+  type SessionStall,
 } from "./index";
 import { SessionStream } from "./sessionStream";
 import { deleteSessionFiles, writeSessionArtifact } from "../artifacts";
@@ -2708,32 +2710,91 @@ describe("waitForSessions", () => {
 });
 
 describe("stalled session reports", () => {
-  test("warn once for each stretch a live session's provider stays silent", async () => {
-    const sessionId = "session-stall-report";
+  const start = Date.parse("2026-11-18T12:00:00.000Z");
+  const minutes = (count: number) => start + count * 60_000;
+
+  /** A live stream mid-turn whose provider last spoke at `start`, plus the stalls it reports. */
+  async function watchStream(sessionId: string) {
     cleanUpStreamAfterTest(sessionId, { restoreMocks: true });
     mockStreamRuntimeModules();
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    spyOn(console, "warn").mockImplementation(() => {});
+    const stalls: SessionStall[] = [];
+    onTestFinished(subscribeSessionStalls((stall) => stalls.push(stall)));
     const { session, emit } = makeControllableSession();
     const stream = SessionStream.getOrCreate(sessionId, session);
-    await stream.deliver(userMessage("go"));
-    const start = Date.parse("2026-11-18T12:00:00.000Z");
-    const minutes = (count: number) => start + count * 60_000;
     setSystemTime(start);
     onTestFinished(() => setSystemTime());
-    emit({ type: "tool_start", toolCallId: "shell-1", toolName: "shell", arguments: {} });
+    await stream.deliver(userMessage("go"));
+    return { stream, emit, stalls };
+  }
 
-    reportStalledSessions(minutes(29));
-    reportStalledSessions(minutes(31));
-    reportStalledSessions(minutes(90));
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenLastCalledWith(
-      `Session ${sessionId} has heard nothing from its provider since 2026-11-18T12:00:00.000Z while thinking. Running tools: shell. Queued messages: none.`,
-    );
+  test("report a session waiting 15 minutes on a silent provider once per silence", async () => {
+    const sessionId = "session-stall-report";
+    const { stream, emit, stalls } = await watchStream(sessionId);
+    emit({ type: "delta", content: "Working on it" });
+    await stream.deliver({ ...userMessage("Also check CI"), immediate: true });
 
-    setSystemTime(minutes(91));
-    emit({ type: "delta", content: "Still here" });
-    reportStalledSessions(minutes(120));
-    reportStalledSessions(minutes(122));
-    expect(warn).toHaveBeenCalledTimes(2);
+    for (const at of [5, 15]) reportStalledSessions(minutes(at));
+    expect(stalls).toEqual([]);
+    reportStalledSessions(minutes(20));
+    reportStalledSessions(minutes(25));
+    expect(stalls).toEqual([{ sessionId, since: "2026-11-18T12:00:00.000Z", queuedMessages: 1 }]);
+
+    setSystemTime(minutes(26));
+    emit({ type: "delta", content: " still" });
+    reportStalledSessions(minutes(30));
+    reportStalledSessions(minutes(40));
+    expect(stalls).toHaveLength(1);
+    reportStalledSessions(minutes(41));
+    expect(stalls).toHaveLength(2);
+    expect(stalls.at(-1)?.since).toBe("2026-11-18T12:26:00.000Z");
+  });
+
+  test.each([
+    {
+      reason: "a running tool",
+      events: [
+        { type: "tool_start", toolCallId: "build", toolName: "shell", arguments: {} },
+      ] satisfies SessionEvent[],
+    },
+    {
+      reason: "a pending question",
+      events: [
+        { type: "tool_start", toolCallId: "ask", toolName: "ask_user", arguments: {} },
+        {
+          type: "question_requested",
+          toolCallId: "ask",
+          requestId: "input",
+          question: { question: "Deploy now?", allowFreeform: true },
+        },
+      ] satisfies SessionEvent[],
+    },
+    {
+      reason: "background work",
+      events: [{ type: "status", status: "background" }] satisfies SessionEvent[],
+    },
+  ])("silence that $reason explains is not a stall", async ({ events }) => {
+    const { emit, stalls } = await watchStream("session-stall-explained");
+    for (const event of events) emit(event);
+
+    for (const at of [5, 20, 60]) reportStalledSessions(minutes(at));
+    expect(stalls).toEqual([]);
+  });
+
+  test("the clock starts when a session begins waiting, not at its provider's last event", async () => {
+    const { stream, emit, stalls } = await watchStream("session-stall-new-turn");
+    emit({ type: "status", status: "background" });
+    reportStalledSessions(minutes(60));
+
+    // A queued message opens a turn with no provider event yet.
+    await stream.deliver(userMessage("Next"));
+    await settle();
+    expect(stream.getSessionState().status).toBe("thinking");
+    for (const at of [61, 71]) reportStalledSessions(minutes(at));
+    expect(stalls).toEqual([]);
+    reportStalledSessions(minutes(76));
+    expect(stalls).toEqual([
+      { sessionId: "session-stall-new-turn", since: "2026-11-18T12:00:00.000Z", queuedMessages: 1 },
+    ]);
   });
 });

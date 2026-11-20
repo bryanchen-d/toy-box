@@ -4,6 +4,7 @@ import {
   CheckCheck,
   FileUp,
   Folder,
+  Hourglass,
   MonitorPlay,
   PanelsTopLeft,
   Pause,
@@ -36,16 +37,17 @@ type Contents<Kind extends SystemMessageKind> = [ContentByKind[Kind], ...Content
 
 type PresentationContext = {
   agent: (id: string) => TeamAgentIdentity;
+  openSession?: (sessionId: string) => void;
   revealFile?: (file: WorkspaceFile) => void;
 };
 
 /** One system message, or a run of membership changes or one agent's artifact shares, merged. */
 export function SystemMessageGroup({ messages }: { messages: readonly TeamSystemMessage[] }) {
   const { agent } = useTeamPane();
-  const { revealFile } = useWorkspaceSurface();
+  const { openSession, revealFile } = useWorkspaceSurface();
   const { icon, content, tooltip } = presentSystemMessages(
     messages.map(({ content }) => content),
-    { agent, revealFile },
+    { agent, openSession, revealFile },
   );
 
   // The icon sits in the avatar column, so events read as part of the conversation.
@@ -215,6 +217,29 @@ const SYSTEM_MESSAGES: {
             : "It couldn't be delivered for 5 days, so it was dropped.",
     }),
   },
+  session_stalled: {
+    icon: <Hourglass className="size-3.5 shrink-0" />,
+    present: ([{ sessionId, name, team, since, queuedMessages }], { openSession }) => {
+      const label = name ? (team ? `${name} in ${team.name}` : name) : "A session";
+      const silent = new Date(since).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      return {
+        content: (
+          <>
+            <LinkButton title="Open this session" onClick={() => openSession?.(sessionId)}>
+              {label}
+            </LinkButton>{" "}
+            stopped responding
+            {queuedMessages > 0 &&
+              `, and ${queuedMessages === 1 ? "1 message hasn't" : `${queuedMessages} messages haven't`} reached it`}
+          </>
+        ),
+        tooltip: `Nothing from its provider since ${silent}, though no tool, question, or background work is running. Stop it from its pane, then message it again.`,
+      };
+    },
+  },
   artifact_shared: {
     icon: <FileUp className="size-3.5 shrink-0" />,
     present: (contents, { agent, revealFile }) => {
@@ -234,14 +259,9 @@ const SYSTEM_MESSAGES: {
                       ? ", and "
                       : " and "
                     : ", ")}
-                <button
-                  type="button"
-                  title={artifact.file.path}
-                  className="font-medium text-foreground underline decoration-current/40 underline-offset-2 hover:decoration-current focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => revealFile?.(artifact.file)}
-                >
+                <LinkButton title={artifact.file.path} onClick={() => revealFile?.(artifact.file)}>
                   {artifact.title}
-                </button>
+                </LinkButton>
               </span>
             ))}
           </>
@@ -264,6 +284,28 @@ const SYSTEM_MESSAGES: {
 };
 
 const MAX_VALUE_LENGTH = 120;
+
+/** A name in an event that opens what it names. */
+function LinkButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      className="font-medium text-foreground underline decoration-current/40 underline-offset-2 hover:decoration-current focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * A changed value on one line of at most 120 characters, and in full on hover. A long path keeps its

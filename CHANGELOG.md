@@ -7,6 +7,7 @@
 - Connectors link outside services, like a Slack bot, that any team can message by starting with its @handle, over a URL or a private dev tunnel
 - Content written by others (web pages, GitHub issues, MCP results, and other people's Slack messages) is marked as untrusted wherever agents read it and screened for prompt injections. The Security toggle on each Team's panel bar records each attack, quoting the passage and saying why it's risky, and answers questions about it; until you close it as not an attack or a real attack, that session needs your approval, or is blocked in background work, to send data out, read credentials, delete work, or change agent instructions. Warn agent tells the session not to act on the content, and closed findings load page by page under Closed, where they can be reopened. Screening knows which parts of an agent's command output came from others, double-checks each flag with a stronger model, and learns from the flags you close as not attacks
 - A team's lead marks a question it flagged for you as answered once it gets the answer another way, such as from a member, a connector, or another team: the question shows a gray check and Answered, and the team stops waiting on your reply
+- The Admin team tells you when a session stops responding: if a session waits 15 minutes on its model with no tool, question, or background work running, Admin posts which session it is and how many messages haven't reached it, and its lead asks you to stop it and message it again. Click the session's name to open it
 
 ## 📅 v0.3.1 (10/20/26)
 

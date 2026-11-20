@@ -14,7 +14,6 @@ import { searchSessionMessages } from "@sessions/model/search";
 import { hasBlockingSessionQuestion } from "@sessions/model/questions";
 import type { SessionQuestionAnswer, StreamSessionRequest } from "@sessions/model/protocol";
 import type {
-  AssistantMessage,
   SessionCompletion,
   SessionLaunch,
   SessionMessage,
@@ -35,6 +34,7 @@ export { getSessionDirectory } from "../providers";
 export { deleteSession, deleteSessionIfExists, releaseIdleSession } from "../state/registry";
 export { isSessionNotFoundError } from "../state/registry";
 export { subscribeSessionCompletions, type SessionCompletionListener } from "./completions";
+export { reportStalledSessions, subscribeSessionStalls, type SessionStall } from "./stalls";
 
 type PendingSessionCompletion = {
   promise: Promise<SessionCompletion>;
@@ -210,47 +210,6 @@ export function getSessionRuntimeDiagnostics(sessionId: string) {
     waitingForInput,
     lastProviderEventAt: stream?.lastProviderEventAt,
   };
-}
-
-const STALL_AFTER_MS = 30 * 60_000;
-const stallWatches = new Map<string, { quietSince: number; heard?: number; reported: boolean }>();
-
-/**
- * Warn once about each live session whose provider has said nothing for half an hour while the
- * session waits on it, naming what it was running, so a hung turn leaves evidence behind.
- */
-export function reportStalledSessions(now = Date.now()): void {
-  const live = new Set(SessionStream.getSessionIds());
-  for (const sessionId of stallWatches.keys()) {
-    if (!live.has(sessionId)) stallWatches.delete(sessionId);
-  }
-  for (const sessionId of live) {
-    const stream = SessionStream.get(sessionId)!;
-    const heard = stream.lastProviderEventAt;
-    let watch = stallWatches.get(sessionId);
-    if (!watch || watch.heard !== heard) {
-      watch = { quietSince: heard ?? now, heard, reported: false };
-      stallWatches.set(sessionId, watch);
-    }
-    const state = stream.getSessionState();
-    if (watch.reported || now - watch.quietSince < STALL_AFTER_MS) continue;
-    if (hasBlockingSessionQuestion(state)) continue;
-    watch.reported = true;
-
-    const lastAssistant = [...state.messages]
-      .reverse()
-      .find((message): message is AssistantMessage => message.role === "assistant");
-    const runningTools =
-      lastAssistant?.toolCalls?.filter((tool) => !tool.result).map((tool) => tool.name) ?? [];
-    const queued = new Map<string, number>();
-    for (const { status } of state.queuedMessages)
-      queued.set(status, (queued.get(status) ?? 0) + 1);
-    const queue = [...queued].map(([status, count]) => `${count} ${status}`);
-    console.warn(
-      `Session ${sessionId} has heard nothing from its provider since ${new Date(watch.quietSince).toISOString()} while ${state.status}. ` +
-        `Running tools: ${runningTools.join(", ") || "none"}. Queued messages: ${queue.join(", ") || "none"}.`,
-    );
-  }
 }
 
 export function cancelQueuedMessage(sessionId: string, clientId: string): boolean {
