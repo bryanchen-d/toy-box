@@ -702,7 +702,9 @@ presents one deleted identity everywhere.
   any per-thread read state. A message that starts a thread summarizes its replies, who wrote them,
   when the latest arrived, and any question among them, all derived from loaded messages.
   Each message in a run carries its addressee, its body without the leading mentions that addressee
-  names, its request state, whether it repeats the run's header, and whether it collapses. One
+  names, its request state, whether it repeats the run's header, and whether it collapses. A
+  request is pending until the first acknowledgement after it, which tags it Replied when the user
+  wrote it, or Answered when the lead resolved it. One
   optional divider precedes a row, labeling a new day, marking where unread messages begin with a
   blue rule and "New", or both at once rather than stacking two rules. `SystemMessageGroup` defines
   each kind's static icon and presentation function together in one local object; each function

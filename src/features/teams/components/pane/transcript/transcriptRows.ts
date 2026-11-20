@@ -74,15 +74,18 @@ export type AgentRunEntry = {
   thread?: TranscriptThread;
 };
 
-/** A question the lead flagged stays pending until a later user message or resolution acknowledges it. */
-export type TeamRequestState = "pending" | "acknowledged";
+/**
+ * A question the lead flagged stays pending until the user replies, or until the lead resolves it,
+ * having gotten its answer another way.
+ */
+export type TeamRequestState = "pending" | "replied" | "answered";
 
 type RowContext = {
   lead: TeamAgent;
   members: readonly TeamAgent[];
   coordinators?: Readonly<Record<string, string>>;
-  /** The latest message that acknowledged every request before it. */
-  acknowledgedThrough: number;
+  /** The messages that acknowledged every request before them, oldest first. */
+  acknowledgements: readonly TeamMessage[];
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
 };
@@ -119,7 +122,7 @@ export function transcriptRows(
     lead,
     members,
     coordinators,
-    acknowledgedThrough: acknowledgedThrough(messages),
+    acknowledgements: acknowledgements(messages),
     threads: loadedThreads(messages),
   };
   return rowsOf(messages, context, { unreadAfter, view });
@@ -146,7 +149,7 @@ export function threadRows(
     lead,
     members,
     coordinators,
-    acknowledgedThrough: acknowledgedThrough(messages),
+    acknowledgements: acknowledgements(messages),
   };
   const thread = messages.filter(
     (message) => message.sequence === sequence || message.threadSequence === sequence,
@@ -333,20 +336,23 @@ function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThre
   return threads;
 }
 
-function acknowledgedThrough(messages: readonly TeamMessage[]): number {
-  return messages.reduce(
-    (latest, message) =>
-      acknowledgesTeamRequests(message) ? Math.max(latest, message.sequence) : latest,
-    0,
-  );
+/** The messages that acknowledged every request before them, oldest first. */
+function acknowledgements(messages: readonly TeamMessage[]): TeamMessage[] {
+  return messages.filter(acknowledgesTeamRequests);
 }
 
-function requestState(message: TeamConversationMessage, context: RowContext): TeamRequestState {
-  return isPending(message, context) ? "pending" : "acknowledged";
+/** The first acknowledgement after a question settles it: the user replied, or the lead resolved it. */
+function requestState(
+  { sequence }: TeamConversationMessage,
+  { acknowledgements }: RowContext,
+): TeamRequestState {
+  const acknowledgement = acknowledgements.find((message) => message.sequence > sequence);
+  if (!acknowledgement) return "pending";
+  return isTeamSystemMessage(acknowledgement) ? "answered" : "replied";
 }
 
-function isPending({ sequence }: TeamConversationMessage, { acknowledgedThrough }: RowContext) {
-  return sequence > acknowledgedThrough;
+function isPending(message: TeamConversationMessage, context: RowContext) {
+  return requestState(message, context) === "pending";
 }
 
 /**

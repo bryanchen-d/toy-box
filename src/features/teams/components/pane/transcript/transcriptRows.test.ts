@@ -220,7 +220,7 @@ describe("agent run entries", () => {
   test("a request stays pending until a later user message acknowledges it", () => {
     const asked = { ...agentPost(1, "lead"), request: true as const };
     expect(runOf([asked])[0]!.request).toBe("pending");
-    expect(runOf([asked, userPost(3)])[0]!.request).toBe("acknowledged");
+    expect(runOf([asked, userPost(3)])[0]!.request).toBe("replied");
   });
 
   test("a later request pends while an earlier reply keeps acknowledging its own", () => {
@@ -232,7 +232,25 @@ describe("agent run entries", () => {
     const requests = rows.flatMap((row) =>
       row.type === "agent" ? row.entries.map(({ request }) => request) : [],
     );
-    expect(requests).toEqual(["acknowledged", "pending"]);
+    expect(requests).toEqual(["replied", "pending"]);
+  });
+
+  test("the first acknowledgement after a request says whether the user replied or the lead resolved it", () => {
+    const asked = (sequence: number) => ({
+      ...agentPost(sequence, "lead"),
+      request: true as const,
+    });
+    const rows = rowsOf([
+      asked(1),
+      event(2, { type: "requests_resolved" }),
+      asked(3),
+      userPost(4),
+      event(5, { type: "requests_resolved" }),
+    ]);
+    const requests = rows.flatMap((row) =>
+      row.type === "agent" ? row.entries.map(({ request }) => request) : [],
+    );
+    expect(requests).toEqual(["answered", "replied"]);
   });
 });
 
@@ -376,7 +394,7 @@ describe("threads", () => {
     expect(threadOfRow(pending[0])?.request).toBe("pending");
     expect(threadOfRow(pending[2])?.request).toBe("pending");
     const acknowledged = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
-    expect(threadOfRow(acknowledged[2])?.request).toBe("acknowledged");
+    expect(threadOfRow(acknowledged[2])?.request).toBe("replied");
   });
 
   test("your messages view keeps replies for the user and leaves coordination out", () => {
