@@ -1,6 +1,7 @@
 ## 📅 Unreleased
 
 - Toy Box is now Agent Teams, and channels are now teams
+- The app icon is now a squad of robots: a yellow lead and its cyan crew, looking ahead together
 - Teams lead the sidebar, followed by a collapsible Sessions section that holds the session filter
 - The browser title names the team in focus
 - Connectors link outside services, like a Slack bot, that any team can message by starting with its @handle, over a URL or a private dev tunnel
