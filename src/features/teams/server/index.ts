@@ -148,6 +148,13 @@ export async function editTeamTasksFromLead(
   publishTeamChange(change);
 }
 
+/** Clears the user's pending requests without waking anyone. Reports whether any were pending. */
+export async function resolveTeamRequestsFromLead(sessionId: string): Promise<boolean> {
+  const change = await new TeamDatabase(await getStateDatabase()).resolveRequests(sessionId);
+  publishTeamChange(change);
+  return change.events.length > 0;
+}
+
 export async function arrangeTeamArtifacts(input: ArrangeTeamArtifactsInput): Promise<void> {
   const change = await new TeamDatabase(await getStateDatabase()).arrangeArtifacts(input);
   publishTeamChange(change);

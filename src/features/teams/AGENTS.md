@@ -82,7 +82,8 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
 - `Team` owns its name, optional avatar, purpose and working directory, lead model, public
   tasks, paused state, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
   Its `requestSequence` and `completedSequence` refer to transcript milestones. Completion is unread
-  when it follows `seenThrough`; a request remains pending until a user reply clears its sequence.
+  when it follows `seenThrough`; a request remains pending until a user reply or the lead's
+  resolution clears its sequence.
   Its avatar is an authored SVG path and background color, using the same constrained format as
   member avatars, but represents the team rather than its lead's fixed star identity.
 - `TeamTask` has a short, stable, team-unique ID such as `t12`, title, status, optional owner
@@ -113,6 +114,7 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   whether its requester is the owner. See [Connectors](../connectors/AGENTS.md).
   `tasks_completed` records the task list becoming complete. The lead flags an ordinary message with
   `request: true`; `requestSequence` points to that question until a user replies.
+  `requests_resolved` records the lead settling every pending request without the user.
   A user, Agent, or connector message may reply in a thread: its `threadSequence` is the sequence of the
   earlier top-level conversation message that starts the thread. Threads are one level deep, so
   replying to a reply joins the same thread, and system messages neither start nor join one. A
@@ -254,6 +256,11 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   any later committed user message acknowledges it and also reaches the lead, preserving any
   explicitly mentioned recipients.
   Acknowledgement does not imply that the user's response resolves the request.
+- Let the lead resolve every pending request when it gets what they asked for some other way, such
+  as from a member, connector, or another team. `resolve_team_requests` appends
+  `requests_resolved`, which acknowledges every earlier request like a user reply, without waking
+  anyone; with nothing pending it changes nothing. Resolution covers all pending requests, so the
+  lead flags a new one for anything still missing.
 
 ### Scheduled wakes
 
@@ -711,8 +718,9 @@ presents one deleted identity everywhere.
   unread row or the end, following the reader's own post, revealing the pending request, and
   paging history. Paging continues while the first row, or an empty view, is in view, so a sparse
   view fetches pages it may show nothing of instead of asking the server to filter. It stops once
-  older history can hold nothing the view shows: every pending question follows the user's latest
-  message, so Needs your reply pages only until one is loaded, or not at all with nothing pending.
+  older history can hold nothing the view shows: every pending question follows the latest user
+  message or resolution, so Needs your reply pages only until one is loaded, or not at all with
+  nothing pending.
   TanStack Virtual's mutable instance stays inside that hook, which the compiler
   skips, and the transcript receives only values current for its render.
   The "New" position comes from the current read position on arrival and holds

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   CalendarClock,
+  CheckCheck,
   FileUp,
   Folder,
   MonitorPlay,
@@ -104,6 +105,13 @@ const SYSTEM_MESSAGES: {
   tasks_completed: {
     icon: <DoneIndicator className="size-4 shrink-0" />,
     present: () => ({ content: "All tasks completed" }),
+  },
+  requests_resolved: {
+    icon: <CheckCheck className="size-3.5 shrink-0" />,
+    present: () => ({
+      content: "Questions for you resolved",
+      tooltip: "The lead got what it asked you for another way, so nothing waits on your reply.",
+    }),
   },
   team_renamed: {
     icon: <Pencil className="size-3.5 shrink-0" />,

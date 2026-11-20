@@ -337,6 +337,20 @@ export class TeamDatabase {
     });
   }
 
+  /** The lead settles every pending request without the user; with none pending, nothing changes. */
+  async resolveRequests(leadId: string) {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireLeadTeam(db, leadId);
+      return recordTeamChange(
+        db,
+        team,
+        team.requestSequence === null
+          ? []
+          : [await appendSystemMessage(db, team.id, { type: "requests_resolved" })],
+      );
+    });
+  }
+
   async deleteMember(agentId: string) {
     return inStateTransaction(this.db, async (db) => {
       const workers = new WorkerDatabase(db);

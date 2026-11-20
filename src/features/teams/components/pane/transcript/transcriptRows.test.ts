@@ -457,6 +457,12 @@ describe("needs your reply view", () => {
     expect(requests([question(1), question(2, 1), reply])).toEqual([]);
   });
 
+  test("the lead resolving acknowledges every earlier question, but not a later one", () => {
+    const resolved = event(3, { type: "requests_resolved" });
+    expect(rowIds(requests([question(1), question(2), resolved, question(4)]))).toEqual([["4"]]);
+    expect(viewNeedsOlderHistory([resolved, question(4)], "requests", 4)).toBe(false);
+  });
+
   test("needs older history only while a question may precede what's loaded", () => {
     const loaded = [agentPost(5, "engine"), question(6)];
     expect(viewNeedsOlderHistory(loaded, "requests", 6)).toBe(true);

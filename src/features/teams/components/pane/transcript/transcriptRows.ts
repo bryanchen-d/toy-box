@@ -1,4 +1,5 @@
 import {
+  acknowledgesTeamRequests,
   teamAudienceLabel,
   isTeamSystemMessage,
   messageAuthorId,
@@ -73,14 +74,15 @@ export type AgentRunEntry = {
   thread?: TranscriptThread;
 };
 
-/** A question the lead flagged stays pending until a later user message acknowledges it. */
+/** A question the lead flagged stays pending until a later user message or resolution acknowledges it. */
 export type TeamRequestState = "pending" | "acknowledged";
 
 type RowContext = {
   lead: TeamAgent;
   members: readonly TeamAgent[];
   coordinators?: Readonly<Record<string, string>>;
-  latestUserSequence: number;
+  /** The latest message that acknowledged every request before it. */
+  acknowledgedThrough: number;
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
 };
@@ -117,7 +119,7 @@ export function transcriptRows(
     lead,
     members,
     coordinators,
-    latestUserSequence: latestUserSequence(messages),
+    acknowledgedThrough: acknowledgedThrough(messages),
     threads: loadedThreads(messages),
   };
   return rowsOf(messages, context, { unreadAfter, view });
@@ -144,7 +146,7 @@ export function threadRows(
     lead,
     members,
     coordinators,
-    latestUserSequence: latestUserSequence(messages),
+    acknowledgedThrough: acknowledgedThrough(messages),
   };
   const thread = messages.filter(
     (message) => message.sequence === sequence || message.threadSequence === sequence,
@@ -198,7 +200,7 @@ export function pendingRequestRow(
 
 /**
  * Whether history before the loaded messages may hold messages the view shows. Every pending
- * request follows the user's latest message, so the requests view needs nothing before one.
+ * request follows the latest acknowledgement, so the requests view needs nothing before one.
  */
 export function viewNeedsOlderHistory(
   messages: readonly TeamMessage[],
@@ -206,7 +208,7 @@ export function viewNeedsOlderHistory(
   requestSequence: number | null,
 ): boolean {
   if (view !== "requests") return true;
-  return requestSequence !== null && !messages.some(({ sender }) => sender.type === "user");
+  return requestSequence !== null && !messages.some(acknowledgesTeamRequests);
 }
 
 /** "Today", "Yesterday", or the full day, adding the year only when it isn't the current one. */
@@ -331,10 +333,10 @@ function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThre
   return threads;
 }
 
-function latestUserSequence(messages: readonly TeamMessage[]): number {
+function acknowledgedThrough(messages: readonly TeamMessage[]): number {
   return messages.reduce(
-    (latest, { sender, sequence }) =>
-      sender.type === "user" ? Math.max(latest, sequence) : latest,
+    (latest, message) =>
+      acknowledgesTeamRequests(message) ? Math.max(latest, message.sequence) : latest,
     0,
   );
 }
@@ -343,8 +345,8 @@ function requestState(message: TeamConversationMessage, context: RowContext): Te
   return isPending(message, context) ? "pending" : "acknowledged";
 }
 
-function isPending({ sequence }: TeamConversationMessage, { latestUserSequence }: RowContext) {
-  return sequence > latestUserSequence;
+function isPending({ sequence }: TeamConversationMessage, { acknowledgedThrough }: RowContext) {
+  return sequence > acknowledgedThrough;
 }
 
 /**

@@ -243,6 +243,20 @@ describe("team attention", () => {
     ).toEqual([done]);
   });
 
+  test("only the lead resolves pending requests, and only when one is pending", async () => {
+    const { teams, team, ask } = await setup();
+    expect((await teams.resolveRequests(team.id)).events).toEqual([]);
+    await ask("Which region?");
+    await expect(teams.resolveRequests(crypto.randomUUID())).rejects.toThrow("team lead");
+    const resolved = await teams.resolveRequests(team.id);
+    expect(resolved).toMatchObject({
+      team: { requestSequence: null },
+      events: [{ type: "message", message: { content: { type: "requests_resolved" } } }],
+    });
+    expect(resolved.team).toEqual((await teams.getTeam(team.id))!);
+    expect((await teams.getSnapshot(team.id, 1))?.request).toBeNull();
+  });
+
   test("only the lead can request input", async () => {
     const { teams, team } = await setup();
     const { member } = await teams.createMember(teamAgent(team.id, "member", "Member"));

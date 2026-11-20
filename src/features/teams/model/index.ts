@@ -75,6 +75,13 @@ export function teamHasPendingRequest(team: Team): boolean {
   return team.requestSequence !== null;
 }
 
+/** A user message, or the lead resolving them, settles every request before it. */
+export function acknowledgesTeamRequests(message: TeamMessage<unknown>): boolean {
+  return isTeamSystemMessage(message)
+    ? message.content.type === "requests_resolved"
+    : message.sender.type === "user";
+}
+
 export function teamStatus(team: Team): "waiting" | "finished" | "unread" | null {
   if (teamHasPendingRequest(team)) return "waiting";
   if (teamHasUnreadCompletion(team)) return "finished";
@@ -410,6 +417,8 @@ export const teamRoutineIdentitySchema = z
 export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("team_paused"), paused: z.boolean() }).strict(),
   z.object({ type: z.literal("tasks_completed") }).strict(),
+  /** The lead got what every pending request asked for another way, so none waits on the user. */
+  z.object({ type: z.literal("requests_resolved") }).strict(),
   z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
   z.object({ type: z.literal("member_left"), member: teamMemberSchema }).strict(),
   z

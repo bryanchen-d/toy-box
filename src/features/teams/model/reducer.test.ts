@@ -282,6 +282,22 @@ test("a pending request survives paging and reading, receives reactions, and cle
   expect(replied.team.requestSequence).toBeNull();
 });
 
+test("the lead resolving clears a pending request without a user reply", () => {
+  const question = {
+    ...message(102),
+    sender: { type: "agent" as const, agentId: "team" },
+    request: true as const,
+  };
+  const requested = reduceTeamState(snapshot(), {
+    type: "message",
+    revision: 102,
+    message: question,
+  });
+  const resolved = reduceTeamState(requested, system(103, { type: "requests_resolved" }));
+  expect(resolved.request).toBeNull();
+  expect(resolved.team.requestSequence).toBeNull();
+});
+
 test("presence replaces the reconnect baseline or merges sparse live changes without advancing durable state", () => {
   const previous = {
     ...snapshot(),

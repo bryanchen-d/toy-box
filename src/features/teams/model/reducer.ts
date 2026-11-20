@@ -1,4 +1,9 @@
-import { compareTeamAgents, isTeamSystemMessage, unassignTeamTasks } from ".";
+import {
+  acknowledgesTeamRequests,
+  compareTeamAgents,
+  isTeamSystemMessage,
+  unassignTeamTasks,
+} from ".";
 import type {
   Team,
   TeamArtifact,
@@ -103,8 +108,8 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
         latestSequence: Math.max(team.latestSequence, message.sequence),
         updatedAt: message.timestamp,
       };
+      if (acknowledgesTeamRequests(message)) return { ...next, requestSequence: null };
       if (!isTeamSystemMessage(message)) {
-        if (message.sender.type === "user") return { ...next, requestSequence: null };
         return message.request ? { ...next, requestSequence: message.sequence } : next;
       }
       const content = message.content;

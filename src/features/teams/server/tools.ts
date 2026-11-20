@@ -268,6 +268,16 @@ const sendTeamMessageTool = defineTool("send_team_message", {
 /** The same tool plus an input request and an interrupt, which only the lead can make. */
 const sendLeadMessageTool = { ...sendTeamMessageTool, parameters: sendLeadMessageParameters };
 
+const resolveTeamRequestsTool = defineTool("resolve_team_requests", {
+  description:
+    "Marks every request still waiting on the user as resolved, clearing Needs your reply, once you have what they asked for from somewhere else, such as a member, connector, or another team. Does not post a message or wake agents. To keep asking for anything still missing, send and flag a new request.",
+  parameters: z.object({}).strict(),
+  handler: async (_args, invocation) => {
+    const { resolveTeamRequestsFromLead } = await import("@teams/server");
+    return { resolved: await resolveTeamRequestsFromLead(invocation.sessionId) };
+  },
+});
+
 const reactToTeamMessageTool = defineTool("react_to_team_message", {
   description:
     "Sets or clears this agent's durable reaction on a user or agent message. Does not wake agents or end the turn.",
@@ -657,6 +667,7 @@ const commonTeamAgentTools = [
 export const teamLeadTools = [
   ...commonTeamAgentTools,
   sendLeadMessageTool,
+  resolveTeamRequestsTool,
   createCurrentTeamMembersTool,
   updateTeamTool,
   editTeamTasksTool,
