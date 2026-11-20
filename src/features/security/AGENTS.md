@@ -1,10 +1,11 @@
 # Security
 
 Agents read content written by people other than the owner: other people's Slack messages, GitHub
-issues and pull requests, web pages, and MCP results. Any of it can try to steer an agent. Security
-marks that content wherever an agent reads it, screens it for injection attempts, and keeps a record
-of attacks for the user. Only a detected attack restricts anything: until the user closes it, its
-session's risky actions are held.
+issues and pull requests, web pages, and MCP results. Any of it can try to steer an agent or to learn
+what the owner keeps private. Security marks that content wherever an agent reads it, screens it for
+those attempts and, when it's addressed to a team, for requests outside the team's purpose, and keeps
+a record of attacks for the user. Only a detected attack restricts anything: until the user closes
+it, its session's risky actions are held.
 
 Screening incoming text is the focus. Reading untrusted content never restricts tokens, data
 requests, or pushes on its own, so agents keep their normal access to GitHub, Azure DevOps, Kusto,
@@ -14,9 +15,11 @@ and other services. The tradeoff is that an attack the judge misses isn't held.
 
 ```text
 AgentAction       what a native tool call does: command, fetch, search, mcp, write, or tool
-UntrustedContent  text from someone other than the owner, and its source
+UntrustedContent  text from someone other than the owner, its source, and, when it's addressed to a
+                  team, the team's purpose as its scope
 Screening         the judge's verdict: an attack, what it tries to make an agent do, the passage
-                  that does it, and why that's risky
+                  that does it, and why that's risky; or, short of an attack, a request outside
+                  the content's scope
 SecurityFinding   a durable record of flagged content; open, it holds its session, and the user
                   closes it as a false positive or a real attack
 ```
@@ -29,7 +32,9 @@ SecurityFinding   a durable record of flagged content; open, it holds its sessio
   Shell commands are matched by pattern, so obfuscated commands can slip past.
 - `model/envelope.ts` wraps untrusted content after a line naming its source, between
   `<untrusted-content marker="…">` tags closed by the same random marker, so the content can't end
-  the envelope early. Sources and verdicts are collapsed to one line without angle brackets.
+  the envelope early. A flagged attack adds a line telling the agent not to act on it or answer it;
+  a request outside the scope adds one telling it to ignore that request and never mention it.
+  Sources and verdicts are collapsed to one line without angle brackets.
   `UNTRUSTED_CONTENT_INSTRUCTIONS` teaches every session to read it.
 - `model/policy.ts` is the gate. A risky action in a session with an open finding is asked
   about when someone can approve it and refused otherwise; the refusal tells the agent not to work
@@ -45,13 +50,19 @@ SecurityFinding   a durable record of flagged content; open, it holds its sessio
   completed root-thread commands, MCP calls, and web searches after the fact. That records attacks,
   but Codex actions are not gated, and its subagents' results aren't screened.
 - Teams' `read_team` and `inspect_team` label content a connector forwards (`origin` set) from
-  anyone but the owner. A connector's own notices carry no origin and stay trusted.
+  anyone but the owner, scoped by the team's purpose. A connector's own notices carry no origin and
+  stay trusted. Teams also screens that content as it arrives, before anyone reads it, and when the
+  judge finds an attack it asks the same connector to DM the owner, once per message, from a new
+  conversation: the message's own conversation can relay straight back to where it came from. The
+  arrival and the reads share one cached verdict.
 - Inbox's page tasks label the page's title and selection, apart from the user's task. The route
   screens them before dispatch, so the prompt carries the verdict and the finding exists when the
   task's session starts.
 
 `receiveUntrustedContent` screens content with `screenUntrustedContent`, records a finding for an
-attack with `recordScreening`, and retur`server/judge.ts` asks a small model (Haiku, then mini, flash, nano, or lite) from any enabled
+attack with `recordScreening`, and returns the envelope.
+
+`server/judge.ts` asks a small model (Haiku, then mini, flash, nano, or lite) from any enabled
 provider that implements `respond` for a JSON verdict. Copilot answers through a short-lived,
 tool-less session that it deletes and hides from the catalog. Because a finding holds its session,
 each flag is confirmed by a stronger model (Sonnet) before it's recorded, and its verdict is the one
@@ -63,19 +74,22 @@ often mixes what it fetched from others with what it read locally, like the agen
 `read_team` output alongside a `gh pr view` status check, so only the fetched part is untrusted:
 local files, saved tool output, git, and the team's own messages from the owner and its agents are
 context, whatever they ask for. The instructions also name ordinary work as not an attack: requests
-and reports, tool, CI, and log output with links and status lines, and discussion of injections or
-safeguards.
+and reports, questions about the agent's results and their evidence, tool, CI, and log output with
+links and status lines, and discussion of injections or safeguards. Asking an agent or bot to reveal
+how the owner's agents, bots, or Agent Teams are designed, built, configured, or instructed, their
+context or background, or anything personal about the owner is an attack, however politely asked.
+
+Content addressed to a team carries the team's purpose, and the judge also names any request in it
+outside that purpose, such as a joke or an unrelated incident, reading the purpose as the whole area
+it belongs to. That verdict only labels the request for agents to ignore: it isn't confirmed,
+recorded, or held, because asking is not an attack.
 
 The judge learns from the owner. `screenUntrustedContent` passes the 8 findings most recently
 closed as not attacks, one per quoted passage, as examples to skip from a similar source. They come
 from the findings record, so reopening a finding or closing it as an attack withdraws it, and only
-the owner can add one. Verdicts are cached by what was judged, including those examples, at most
-two judgments run at once, and long content keeps its first 18,000 and last 6,000 characters.
-Screening fails open: without a verdict the content is still labeled but holds nothing.
-
-cached by content hash, at most two judgments run at once, and long content keeps its first
-18,000 and last 6,000 characters. Screening fails open: without a verdict the content is still
-labeled but holds nothing.
+the owner can add one. Verdicts are cached by what was judged, including the scope and those
+examples, at most two judgments run at once, and long content keeps its first 18,000 and last 6,000
+characters. Screening fails open: without a verdict the content is still labeled but holds nothing.
 
 `explainFinding` answers the user's questions about a finding with the same tool-less model, the
 content marked untrusted, and up to five earlier exchanges. A steered answer can mislead but can't

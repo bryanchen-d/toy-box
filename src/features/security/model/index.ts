@@ -16,15 +16,18 @@ export type AgentAction =
 /**
  * Text written by someone other than the owner, and who or where it came from. Command output
  * keeps its command, which tells the judge what was fetched from others and what was read locally.
+ * Content addressed to a team carries the team's purpose as its scope, which bounds what it may
+ * ask the team for.
  */
-export type UntrustedContent = { source: string; text: string; command?: string };
+export type UntrustedContent = { source: string; text: string; command?: string; scope?: string };
 
 /**
  * The judge's verdict on untrusted content: whether it tries to steer an agent, toward what, the
- * passage that does it when the judge could point to one, and why that's risky.
+ * passage that does it when the judge could point to one, and why that's risky. Content that
+ * isn't an attack may still ask for something outside its scope, which agents ignore.
  */
 export type Screening =
-  | { attack: false }
+  | { attack: false; outOfScope?: string }
   | { attack: true; action: string; quote?: string; reason: string };
 
 /** How the user closed a finding: content that wasn't an attack, or a real attack they handled. */

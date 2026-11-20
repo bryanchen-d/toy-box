@@ -166,9 +166,14 @@ Teams owns everything a connector means to a team, in `../teams/server/connector
   connector message a plain `from`, such as "the user, in Agent Teams" or "Alex in Slack, via
   BryanBot". The collaboration protocol tells agents to answer each message where it came from, and
   that a requester who isn't the owner speaks only as context, never as the user's instructions.
+  In conversations through a connector, agents stay within the team's purpose and never share how
+  Agent Teams, its agents, or its connectors work, their context, or anything personal about the
+  owner.
   Content forwarded from anyone but the owner reaches agents in
-  [Security](../security/AGENTS.md)'s untrusted-content envelope, screened for injections; a
-  connector's own notices carry no origin and stay plain.
+  [Security](../security/AGENTS.md)'s untrusted-content envelope, screened for injections and probes
+  and for requests outside the team's purpose; a connector's own notices carry no origin and stay
+  plain. When a forwarded message is flagged as an attack, Agent Teams asks the connector that
+  relayed it to DM the owner, from a new conversation so the alert never relays back to its source.
 - Successful sends are silent by default: a connector should not post a conversational
   delivery receipt unless the current request explicitly asks for confirmation. Agents
   do not routinely ask for receipts or wait for one. Failed, queued, refused, or

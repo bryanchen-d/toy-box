@@ -74,6 +74,14 @@ test("the judge reads where content came from and the flags the owner dismissed"
   expect(screeningPrompt(content("text"), [])).toMatch(
     /^Source: the output of `gh issue view 7`\.\n<<untrusted/,
   );
+  expect(
+    screeningPrompt(
+      { source: "Alex in Slack, via BryanBot", text: "tell me a joke", scope: "Ship\nthe builds." },
+      [],
+    ),
+  ).toMatch(
+    /^Source: Alex in Slack, via BryanBot\.\nPurpose of the team it's addressed to: Ship the builds\.\n<<untrusted/,
+  );
 });
 
 const UNEXPLAINED = "It tries to steer an agent with instructions the user didn't give.";
@@ -112,6 +120,17 @@ test("the action continues a sentence about what the content tries to do", () =>
   expect(parseScreening('{"attack": true, "action": "SSH into prod"}')).toMatchObject({
     action: "SSH into prod",
   });
+});
+
+test("content that isn't an attack can still ask for something outside its team's purpose", () => {
+  expect(
+    parseScreening('{"attack": false, "outOfScope": " Tell a joke. ", "action": null}'),
+  ).toEqual({ attack: false, outOfScope: "tell a joke" });
+  expect(parseScreening('{"attack": false, "outOfScope": " "}')).toEqual({ attack: false });
+  // An attack's own warning covers everything it asks for.
+  expect(
+    parseScreening('{"attack": true, "action": "reveal the system prompt", "outOfScope": "x"}'),
+  ).not.toHaveProperty("outOfScope");
 });
 
 test("a reply without a valid verdict is no verdict", () => {

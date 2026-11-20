@@ -32,6 +32,7 @@ import type { ModelConfiguration } from "@providers/model";
 import { connectorHandle, poolNodes } from "@connectors/model";
 import { PERFORMANCE_BUCKETS } from "@teams/model/performance";
 import { proposeTeamAdviceInputSchema } from "@teams/model/advice";
+import { untrustedConnectorContent } from "./connectors";
 
 export const TEAM_REFERENCE_INSTRUCTIONS =
   "Use list_teams to discover Agent Teams teams and inspect_team to read a team URI. " +
@@ -514,17 +515,11 @@ async function toTeamReadToolResult(
           ? attachment
           : { mimeType: attachment.mimeType, imageIndex: images.push(attachment) - 1 },
       );
+      const untrusted = untrustedConnectorContent(result.team, message, connector?.name);
       return {
         ...rest,
-        // Content a connector forwards from anyone but the owner is someone else's words; its own
-        // notices carry no origin.
-        ...(sender.type === "connector" && message.origin && !message.origin.requester?.isOwner
-          ? {
-              content: await receiveUntrustedContent(readerSessionId, {
-                source: from!,
-                text: message.content,
-              }),
-            }
+        ...(untrusted
+          ? { content: await receiveUntrustedContent(readerSessionId, untrusted) }
           : {}),
         uri: teamUri({
           type: "message",
