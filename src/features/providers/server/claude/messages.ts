@@ -7,7 +7,7 @@ import {
   systemMessagePrompt,
 } from "@sessions/model/systemMessages";
 
-type Content = SDKUserMessage["message"]["content"];
+type Content = Extract<SDKUserMessage["message"], { role: "user" }>["content"];
 
 /** Image inputs and structured notifications live in Claude's native transcript. */
 export function encodeInput(message: SessionMessage): Content {
