@@ -3,7 +3,6 @@ import { useHotkey } from "@tanstack/react-hotkeys";
 import { ChevronLeft, ChevronRight, FileText, ImageIcon, Play, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { Carousel, useCarousel } from "motion-plus/react";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/shared/ui/dialog";
 import { cn } from "@/shared/utils";
@@ -41,6 +40,8 @@ export function AttachmentGallery({
   });
   const media = previews.filter((preview) => preview.src !== undefined && !preview.document);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const page = Math.max(0, Math.min(selectedIndex, media.length - 1));
+  const shown = media[page];
   const [pillKey] = useState(() => {
     const keys = new WeakMap<object, number>();
     let nextKey = 0;
@@ -169,7 +170,7 @@ export function AttachmentGallery({
           ),
         )
       )}
-      {media.length > 0 && (
+      {shown && (
         <DialogContent
           ref={dialogRef}
           initialFocus={dialogRef}
@@ -179,51 +180,41 @@ export function AttachmentGallery({
           className="h-[85vh] w-[90vw] max-w-5xl grid-rows-1 border-0 bg-transparent p-0 sm:max-w-5xl"
           showCloseButton={false}
         >
-          <Carousel
-            aria-label="Message attachments"
-            className="size-full"
-            items={media.map(({ label, src, video }, index) =>
-              video ? (
-                // Native video controls cannot live inside the click-to-close button.
-                <div
-                  // eslint-disable-next-line react/no-array-index-key -- each occurrence in the immutable message has its own carousel position
-                  key={index}
-                  className="flex size-full min-h-0 items-center justify-center"
-                >
-                  <video
-                    src={src}
-                    aria-label={label}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="max-h-full max-w-full rounded-lg"
-                  />
-                </div>
-              ) : (
-                <DialogClose
-                  // eslint-disable-next-line react/no-array-index-key -- each occurrence in the immutable message has its own carousel position
-                  key={index}
-                  type="button"
-                  aria-label={`Close preview of ${label}`}
-                  className="flex size-full min-h-0 items-center justify-center"
-                >
-                  <img
-                    src={src}
-                    alt={label}
-                    draggable={false}
-                    className="max-h-full max-w-full rounded-lg object-contain select-none"
-                  />
-                </DialogClose>
-              ),
+          <div role="region" aria-label="Message attachments" className="relative grid size-full">
+            {shown.video ? (
+              // Native video controls cannot live inside the click-to-close button.
+              <div key={page} className="flex size-full min-h-0 items-center justify-center">
+                <video
+                  src={shown.src}
+                  aria-label={shown.label}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="max-h-full max-w-full rounded-lg"
+                />
+              </div>
+            ) : (
+              <DialogClose
+                key={page}
+                type="button"
+                aria-label={`Close preview of ${shown.label}`}
+                className="flex size-full min-h-0 items-center justify-center"
+              >
+                <img
+                  src={shown.src}
+                  alt={shown.label}
+                  draggable={false}
+                  className="max-h-full max-w-full rounded-lg object-contain select-none"
+                />
+              </DialogClose>
             )}
-            itemSize="fill"
-            align="stretch"
-            gap={0}
-            loop={false}
-            page={selectedIndex}
-          >
-            <AttachmentCarouselControls media={media} hotkeyTarget={dialogRef} />
-          </Carousel>
+            <AttachmentCarouselControls
+              media={media}
+              page={page}
+              onPageChange={setSelectedIndex}
+              hotkeyTarget={dialogRef}
+            />
+          </div>
         </DialogContent>
       )}
     </Dialog>
@@ -232,20 +223,27 @@ export function AttachmentGallery({
 
 function AttachmentCarouselControls({
   media,
+  page,
+  onPageChange,
   hotkeyTarget,
 }: {
   media: { label: string }[];
+  page: number;
+  onPageChange: (page: number) => void;
   hotkeyTarget: React.RefObject<HTMLDivElement | null>;
 }) {
-  const { currentPage, totalPages, nextPage, prevPage, isNextActive, isPrevActive } = useCarousel();
-  const selected = media[currentPage] ?? media[0]!;
+  const totalPages = media.length;
+  const isPrevActive = page > 0;
+  const isNextActive = page < totalPages - 1;
+  const prevPage = () => onPageChange(Math.max(0, page - 1));
+  const nextPage = () => onPageChange(Math.min(totalPages - 1, page + 1));
 
   useHotkey("ArrowLeft", prevPage, { target: hotkeyTarget });
   useHotkey("ArrowRight", nextPage, { target: hotkeyTarget });
 
   return (
     <>
-      <DialogTitle className="sr-only">{selected.label}</DialogTitle>
+      <DialogTitle className="sr-only">{media[page]!.label}</DialogTitle>
       {totalPages > 1 && (
         <>
           <Button
@@ -274,7 +272,7 @@ function AttachmentCarouselControls({
             aria-live="polite"
             className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground"
           >
-            {currentPage + 1} of {totalPages}
+            {page + 1} of {totalPages}
           </span>
         </>
       )}

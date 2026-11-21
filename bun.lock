@@ -59,7 +59,6 @@
         "lucide-react": "^1.61.0",
         "marked": "^17.0.6",
         "motion": "^13.5.1",
-        "motion-plus": "npm:@motionplus/core@^3.0.0",
         "nitro": "npm:nitro-nightly@3.0.1-20261008-023340-cef53050",
         "open": "^11.0.4",
         "oxc-transform-react": "^0.152.0",
@@ -1187,10 +1186,6 @@
     "motion": ["motion@13.5.1", "", { "dependencies": { "framer-motion": "13.5.1", "tslib": "^2.4.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["react", "react-dom"] }, "sha512-eV9SUem6KnzEa9+eT+dVBeDlhy5TTdn09YWR1WhUsKoZCJPw/n4TcYhjbxq2Gy5PTwDr//4H3r5vxkcZnNnO1w=="],
 
     "motion-dom": ["motion-dom@13.5.1", "", { "dependencies": { "motion-utils": "13.5.0" } }, "sha512-/7CVCD20Mz1KobktorpdgvowV0V41J7UxqE+qWS3GkSJqrRr5ft+2RloOYtEKv+wvBp3JaSFBclhxt4ja8ovHg=="],
-
-    "motion-plus": ["@motionplus/core@3.0.0", "https://api.motion.dev/npm/@motionplus/core/-/core-3.0.0.tgz", { "dependencies": { "motion-plus-dom": "^3.0.0" }, "peerDependencies": { "motion": "^13.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["react", "react-dom"] }, "sha512-3jop7fJ7JCar7VmjJuXwT2x0nSTGK5wL1wi2FLb21r9KWwB+Td6+7ex32h5M5piXRopwZWHNY68J70QEpKwu8g=="],
-
-    "motion-plus-dom": ["motion-plus-dom@3.0.0", "", { "peerDependencies": { "motion": "^13.0.0" } }, "sha512-TsWZY6wXoVPOJ7wItmtAMAkCUL8HRXQJGzf7isMp58JoIObYMdzGUOnCMZ3EcRABmV9PxjMLijjzKL6MfvtNSQ=="],
 
     "motion-utils": ["motion-utils@13.5.0", "", {}, "sha512-Hqe/sqjIKliPZg8sVjWAkdySDPJNIeKH+euVkDOG8ri3DUUU7ZjndmHsGqEPz2iHpiyVaV5I22iguCMHU2he+Q=="],
 

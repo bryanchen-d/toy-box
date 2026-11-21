@@ -1,7 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { ChevronRight, FolderOpen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useReducedMotionConfig } from "motion/react";
-import { Typewriter } from "motion-plus/react";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils";
@@ -223,9 +222,18 @@ function SessionListItemTitle({ title, loading }: { title: string; loading: bool
     return title;
   }
 
-  return (
-    <Typewriter speed="fast" replace="all" cursorStyle={{ display: "none" }}>
-      {title}
-    </Typewriter>
-  );
+  return <TypedTitle key={title} title={title} />;
+}
+
+/** Types a renamed title out a character at a time. */
+function TypedTitle({ title }: { title: string }) {
+  const [typed, setTyped] = useState(0);
+
+  useEffect(() => {
+    if (typed >= title.length) return;
+    const timer = setTimeout(() => setTyped(typed + 1), 20);
+    return () => clearTimeout(timer);
+  }, [typed, title.length]);
+
+  return title.slice(0, typed);
 }

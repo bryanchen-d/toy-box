@@ -81,7 +81,6 @@
     "lucide-react": "^1.61.0",
     "marked": "^17.0.6",
     "motion": "^13.5.1",
-    "motion-plus": "npm:@motionplus/core@^3.0.0",
     "nitro": "npm:nitro-nightly@3.0.1-20261008-023340-cef53050",
     "open": "^11.0.4",
     "oxc-transform-react": "^0.152.0",
