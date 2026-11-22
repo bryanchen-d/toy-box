@@ -18,10 +18,11 @@ export default defineConfig(({ mode }) => {
       allowedHosts: [".ts.net"],
     },
 
-    // These two libraries are only used on the server, and therefore,
-    // don't need to be optimized for EJS by Vite during development.
+    // These libraries are only used on the server, and therefore,
+    // don't need to be optimized for ESM by Vite during development.
+    // The Copilot SDK can't be: its vscode-jsonrpc/node import has no browser export.
     optimizeDeps: {
-      exclude: ["@tailwindcss/oxide", "app-typescript"],
+      exclude: ["@tailwindcss/oxide", "app-typescript", "@github/copilot-sdk"],
     },
 
     resolve: {
