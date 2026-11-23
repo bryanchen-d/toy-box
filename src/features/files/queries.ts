@@ -1,6 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { workspaceFileId, type WorkspaceFile } from "./model";
-import { listDirectory, readFile, searchFiles } from "./server/functions";
+import { getFileUri, listDirectory, readFile, searchFiles } from "./server/functions";
 
 // Artifact-first drafts briefly expose their file before the SDK workspace exists.
 const READ_RETRY_COUNT = 20;
@@ -27,6 +27,14 @@ export const fileQueries = {
       queryKey: [...fileQueries.all(), "search", directory, query] as const,
       queryFn: () => searchFiles({ data: { directory, query } }),
       staleTime: 10_000,
+    }),
+
+  /** A file's address never moves while the server runs. */
+  uri: (file: WorkspaceFile) =>
+    queryOptions({
+      queryKey: [...fileQueries.all(), "uri", workspaceFileId(file)] as const,
+      queryFn: () => getFileUri({ data: { file } }),
+      staleTime: Infinity,
     }),
 
   detail: (file: WorkspaceFile) =>

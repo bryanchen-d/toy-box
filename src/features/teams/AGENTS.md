@@ -657,7 +657,8 @@ selection scrolls and highlights in place without remounting its composer or res
 `TeamArtifacts` is the artifacts panel, where the user manages what the composer tray shows. It
 opens from the panel bar, the tray's full list, and the overview, and lists the Shared or Archived shelf with
 search. Each artifact opens on click, drags by a gutter grip on the Shared shelf while unfiltered,
-and has a menu to move it to the top, up, or down, or to archive or restore it. Moves stay relative
+and has a menu to copy its `file:` URI, move it to the top, up, or down, or archive or restore it.
+The URI is the address agents read, and Markdown artifacts open it as a link. Moves stay relative
 to the artifact's pinned or unpinned group while searching. A selection of visible artifacts archives, restores, or moves
 to the top together, and Sort arranges only unpinned Shared artifacts once by newest, oldest, or name. A drag
 reorders locally until its optimistic arrangement replaces the list.

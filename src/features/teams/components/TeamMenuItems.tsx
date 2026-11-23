@@ -2,8 +2,9 @@ import { useMutation } from "@tanstack/react-query";
 import { FolderOpen, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import type { Team } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
+import { teamUri } from "@teams/model/references";
+import { CopyUri } from "@/shared/ui/copy-uri";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
-import { CopyTeamUri } from "./CopyTeamUri";
 import { ADMIN_TEAM_ID } from "@teams/model/admin";
 
 /** A Team's actions, shared by every menu that offers them. */
@@ -22,7 +23,7 @@ export function TeamMenuItems({
   const { mutate, isPending, error, variables } = useMutation(teamMutations.edit());
   return (
     <>
-      <CopyTeamUri target={{ type: "team", teamId: team.id }} label="Copy team URI" />
+      <CopyUri uri={teamUri({ type: "team", teamId: team.id })} label="Copy team URI" />
       <DropdownMenuItem
         closeOnClick={false}
         disabled={isPending}

@@ -3,7 +3,8 @@
 // resolves to its own absolute path (single trusted owner, so no sandbox root).
 
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { SESSION_STORAGE_PATH } from "@sessions/model/constants";
 import { agentTeamsDirectory } from "@/server/storage";
 import { machineFile, sessionFile, type WorkspaceFile } from "../model";
@@ -50,6 +51,30 @@ export function workspaceFileFromAbsolutePath(path: string): WorkspaceFile {
     }
   }
   return machineFile(absolutePath);
+}
+
+/** The `file:` URI that agents read and Markdown links name for a workspace file. */
+export function workspaceFileUri(file: WorkspaceFile): string | null {
+  const path = resolveWorkspaceFile(file);
+  return path ? pathToFileURL(path).href : null;
+}
+
+/**
+ * The file a link inside `file` names: a `file:` URI or a path relative to `file`. Other schemes
+ * belong to other hosts. Like any absolute path, the target keeps its Session ownership.
+ */
+export function workspaceFileFromLink(file: WorkspaceFile, href: string): WorkspaceFile | null {
+  try {
+    if (/^file:/i.test(href)) return workspaceFileFromAbsolutePath(fileURLToPath(href));
+    // A one-letter prefix is a Windows drive, not a scheme.
+    if (/^[a-z][a-z\d+.-]+:/i.test(href)) return null;
+    const source = resolveWorkspaceFile(file);
+    const path = decodeURIComponent(href.replace(/[?#].*$/s, ""));
+    return source && path ? workspaceFileFromAbsolutePath(resolve(dirname(source), path)) : null;
+  } catch {
+    // Malformed URIs and escapes name no file.
+    return null;
+  }
 }
 
 /** A machine file resolves to its own absolute path. One trusted owner, so no sandbox root. */

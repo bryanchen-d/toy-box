@@ -17,7 +17,8 @@ import { TeamReactions } from "./TeamReactions";
 import { RequestTag } from "./RequestTag";
 import { ThreadSummary } from "./ThreadReplies";
 import type { AgentRunEntry } from "./transcriptRows";
-import { CopyTeamUri } from "@teams/components/CopyTeamUri";
+import { teamUri } from "@teams/model/references";
+import { CopyUri } from "@/shared/ui/copy-uri";
 
 /** One agent's consecutive messages under a single avatar. */
 export function AgentRun({
@@ -123,9 +124,9 @@ function AgentMessage({
               <TooltipContent sideOffset={4}>Reply in thread</TooltipContent>
             </Tooltip>
             <CopyControl content={message.content} />
-            <CopyTeamUri
+            <CopyUri
               variant="button"
-              target={{ type: "message", teamId, sequence: message.sequence }}
+              uri={teamUri({ type: "message", teamId, sequence: message.sequence })}
               label="Copy message URI"
             />
           </div>
@@ -135,9 +136,9 @@ function AgentMessage({
         <div className="mt-2 flex flex-wrap gap-1.5">
           <AttachmentGallery attachments={attachments} variant="filmstrip" />
           {!message.content && (
-            <CopyTeamUri
+            <CopyUri
               variant="button"
-              target={{ type: "message", teamId, sequence: message.sequence }}
+              uri={teamUri({ type: "message", teamId, sequence: message.sequence })}
               label="Copy message URI"
             />
           )}

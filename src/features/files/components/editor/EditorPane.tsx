@@ -40,17 +40,16 @@ export function EditorPane({ pane, variant = "normal" }: EditorPaneProps) {
           <WorkersMenu workers={workers} variant={variant} />
         </PaneStatus>
       )}
-      {(editable || isSaving) && (
-        <PaneActions>
-          <EditorActions
-            editable={editable}
-            mode={mode}
-            isSaving={isSaving}
-            onModeChange={(nextMode) => panePublications.actions.setEditorPaneMode(pane, nextMode)}
-            variant={variant}
-          />
-        </PaneActions>
-      )}
+      <PaneActions>
+        <EditorActions
+          file={file}
+          editable={editable}
+          mode={mode}
+          isSaving={isSaving}
+          onModeChange={(nextMode) => panePublications.actions.setEditorPaneMode(pane, nextMode)}
+          variant={variant}
+        />
+      </PaneActions>
       {isReady && error && <EditorBanner>{error}</EditorBanner>}
       <div className="min-h-0 flex-1">
         {isLoading ? (

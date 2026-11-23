@@ -9,7 +9,8 @@ import { useTeamPane } from "../TeamPaneContext";
 import { TeamReactions } from "./TeamReactions";
 import { ThreadSummary } from "./ThreadReplies";
 import type { TranscriptThread } from "./transcriptRows";
-import { CopyTeamUri } from "@teams/components/CopyTeamUri";
+import { teamUri } from "@teams/model/references";
+import { CopyUri } from "@/shared/ui/copy-uri";
 import { cn } from "@/shared/utils";
 
 /** The user's message, shown as in a session, with the reactions agents gave it and its thread. */
@@ -37,9 +38,9 @@ export function TeamUserMessage({
           <>
             <TeamReactions message={message} className="mr-1" />
             {!isSending(message.id) && (
-              <CopyTeamUri
+              <CopyUri
                 variant="button"
-                target={{ type: "message", teamId, sequence: message.sequence }}
+                uri={teamUri({ type: "message", teamId, sequence: message.sequence })}
                 label="Copy message URI"
               />
             )}

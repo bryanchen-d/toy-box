@@ -15,7 +15,8 @@ import { ClockTime } from "@/shared/ui/clock-time";
 import { TruncatedText } from "@/shared/ui/truncated-text";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
-import { CopyTeamUri } from "@teams/components/CopyTeamUri";
+import { teamUri } from "@teams/model/references";
+import { CopyUri } from "@/shared/ui/copy-uri";
 import { RowMenu } from "./overview/RowMenu";
 import { DropdownMenuCheckboxItem } from "@/shared/ui/dropdown-menu";
 
@@ -89,7 +90,7 @@ export function TeamMembers({
           <Pencil />
         </Button>
         <RowMenu name="Members">
-          <CopyTeamUri target={{ type: "members", teamId: team.id }} label="Copy members URI" />
+          <CopyUri uri={teamUri({ type: "members", teamId: team.id })} label="Copy members URI" />
           <DropdownMenuCheckboxItem checked={showModel} onCheckedChange={setShowModel}>
             Show model
           </DropdownMenuCheckboxItem>

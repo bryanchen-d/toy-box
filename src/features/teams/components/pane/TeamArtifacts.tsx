@@ -23,6 +23,7 @@ import {
 } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
 import { useEditorDisplay } from "@files/components/editor/kinds";
+import { CopyFileUri } from "@files/components/CopyFileUri";
 import { useArtifactState } from "@workspace/components/outputs/ArtifactPill";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -330,6 +331,8 @@ export function TeamArtifacts({
                 />
                 <ArtifactSummary artifact={artifact} onOpen={() => openArtifact(artifact.file)} />
                 <RowMenu name={artifact.title}>
+                  <CopyFileUri file={artifact.file} label="Copy artifact URI" />
+                  <DropdownMenuSeparator />
                   {shelf === "shared" ? (
                     <>
                       <DropdownMenuItem

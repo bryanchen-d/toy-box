@@ -1,14 +1,18 @@
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, onTestFinished, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { agentTeamsDirectory } from "@/server/storage";
 import { listSessionArtifacts, deleteSessionFiles } from "@sessions/server/artifacts";
+import { machineFile, sessionFile } from "../model";
 import {
   projectSessionArtifactPath,
   resolveSessionArtifactPath,
   resolveWorkspaceFile,
   workspaceFileFromAbsolutePath,
+  workspaceFileFromLink,
+  workspaceFileUri,
   sessionArtifactDirectory,
 } from "./paths";
 
@@ -157,6 +161,40 @@ describe("artifact paths", () => {
         resolve("/repo/src/foo.ts"),
       );
       expect(resolveWorkspaceFile({ kind: "machine", path: "repo/src/foo.ts" })).toBeNull();
+    });
+  });
+
+  describe("file links", () => {
+    const plan = sessionFile("team-lead", "plans/week.md");
+
+    test("a copied file URI opens as the Session artifact it names", () => {
+      const options = sessionFile("worker", "worker isolation #2.md");
+      const uri = workspaceFileUri(options)!;
+      expect(uri).toBe(
+        pathToFileURL(sessionStatePath("worker/artifacts/worker isolation #2.md")).href,
+      );
+      expect(workspaceFileFromLink(plan, uri)).toEqual(options);
+      expect(workspaceFileFromLink(plan, pathToFileURL("/repo/notes.md").href)).toEqual(
+        machineFile(resolve("/repo/notes.md")),
+      );
+    });
+
+    test("relative links resolve beside the linking file", () => {
+      expect(workspaceFileFromLink(plan, "retro%20notes.md#actions")).toEqual(
+        sessionFile("team-lead", "plans/retro notes.md"),
+      );
+      expect(workspaceFileFromLink(plan, "../summary.md")).toEqual(
+        sessionFile("team-lead", "summary.md"),
+      );
+      expect(workspaceFileFromLink(machineFile(resolve("/repo/docs/a.md")), "./b.md")).toEqual(
+        machineFile(resolve("/repo/docs/b.md")),
+      );
+    });
+
+    test("links that name no file resolve to nothing", () => {
+      for (const href of ["team:lead/messages/4", "mailto:a@example.com", "#heading", "%E0"]) {
+        expect(workspaceFileFromLink(plan, href)).toBeNull();
+      }
     });
   });
 });

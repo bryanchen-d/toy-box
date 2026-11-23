@@ -21,7 +21,7 @@ An SDK canvas is not an editor pane. It is an SDK-provided URL surface with its 
 
 ## File operations
 
-A file exposes seven operations with distinct transport needs:
+A file exposes eight operations with distinct transport needs:
 
 | Operation | Contract                                                                            |
 | --------- | ----------------------------------------------------------------------------------- |
@@ -30,6 +30,7 @@ A file exposes seven operations with distinct transport needs:
 | Create    | Validated RPC exclusively creates an empty machine file                             |
 | Read      | Validated RPC returns UTF-8 content and modification time                           |
 | Write     | Validated RPC persists UTF-8 content and returns the new modification time          |
+| Address   | Validated RPCs return a file's `file:` URI and resolve a link inside one file       |
 | Watch     | `/api/watch/<scope>/<path>` emits external modification or deletion events over SSE |
 | Serve     | `/api/serve/<scope>/<path>` returns raw bytes or media ranges for browser URLs      |
 
@@ -40,6 +41,10 @@ target retains the complete returned path. This is presentation over ordinary me
 not another workspace file identity or file-loading path.
 
 The route scope is a session id for an artifact or the literal `machine` for a host file. One resolver (`resolveWorkspaceFile`) maps that `WorkspaceFile` to an allowed absolute path for every operation: a session file resolves beneath its durable artifacts directory; a machine file resolves to its own absolute path.
+Addressing runs the same resolver and its inverse on the server, so clients still never encode storage. A file's URI is
+`pathToFileURL` of its resolved path, the form agents read and write. A link resolves to the file a `file:` URI
+names or to a path relative to the linking file, classified like any shared absolute path, so a link to another
+Session's artifact opens that Session file rather than a machine copy. Other schemes resolve to nothing.
 Machine route decoding restores the leading slash for POSIX paths but preserves Windows drive roots; both serve and watch use this shared codec.
 Serve responses are privately cached and revalidated from file metadata, so unchanged resources reuse browser-cached bytes without hiding edits.
 
@@ -78,7 +83,7 @@ according to the comment; the file stays the public source of truth. Custom edit
 `AgentTeams.spawnWorker({ name?, prompt, metadata? })` and receive pending workers in the idempotent
 `onRender` context.
 
-The pane, rather than an individual renderer, owns worker inspection and cancellation. While associations are pending, it declares a worker count through `PaneStatus`; the session overlay declares its trigger into that same host-owned slot, while save and editor-mode controls use `PaneActions`. The desktop grid presents status as lower-right overlay controls, while pagers place it in their header. `WorkspacePaneView` scopes both slots around the leaf pane and overlay, so neither receives or positions DOM targets. The compact worker menu lists friendly names and status icons. A running worker can open the existing passive `SessionPreview`; starting entries remain visible before their SDK sessions exist. Each entry can cancel starting or running work through the pane-owned file address. This keeps session IDs, preview placement, cancellation, and read semantics out of custom iframe APIs.
+The pane, rather than an individual renderer, owns worker inspection and cancellation. While associations are pending, it declares a worker count through `PaneStatus`; the session overlay declares its trigger into that same host-owned slot, while save, copy-URI, and editor-mode controls use `PaneActions`. The desktop grid presents status as lower-right overlay controls, while pagers place it in their header. `WorkspacePaneView` scopes both slots around the leaf pane and overlay, so neither receives or positions DOM targets. The compact worker menu lists friendly names and status icons. A running worker can open the existing passive `SessionPreview`; starting entries remain visible before their SDK sessions exist. Each entry can cancel starting or running work through the pane-owned file address. This keeps session IDs, preview placement, cancellation, and read semantics out of custom iframe APIs.
 
 Pending describes worker lifecycle, not whether every intermediate file effect is still absent. A worker can persist its substantive result before its session finishes. Renderers that use placeholders for expected durable content must therefore encode a target identity or baseline in metadata and reconcile it against current content, while presence-style indicators may intentionally remain until the worker finishes.
 
@@ -86,7 +91,7 @@ Pending describes worker lifecycle, not whether every intermediate file effect i
 
 `EditorPane` composes loading, saving, error presentation, actions, and the renderer selected for the file extension.
 
-- Markdown renders from its text content and supports direct editing.
+- Markdown renders from its text content and supports direct editing. Documint opens web links itself on Ctrl/Cmd-click and hands every other link to the editor, which resolves it through the Address operation and reveals the target's editor pane. Links in other schemes do nothing, and a missing target opens a pane that reports it.
 - HTML renders in a sandboxed iframe. A generated serve base lets relative scripts, styles, images, and links resolve within the source session's file storage.
 - SVG files delegate to the [Whiteboard feature](../whiteboard/AGENTS.md). The file-kind adapter supplies content, editability, persistence, relative-resource resolution, and pane actions without owning the native SVG model or editor presentation.
 - Brief files delegate to the [Briefs feature](../briefs/AGENTS.md). The file-kind adapter supplies content revisions, persistence, relative-resource resolution, and worker-backed actions without owning the brief model or presentation.

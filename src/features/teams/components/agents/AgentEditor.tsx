@@ -16,7 +16,8 @@ import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/di
 import { Input } from "@/shared/ui/input";
 import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
 import { Textarea } from "@/shared/ui/textarea";
-import { CopyTeamUri } from "../CopyTeamUri";
+import { teamUri } from "@teams/model/references";
+import { CopyUri } from "@/shared/ui/copy-uri";
 import { AgentAvatar } from "./AgentAvatar";
 
 /** Edits a member, or adds a new one to a Team when given only the Team. */
@@ -87,9 +88,9 @@ function AgentForm({ agent, teamId, onClose }: AgentEditorProps) {
             <AgentAvatar agent={agent} className="size-9" />
             {agent.name}
           </DialogTitle>
-          <CopyTeamUri
+          <CopyUri
             variant="button"
-            target={{ type: "agent", teamId: agent.teamId, agentId: agent.id }}
+            uri={teamUri({ type: "agent", teamId: agent.teamId, agentId: agent.id })}
             label="Copy agent URI"
           />
         </div>

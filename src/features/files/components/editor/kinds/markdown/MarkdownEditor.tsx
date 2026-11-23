@@ -3,12 +3,18 @@ import {
   type CommentChange,
   type DocumentPresence,
   type DocumentUser,
+  type DocumintStorage,
   type EditorTheme,
 } from "@lostintangent/documint";
+import { useMutation } from "@tanstack/react-query";
 import type { JSONType } from "zod";
 import type { EditorProps } from "../index";
 import { useColorScheme } from "@/shared/hooks/useColorScheme";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
+import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
+import { createEditorPaneId } from "@workspace/model/panes";
+import type { WorkspaceFile } from "@files/model";
+import { resolveFileLink } from "@files/server/functions";
 import { buildArtifactCommentPrompt } from "./comments";
 
 const ASSISTANT_USER = {
@@ -21,6 +27,7 @@ const DOCUMINT_USERS = [ASSISTANT_USER];
 /** Rich Markdown editing with live external diffs and inline Assistant responses. */
 export function MarkdownEditor({ mode, file, pendingWorkers, spawnWorker }: EditorProps) {
   const theme = useDocumintTheme();
+  const storage = useLinkedFileStorage(file.source);
   const presence: DocumentPresence[] = pendingWorkers.flatMap((worker) => {
     const threadId = artifactCommentThreadId(worker.metadata);
     return threadId
@@ -57,9 +64,33 @@ export function MarkdownEditor({ mode, file, pendingWorkers, spawnWorker }: Edit
       users={DOCUMINT_USERS}
       presence={presence}
       showDiffs={mode !== "edit"}
+      storage={storage}
       theme={theme}
     />
   );
+}
+
+/**
+ * Documint opens web links itself and hands every other Ctrl/Cmd-clicked link here, where the
+ * server resolves it against this file so a linked artifact opens in its own editor pane. Images
+ * and pastes still have no storage.
+ */
+function useLinkedFileStorage(source: WorkspaceFile): DocumintStorage {
+  const { revealFile, focusedPaneAtom } = useWorkspaceSurface();
+  const { mutate: openLink } = useMutation({
+    mutationFn: (href: string) => resolveFileLink({ data: { file: source, href } }),
+    onSuccess: (target) => {
+      if (!target) return;
+      if (revealFile) revealFile(target);
+      else focusedPaneAtom.set(createEditorPaneId(target));
+    },
+  });
+
+  return {
+    readFile: async () => null,
+    writeFile: () => Promise.reject(new Error("Markdown files do not store pasted files.")),
+    openFile: openLink,
+  };
 }
 
 function artifactCommentThreadId(metadata: JSONType | undefined): string | undefined {

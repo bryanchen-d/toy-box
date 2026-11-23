@@ -18,6 +18,11 @@ export const workspaceFileSchema = z.discriminatedUnion("kind", [
 
 export const workspaceFileInputSchema = z.object({ file: workspaceFileSchema });
 
+/** A link's raw destination as written inside `file`. */
+export const fileLinkInputSchema = workspaceFileInputSchema.extend({
+  href: z.string().trim().min(1),
+});
+
 export const writeFileInputSchema = workspaceFileInputSchema.extend({
   content: z.string(),
 });
