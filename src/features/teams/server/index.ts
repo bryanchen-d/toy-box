@@ -23,10 +23,12 @@ import type {
 import {
   teamLead,
   teamMemberIdentity,
+  teamMessageReaches,
   resolveTeamAudience,
   teamTaskNotifications,
   nextTeamTask,
   isTeamSystemMessage,
+  isTeamTaskOpen,
   messageAuthorId,
 } from "@teams/model";
 import { USER_AUTHOR } from "@teams/model/performance";
@@ -182,6 +184,21 @@ async function wakeForTaskChange(
     }
   }
   const senderName = [lead, ...members].find(({ id }) => id === editorId)?.name ?? "an agent";
+  // An assignee handing its task off for review reaches the lead with its questions, merged.
+  const previous = new Map(before.map((task) => [task.id, task]));
+  const handedOff = after.filter(
+    (task) =>
+      task.status === "in_review" &&
+      task.assigneeId === editorId &&
+      editorId !== lead.id &&
+      previous.get(task.id)?.status !== "in_review",
+  );
+  if (
+    handedOff.length > 0 &&
+    (await new TeamDatabase(await getStateDatabase()).claimTaskSummaryWake(teamId))
+  ) {
+    for (const { id } of handedOff) notify(lead.id, id, "handed off for review");
+  }
   await Promise.all(
     [...wakes].map(([agentId, tasks]) =>
       wakeTeamAgent(
@@ -202,9 +219,18 @@ async function wakeForTaskChange(
   );
 }
 
-/** Clears the user's pending requests without waking anyone. Reports whether any were pending. */
-export async function resolveTeamRequestsFromLead(sessionId: string): Promise<boolean> {
-  const change = await new TeamDatabase(await getStateDatabase()).resolveRequests(sessionId);
+/**
+ * Clears the user's pending requests without waking anyone: those in the given tasks' threads, or
+ * every one. Reports whether any were pending.
+ */
+export async function resolveTeamRequestsFromLead(
+  sessionId: string,
+  taskIds?: readonly string[],
+): Promise<boolean> {
+  const change = await new TeamDatabase(await getStateDatabase()).resolveRequests(
+    sessionId,
+    taskIds,
+  );
   publishTeamChange(change);
   return change.events.length > 0;
 }
@@ -337,7 +363,26 @@ export async function moveTeamMembers({
   const change = await database.moveMembers(teamId, agentIds, target.id);
   publishTeamChange(change.source);
   publishTeamChange(change.target);
+  await wakeLeadForReleasedTasks(change.source, "moved to another team");
   return change.target.team;
+}
+
+/** An open task losing its assignee to a removal or move wakes the lead once per change. */
+async function wakeLeadForReleasedTasks(change: TeamChange, reason: string) {
+  const released = change.events.flatMap((event) =>
+    event.type === "task" && !event.task.assigneeId && isTeamTaskOpen(event.task)
+      ? [event.task]
+      : [],
+  );
+  if (released.length === 0) return;
+  await wakeTeamAgent(change.teamId, {
+    type: "team_task",
+    tasks: released.map(({ id, title }) => ({
+      taskId: id,
+      title,
+      changes: [`lost its assignee, who was ${reason}`],
+    })),
+  }).catch((error) => console.error(`Failed to wake the lead of Team ${change.teamId}:`, error));
 }
 
 export async function markTeamRead(teamId: string, sequence: number): Promise<Team | null> {
@@ -388,6 +433,10 @@ export async function waitForTeamAgents(
   return completions.map(({ status }, index) => ({ agentId: agentIds[index]!, status }));
 }
 
+/**
+ * An agent's unread messages, then advances its read position past them. A task's thread stays out
+ * unless the task is the agent's or the message mentions it. The lead also reads its task summary.
+ */
 export async function readTeamForAgent(sessionId: string) {
   const database = new TeamDatabase(await getStateDatabase());
   const agent = await requireTeamAgent(database, sessionId);
@@ -396,8 +445,18 @@ export async function readTeamForAgent(sessionId: string) {
   const messages = await database.listMessagesAfter(team.id, agent.seenThrough, TEAM_MESSAGE_LIMIT);
   const readThrough = messages.at(-1)?.sequence ?? agent.seenThrough;
   const result = await readTeam(database, team, messages, readThrough < team.latestSequence);
+  const tasksByThread = new Map(
+    result.tasks.flatMap((task) => (task.threadSequence ? [[task.threadSequence, task]] : [])),
+  );
+  const reading = {
+    ...result,
+    messages: result.messages.filter((message) =>
+      teamMessageReaches(message, agent.id, { ...result, tasksByThread }),
+    ),
+  };
   await database.markAgentSeen(agent.id, readThrough);
-  return result;
+  const taskSummary = agent.isLead ? await database.readTaskSummary(agent.id) : undefined;
+  return { ...reading, ...(taskSummary ? { taskSummary } : {}) };
 }
 
 export async function getTeamThreadSequence(teamId: string, sequence: number) {
@@ -605,6 +664,7 @@ export async function endTeamAgentTurn(
   outcome: "unreported" | "failed" | "stopped",
   error?: string,
 ): Promise<void> {
+  await database.releaseTaskSummaryWake(agentId);
   const change = await database.endTurn(agentId, outcome, error);
   if (!change) return;
   publishTeamChange(change);
@@ -808,6 +868,31 @@ export async function postMessage(
       }),
     ),
   );
+  // An assignee's question for the user reaches the lead with its hand-offs, merged.
+  const { task } = change;
+  if (
+    input.request &&
+    task &&
+    sender.type === "agent" &&
+    sender.agentId !== lead.id &&
+    !audience.some(({ id }) => id === lead.id) &&
+    (await database.claimTaskSummaryWake(teamId))
+  ) {
+    await wakeTeamAgent(
+      lead.id,
+      {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: task.id,
+            title: task.title,
+            changes: [`${senderName} asked the user a question in its thread`],
+          },
+        ],
+      },
+      { author, sequence: change.message.sequence },
+    ).catch((error) => console.error(`Failed to wake the lead of Team ${teamId}:`, error));
+  }
   return change.message;
 }
 
@@ -872,6 +957,7 @@ export async function detachTeamAgentSession(sessionId: string): Promise<void> {
   const change = await database.deleteMember(sessionId);
   if (!change) return;
   publishTeamChange(change);
+  await wakeLeadForReleasedTasks(change, "removed from the team");
 }
 
 async function requireTeamAgent(database: TeamDatabase, sessionId: string) {

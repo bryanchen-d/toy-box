@@ -109,14 +109,20 @@ export function answersTeamRequest(
 
 /**
  * Whether a later message acknowledges a request: the user answering it where it was asked, or the
- * lead resolving every request before it.
+ * lead resolving it. A resolution in a thread settles that thread's question, and a top-level one
+ * every request before it.
  */
 export function acknowledgesTeamRequest(
   message: TeamMessage<unknown>,
   request: Pick<TeamPendingRequest, "sequence" | "threadSequence">,
 ): boolean {
   if (message.sequence <= request.sequence) return false;
-  if (isTeamSystemMessage(message)) return message.content.type === "requests_resolved";
+  if (isTeamSystemMessage(message)) {
+    return (
+      message.content.type === "requests_resolved" &&
+      (message.threadSequence === undefined || answersTeamRequest(message.threadSequence, request))
+    );
+  }
   return message.sender.type === "user" && answersTeamRequest(message.threadSequence, request);
 }
 
@@ -223,6 +229,14 @@ export const teamAgentMetadataSchema = z
      * the turn reports on each, and the turn's end clears them.
      */
     turnTasks: z.array(durableIdSchema).min(1).optional(),
+    /**
+     * The lead's task summary: when it last read it, and whether it was woken for hand-offs or
+     * questions since then, which stands for every later one until it reads again.
+     */
+    taskSummary: z
+      .object({ readAt: z.iso.datetime().optional(), woken: z.literal(true).optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -232,7 +246,7 @@ export const setTeamAgentStatusInputSchema = teamStatusTargetSchema.safeExtend({
 export type SetTeamAgentStatusInput = z.output<typeof setTeamAgentStatusInputSchema>;
 
 const teamMemberSchema = teamAgentMetadataSchema
-  .omit({ seenThrough: true })
+  .omit({ seenThrough: true, taskSummary: true })
   .extend({
     teamId: durableIdSchema,
     id: durableIdSchema,
@@ -519,7 +533,10 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
       error: z.string().optional(),
     })
     .strict(),
-  /** The lead got what every pending request asked for another way, so none waits on the user. */
+  /**
+   * The lead got what pending requests asked for another way, so they no longer wait on the user:
+   * in a thread, that thread's question; top-level, every one.
+   */
   z.object({ type: z.literal("requests_resolved") }).strict(),
   z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
   z.object({ type: z.literal("member_left"), member: teamMemberSchema }).strict(),
@@ -899,6 +916,32 @@ export function resolveTeamAudience({
         id === taskRecipient?.id ||
         (acknowledgedRequest && id === lead.id)),
   );
+}
+
+/**
+ * Whether a message belongs in an agent's reading. A task's thread, its opening note included,
+ * belongs to the task's assignee, or to the lead while it has none, and reaches anyone else only
+ * when it mentions them; every other message reaches every agent.
+ */
+export function teamMessageReaches(
+  message: TeamMessage<unknown>,
+  agentId: string,
+  {
+    lead,
+    members,
+    tasksByThread,
+  }: {
+    lead: TeamAgent;
+    members: readonly TeamAgent[];
+    tasksByThread: ReadonlyMap<number, Pick<TeamTask, "assigneeId">>;
+  },
+): boolean {
+  const task = tasksByThread.get(message.threadSequence ?? message.sequence);
+  if (!task || (task.assigneeId ?? lead.id) === agentId) return true;
+  if (isTeamSystemMessage(message)) return false;
+  const agent = [lead, ...members].find(({ id }) => id === agentId);
+  const { handles, mentionAll } = extractAgentMentionHandles(message.content);
+  return mentionAll || (agent !== undefined && handles.includes(agentHandleFromName(agent.name)));
 }
 
 /** An audience by name, or "Everyone" when it's every agent the sender could reach. */

@@ -82,6 +82,7 @@ test("opening numbers tasks from the counter and stamps who opened them and when
     openedBy: lead,
     openedAt: NOW,
     updatedAt: NOW,
+    updatedBy: lead,
   });
   expect(byId(result.tasks, "t5")).toMatchObject({ assigneeId: "builder", priority: "normal" });
   expect([byId(result.tasks, "t6")?.position, byId(result.tasks, "t7")?.position]).toEqual([0, 1]);
@@ -236,6 +237,7 @@ describe("an assignee's authority", () => {
     expect(byId(updated, "t1")).toMatchObject({
       status: "in_review",
       diff: { added: 4, removed: 1 },
+      updatedBy: { type: "agent", agentId: "builder" },
     });
   });
 

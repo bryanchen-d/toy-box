@@ -234,7 +234,7 @@ const waitForTeamAgentsTool = defineTool("wait_for_team_agents", {
 const readTeamForAgentTool = defineTool("read_team", {
   alwaysAvailable: true,
   description:
-    "Reads the team ID, purpose, yourTasks (your open tasks, highest priority first), the team's tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead, or taskId to read one task's record and its whole thread; neither changes your read position. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the team ID, purpose, yourTasks (your open tasks, highest priority first), the team's tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Messages in the threads of tasks that aren't yours appear only when they mention you. The lead also reads taskSummary: each task changed since its last read other than by the lead, or with news in its thread, with who changed it, its latest note, and whether it holds a question for the user. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead, or taskId to read one task's record and its whole thread; neither changes your read position. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z
     .object({ ...readThreadParameter, ...readTaskParameter })
     .refine(oneReadTarget, "Pass threadSequence or taskId, not both."),
@@ -310,11 +310,19 @@ const sendLeadMessageTool = { ...sendTeamMessageTool, parameters: sendLeadMessag
 
 const resolveTeamRequestsTool = defineTool("resolve_team_requests", {
   description:
-    "Marks every request still waiting on the user as resolved, clearing Needs your reply, once you have what they asked for from somewhere else, such as a member, connector, or another team. Does not post a message or wake agents. To keep asking for anything still missing, send and flag a new request.",
-  parameters: z.object({}).strict(),
-  handler: async (_args, invocation) => {
+    "Marks questions still waiting on the user as resolved, clearing them from Needs your reply, once you have what they asked for from somewhere else, such as the user's answer to your gathered question, a member, a connector, or another team. Pass taskIds to resolve only the questions in those tasks' threads, after relaying each answer into its thread; omit it to resolve every one. Does not post a message or wake agents. To keep asking for anything still missing, send and flag a new request.",
+  parameters: z
+    .object({
+      taskIds: z
+        .array(teamTaskIdSchema)
+        .min(1)
+        .optional()
+        .describe("The tasks whose threads' questions are answered. Omit to resolve every one."),
+    })
+    .strict(),
+  handler: async ({ taskIds }, invocation) => {
     const { resolveTeamRequestsFromLead } = await import("@teams/server");
-    return { resolved: await resolveTeamRequestsFromLead(invocation.sessionId) };
+    return { resolved: await resolveTeamRequestsFromLead(invocation.sessionId, taskIds) };
   },
 });
 
@@ -521,7 +529,10 @@ const shareTeamArtifactFromAgentTool = defineTool("share_team_artifact", {
 });
 
 async function toTeamReadToolResult(
-  result: Awaited<ReturnType<typeof import(".").readTeamForSession>> & { task?: TeamTask },
+  result: Awaited<ReturnType<typeof import(".").readTeamForSession>> & {
+    task?: TeamTask;
+    taskSummary?: unknown[];
+  },
   readerSessionId: string,
 ) {
   const { listConnectors } = await import("@connectors/server");
@@ -624,6 +635,7 @@ async function toTeamReadToolResult(
                   .map(taskForTool),
               }
             : {}),
+          ...(result.taskSummary ? { taskSummary: result.taskSummary } : {}),
           tasks: result.tasks.map((task) =>
             isTeamTaskOpen(task)
               ? taskForTool(task)
@@ -673,13 +685,10 @@ function teamContextForTool({
   };
 }
 
-/** A task as agents read it: every field, with the opener as an agentId or "user". */
-function taskForTool({ id, position: _position, openedBy, ...task }: TeamTask) {
-  return {
-    taskId: id,
-    ...task,
-    openedBy: openedBy.type === "agent" ? openedBy.agentId : "user",
-  };
+/** A task as agents read it: every field, with who opened and last changed it as an agentId or "user". */
+function taskForTool({ id, position: _position, openedBy, updatedBy, ...task }: TeamTask) {
+  const actor = (by: TeamTask["openedBy"]) => (by.type === "agent" ? by.agentId : "user");
+  return { taskId: id, ...task, openedBy: actor(openedBy), updatedBy: actor(updatedBy) };
 }
 
 function agentForTool(agent: TeamAgent, teamId: string, model?: ModelConfiguration) {

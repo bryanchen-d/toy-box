@@ -11,6 +11,7 @@ export function teamTask(id: string, fields: Partial<TeamTask> = {}): TeamTask {
     openedBy: { type: "agent", agentId: "team" },
     openedAt: "2026-11-24T10:00:00.000Z",
     updatedAt: "2026-11-24T10:00:00.000Z",
+    updatedBy: { type: "agent", agentId: "team" },
     ...fields,
   };
 }

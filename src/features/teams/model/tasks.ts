@@ -55,6 +55,8 @@ export type TeamTask = {
   threadSequence?: number;
   openedAt: string;
   updatedAt: string;
+  /** Who made its latest change, the lead or its assignee; the opener until then. */
+  updatedBy: TeamMessageActor;
   closedAt?: string;
 };
 
@@ -429,6 +431,7 @@ export function applyTeamTaskEdits(
       openedBy: { type: "agent", agentId: editor.agentId },
       openedAt: now,
       updatedAt: now,
+      updatedBy: { type: "agent", agentId: editor.agentId },
     };
     opened.push(next);
     return children.reduce<TeamTask[]>((tree, child) => open(tree, id, child), [...current, next]);
@@ -490,7 +493,9 @@ export function applyTeamTaskEdits(
   return {
     tasks: result.map((task) => {
       const previous = before.get(task.id);
-      return previous ? stamp(previous, task, now) : task;
+      return previous
+        ? stamp(previous, task, now, { type: "agent", agentId: editor.agentId })
+        : task;
     }),
     opened,
     notes,
@@ -545,8 +550,8 @@ function assertAuthority(
   }
 }
 
-/** Records when a task changed, and when it closed; reopening clears that. */
-function stamp(previous: TeamTask, next: TeamTask, now: string): TeamTask {
+/** Records when a task changed and who changed it, and when it closed; reopening clears that. */
+function stamp(previous: TeamTask, next: TeamTask, now: string, by: TeamMessageActor): TeamTask {
   if (sameTask(previous, next)) return previous;
   const { closedAt: _closedAt, ...task } = next;
   const closedAt = isTeamTaskOpen(next)
@@ -554,7 +559,7 @@ function stamp(previous: TeamTask, next: TeamTask, now: string): TeamTask {
     : isTeamTaskOpen(previous)
       ? now
       : previous.closedAt;
-  return { ...task, updatedAt: now, ...(closedAt ? { closedAt } : {}) };
+  return { ...task, updatedAt: now, updatedBy: by, ...(closedAt ? { closedAt } : {}) };
 }
 
 function sameTask(left: TeamTask, right: TeamTask): boolean {

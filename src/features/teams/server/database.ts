@@ -482,17 +482,139 @@ export class TeamDatabase {
     });
   }
 
-  /** The lead settles every pending request without the user; with none pending, nothing changes. */
-  async resolveRequests(leadId: string) {
+  /**
+   * Claims the lead's wake for hand-offs and questions: the first since its last read wakes it and
+   * stands for every later one, which its next summary lists, until it reads or its turn ends. A
+   * paused team's lead isn't woken.
+   */
+  async claimTaskSummaryWake(teamId: string): Promise<boolean> {
+    return inStateTransaction(this.db, async (db) => {
+      const team = await requireTeam(db, teamId);
+      const lead = await new WorkerDatabase(db).get(teamId, "team");
+      if (team.paused || !lead) return false;
+      const metadata = teamAgentMetadataSchema.parse(lead.metadata);
+      if (metadata.taskSummary?.woken) return false;
+      await new WorkerDatabase(db).update(teamId, {
+        metadata: { ...metadata, taskSummary: { ...metadata.taskSummary, woken: true } },
+      });
+      return true;
+    });
+  }
+
+  /**
+   * A lead's turn ending, or the server restarting, consumes its claimed wake whether or not it
+   * read, so the next hand-off or question wakes it again rather than waiting on a lost wake.
+   */
+  async releaseTaskSummaryWake(agentId: string) {
+    await inStateTransaction(this.db, async (db) => {
+      const worker = await new WorkerDatabase(db).get(agentId, "team");
+      const metadata = worker && teamAgentMetadataSchema.parse(worker.metadata);
+      if (!metadata?.taskSummary?.woken) return;
+      const { woken: _woken, ...taskSummary } = metadata.taskSummary;
+      await new WorkerDatabase(db).update(agentId, { metadata: { ...metadata, taskSummary } });
+    });
+  }
+
+  /**
+   * The lead's task summary: each task that changed since its last read, other than by the lead,
+   * or whose thread has news from anyone else, with who changed it, its latest such note, and
+   * whether its thread holds a question for the user. Reading starts the next summary, which
+   * repeats a change from the very millisecond of this read rather than risk missing one.
+   */
+  async readTaskSummary(leadId: string) {
+    return inStateTransaction(this.db, async (db) => {
+      const lead = await requireTeamWorker(db, leadId);
+      const team = await requireTeam(db, lead.teamId);
+      const metadata = teamAgentMetadataSchema.parse(lead.metadata);
+      const since = metadata.taskSummary?.readAt ?? new Date(0).toISOString();
+      const byLead = (actor: TeamMessageActor) =>
+        actor.type === "agent" && actor.agentId === team.id;
+      const notes = new Map(
+        (
+          await db<
+            Pick<
+              TeamMessageRow,
+              "thread_sequence" | "sender_type" | "sender_agent_id" | "content"
+            >[]
+          >`
+            SELECT thread_sequence, sender_type, sender_agent_id, content FROM team_messages
+            WHERE team_id = ${team.id} AND thread_sequence IS NOT NULL AND timestamp >= ${since}
+              AND sender_type IN ('user', 'agent')
+              AND (sender_agent_id IS NULL OR sender_agent_id <> ${team.id})
+            ORDER BY sequence
+          `
+        ).map((row) => [row.thread_sequence!, row]),
+      );
+      const asked = new Set(team.pendingRequests.map(({ threadSequence }) => threadSequence));
+      const summary = (await listTasks(db, team.id)).flatMap((task) => {
+        const changed = task.updatedAt >= since && !byLead(task.updatedBy);
+        const note = task.threadSequence ? notes.get(task.threadSequence) : undefined;
+        if (!changed && !note) return [];
+        return [
+          {
+            taskId: task.id,
+            title: task.title,
+            status: task.status,
+            ...(task.assigneeId ? { assigneeId: task.assigneeId } : {}),
+            ...(changed
+              ? {
+                  changedBy:
+                    task.updatedBy.type === "agent" ? task.updatedBy.agentId : ("user" as const),
+                }
+              : {}),
+            ...(note
+              ? {
+                  note: {
+                    from: note.sender_agent_id ?? "user",
+                    content: note.content.slice(0, 500),
+                  },
+                }
+              : {}),
+            ...(task.threadSequence && asked.has(task.threadSequence) ? { question: true } : {}),
+          },
+        ];
+      });
+      await new WorkerDatabase(db).update(leadId, {
+        metadata: { ...metadata, taskSummary: { readAt: new Date().toISOString() } },
+      });
+      return summary;
+    });
+  }
+
+  /**
+   * The lead settles pending requests without the user: those in the given tasks' threads, or every
+   * one. A task's resolution posts in its thread; with nothing pending, nothing changes.
+   */
+  async resolveRequests(leadId: string, taskIds?: readonly string[]) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireLeadTeam(db, leadId);
-      return recordTeamChange(
-        db,
-        team,
-        team.pendingRequests.length === 0
-          ? []
-          : [await appendSystemMessage(db, team.id, { type: "requests_resolved" })],
-      );
+      if (!taskIds) {
+        return recordTeamChange(
+          db,
+          team,
+          team.pendingRequests.length === 0
+            ? []
+            : [await appendSystemMessage(db, team.id, { type: "requests_resolved" })],
+        );
+      }
+      const tasks = await listTasks(db, team.id);
+      const threads = taskIds.map((taskId) => {
+        const task = tasks.find(({ id }) => id === taskId);
+        if (!task) throw new Error(`Task "${taskId}" was not found in this team.`);
+        const asked = team.pendingRequests.some(
+          ({ threadSequence }) =>
+            threadSequence !== undefined && threadSequence === task.threadSequence,
+        );
+        if (!asked) throw new Error(`${taskId} has no question waiting on the user.`);
+        return task.threadSequence!;
+      });
+      const events = [];
+      for (const threadSequence of new Set(threads)) {
+        events.push(
+          await appendSystemMessage(db, team.id, { type: "requests_resolved" }, { threadSequence }),
+        );
+      }
+      return recordTeamChange(db, team, events);
     });
   }
 
@@ -578,7 +700,12 @@ export class TeamDatabase {
             member: teamMemberFromWorker(worker),
           }),
         );
-        const { status: _status, ...metadata } = teamAgentMetadataSchema.parse(worker.metadata);
+        // Its status and turn belong to the team it leaves.
+        const {
+          status: _status,
+          turnTasks: _turnTasks,
+          ...metadata
+        } = teamAgentMetadataSchema.parse(worker.metadata);
         await workers.moveToTeam(worker.sessionId, target.id);
         await workers.update(worker.sessionId, {
           metadata: { ...metadata, seenThrough: target.latestSequence },
@@ -2180,7 +2307,10 @@ async function saveTasks(
   return events;
 }
 
-/** A member leaving the team releases every task assigned to it. */
+/**
+ * A member leaving the team releases every task assigned to it. Releasing an open task is that
+ * member's change; a closed task only drops its assignee.
+ */
 async function releaseTasks(
   db: Bun.SQL,
   teamId: string,
@@ -2189,15 +2319,25 @@ async function releaseTasks(
   const updatedAt = new Date().toISOString();
   const events: TeamEvent[] = [];
   for (const agentId of agentIds) {
-    const rows = await db<TeamTaskRow[]>`
-      UPDATE team_tasks
-      SET assignee_id = NULL, updated_at = ${updatedAt},
-        continue_at = NULL, continues = 0, unreported_turns = 0
-      WHERE team_id = ${teamId} AND assignee_id = ${agentId}
-      RETURNING *
+    const assigned = await db<TeamTaskRow[]>`
+      SELECT * FROM team_tasks WHERE team_id = ${teamId} AND assignee_id = ${agentId}
     `;
-    for (const task of orderTeamTasks(rows.map(taskFromRow))) {
-      events.push({ type: "task", task, revision: await advanceRevision(db, teamId) });
+    for (const task of orderTeamTasks(assigned.map(taskFromRow))) {
+      const [row] = await db<TeamTaskRow[]>`
+        UPDATE team_tasks
+        SET ${db({
+          assignee_id: null,
+          ...RESTARTED_TURNS,
+          ...(isTeamTaskOpen(task) ? { updated_at: updatedAt, updated_by: agentId } : {}),
+        })}
+        WHERE team_id = ${teamId} AND id = ${task.id}
+        RETURNING *
+      `;
+      events.push({
+        type: "task",
+        task: taskFromRow(row!),
+        revision: await advanceRevision(db, teamId),
+      });
     }
   }
   return events;
@@ -2221,6 +2361,7 @@ function taskColumns(task: TeamTask) {
     thread_sequence: task.threadSequence ?? null,
     opened_at: task.openedAt,
     updated_at: task.updatedAt,
+    updated_by: task.updatedBy.type === "agent" ? task.updatedBy.agentId : null,
     closed_at: task.closedAt ?? null,
   };
 }
@@ -2241,6 +2382,8 @@ function taskFromRow(row: TeamTaskRow): TeamTask {
     ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     openedAt: row.opened_at,
     updatedAt: row.updated_at,
+    updatedBy:
+      row.updated_by === null ? { type: "user" } : { type: "agent", agentId: row.updated_by },
     ...(row.closed_at === null ? {} : { closedAt: row.closed_at }),
   };
 }
@@ -2260,6 +2403,7 @@ type TeamTaskRow = {
   thread_sequence: number | null;
   opened_at: string;
   updated_at: string;
+  updated_by: string | null;
   closed_at: string | null;
   continue_at: string | null;
   continues: number;

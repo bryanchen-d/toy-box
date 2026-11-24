@@ -55,6 +55,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       thread_sequence  INTEGER,
       opened_at        TEXT NOT NULL,
       updated_at       TEXT NOT NULL,
+      -- Who made its latest change: an agent ID, or NULL for the user, as opened_by.
+      updated_by       TEXT,
       closed_at        TEXT,
       -- When the assignee's last report asked to continue it; a change of status or assignee clears it.
       continue_at      TEXT,

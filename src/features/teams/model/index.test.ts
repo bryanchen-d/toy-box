@@ -263,6 +263,9 @@ describe("questions for the user", () => {
     const resolved = at(6, { sender: { type: "system" }, content: { type: "requests_resolved" } });
     expect(acknowledgesTeamRequest(resolved, inThread)).toBe(true);
     expect(acknowledgesTeamRequest(resolved, topLevel)).toBe(true);
+    const resolvedInThread = { ...resolved, threadSequence: 2 } as TeamMessage;
+    expect(acknowledgesTeamRequest(resolvedInThread, inThread)).toBe(true);
+    expect(acknowledgesTeamRequest(resolvedInThread, topLevel)).toBe(false);
   });
 
   test("a task needs your input while its thread holds a pending question", () => {

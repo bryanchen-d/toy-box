@@ -322,6 +322,47 @@ describe("team attention", () => {
     expect((await teams.getSnapshot(team.id, 1))?.requests).toEqual([]);
   });
 
+  test("the lead resolves the questions in chosen tasks' threads, leaving the rest waiting", async () => {
+    const { teams, team, ask } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "member", "Member"));
+    const { opened } = await teams.editTasks(team.id, {
+      operations: [
+        { type: "add", title: "Parser", assigneeId: member.id },
+        { type: "add", title: "Docs", assigneeId: member.id },
+      ],
+    });
+    const lead = await ask("Which of these first?");
+    for (const { threadSequence } of opened) {
+      await teams.appendMessage({
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        sender: { type: "agent", agentId: member.id },
+        content: "Which grammar?",
+        threadSequence: threadSequence!,
+        request: true,
+      });
+    }
+    await expect(teams.resolveRequests(team.id, ["t9"])).rejects.toThrow('"t9" was not found');
+
+    const resolved = await teams.resolveRequests(team.id, ["t1"]);
+    expect(resolved.events).toMatchObject([
+      {
+        message: {
+          content: { type: "requests_resolved" },
+          threadSequence: opened[0]!.threadSequence,
+        },
+      },
+    ]);
+    expect(resolved.team.pendingRequests.map(({ sequence }) => sequence)).toEqual([
+      lead.sequence,
+      expect.any(Number),
+    ]);
+    expect(resolved.team.pendingRequests[1]?.threadSequence).toBe(opened[1]!.threadSequence);
+    await expect(teams.resolveRequests(team.id, ["t1"])).rejects.toThrow(
+      "t1 has no question waiting on the user.",
+    );
+  });
+
   test("the lead asks the user anywhere, and an assignee only in its own open task's thread", async () => {
     const { teams, team } = await setup();
     const { member } = await teams.createMember(teamAgent(team.id, "member", "Member"));

@@ -36,6 +36,7 @@ const {
   deleteTeam,
   createTeamMember,
   createTeamMembersFromLead,
+  detachTeamAgentSession,
   editTeam,
   editTeamTasksFromAgent,
   endTeamAgentTurn,
@@ -467,6 +468,7 @@ test("agents read their queue, open tasks in full, closed ones compactly, and on
     threadSequence: expect.any(Number),
     openedAt: expect.any(String),
     updatedAt: expect.any(String),
+    updatedBy: team.id,
   });
   expect(read.tasks[3]).toEqual({ taskId: "t4", title: "Ship", status: "completed" });
   expect((await invokeTool("read_team", {}, team.id, teamLeadTools)).yourTasks).toMatchObject([
@@ -585,10 +587,12 @@ test("a saved task change wakes each agent once, with every task and what change
     },
   });
 
-  // Closing a hand-off wakes no one, since its assignee has moved on.
+  // Handing off reaches the lead, and closing a hand-off wakes no one, since its assignee has
+  // moved on.
   await editTeamTasksFromAgent(builder.id, {
     operations: [{ type: "update", taskId: docs!.id, patch: { status: "in_review" } }],
   });
+  expect(Object.keys(delivered())).toEqual([team.id]);
   await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "update", taskId: docs!.id, patch: { status: "completed" } }],
   });
@@ -643,6 +647,168 @@ async function reportingTeam() {
   return { teams, team, builder, delivered, assign, thread };
 }
 
+test("hand-offs and questions wake the lead once until it reads, and its summary lists them all", async () => {
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
+  let now = Date.parse("2026-11-24T15:00:00.000Z");
+  const tick = () => setSystemTime(new Date((now += 1_000)));
+  onTestFinished(() => setSystemTime());
+  tick();
+  await assign({ title: "Parser" }, { title: "Docs" }, { title: "Lexer" });
+  const [parser, docs, lexer] = await teams.listTasks(team.id);
+  const leadWakes = () => {
+    const calls = delivered();
+    return calls[team.id] ? [calls[team.id]] : [];
+  };
+  // The lead's own changes stay out of its summary.
+  tick();
+  await readTeamForAgent(team.id);
+
+  tick();
+  await finishTeamAgentTurn(builder.id, {
+    reports: [
+      { taskId: "t1", status: "in_review", note: "Parsed. Close as completed." },
+      { taskId: "t2", status: "in_progress", note: "Writing." },
+      { taskId: "t3", status: "pending", note: "Not started." },
+    ],
+  });
+  expect(leadWakes()).toEqual([
+    {
+      systemMessage: {
+        type: "team_task",
+        senderName: "Builder",
+        tasks: [{ taskId: "t1", title: "Parser", changes: ["handed off for review"] }],
+      },
+      immediate: true,
+    },
+  ]);
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [{ type: "update", taskId: "t2", patch: { status: "in_review" } }],
+  });
+  await sendTeamMessageFromAgent(builder.id, {
+    content: "Which lexer generator?",
+    threadSequence: lexer!.threadSequence!,
+    request: true,
+  });
+  expect(leadWakes()).toEqual([]);
+
+  tick();
+  const { taskSummary } = await readTeamForAgent(team.id);
+  expect(taskSummary).toEqual([
+    {
+      taskId: "t1",
+      title: "Parser",
+      status: "in_review",
+      assigneeId: builder.id,
+      changedBy: builder.id,
+      note: { from: builder.id, content: "Parsed. Close as completed." },
+    },
+    {
+      taskId: "t2",
+      title: "Docs",
+      status: "in_review",
+      assigneeId: builder.id,
+      changedBy: builder.id,
+      note: { from: builder.id, content: "Writing." },
+    },
+    {
+      taskId: "t3",
+      title: "Lexer",
+      status: "pending",
+      assigneeId: builder.id,
+      note: { from: builder.id, content: "Which lexer generator?" },
+      question: true,
+    },
+  ]);
+  tick();
+  expect((await readTeamForAgent(team.id)).taskSummary).toEqual([]);
+
+  // Reading starts over: the next hand-off wakes the lead again, and closing it wakes no one.
+  tick();
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [{ type: "update", taskId: "t3", patch: { status: "in_review" } }],
+  });
+  expect(leadWakes()).toHaveLength(1);
+  await editTeamTasksFromAgent(team.id, {
+    operations: [
+      { type: "update", taskId: parser!.id, patch: { status: "completed" } },
+      { type: "update", taskId: docs!.id, patch: { status: "cut" } },
+    ],
+  });
+  expect(delivered()).toEqual({});
+
+  // A lead turn that ends without reading gives its wake up, so the next hand-off wakes it again.
+  await endTeamAgentTurn(teams, team.id, "stopped");
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: lexer!.id, patch: { status: "in_progress" } }],
+  });
+  delivered();
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [{ type: "update", taskId: lexer!.id, patch: { status: "in_review" } }],
+  });
+  expect(leadWakes()).toHaveLength(1);
+});
+
+test("an agent reads other agents' task threads only where they mention it", async () => {
+  const { teams, team, builder, assign } = await reportingTeam();
+  const { member: critic } = await teams.createMember(teamAgent(team.id, "critic", "Critic"));
+  await assign({ title: "Parser" });
+  await editTeamTasksFromAgent(team.id, { operations: [{ type: "add", title: "Triage" }] });
+  const [parser, triage] = await teams.listTasks(team.id);
+  for (const agentId of [team.id, builder.id, critic.id]) await readTeamForAgent(agentId);
+  const post = (content: string, threadSequence: number) =>
+    postTeamMessage({ id: crypto.randomUUID(), teamId: team.id, content, threadSequence });
+  await post("How is the grammar going?", parser!.threadSequence!);
+  await post("@critic please look at the grammar.", parser!.threadSequence!);
+  await post("Who takes this?", triage!.threadSequence!);
+  await postTeamMessage({ id: "top", teamId: team.id, content: "Thanks, everyone." });
+
+  const read = async (agentId: string) =>
+    (await readTeamForAgent(agentId)).messages.map(({ content }) => content);
+  expect(await read(builder.id)).toEqual([
+    "How is the grammar going?",
+    "@critic please look at the grammar.",
+    "Thanks, everyone.",
+  ]);
+  expect(await read(critic.id)).toEqual([
+    "@critic please look at the grammar.",
+    "Thanks, everyone.",
+  ]);
+  expect(await read(team.id)).toEqual(["Who takes this?", "Thanks, everyone."]);
+});
+
+test("an open task losing its assignee wakes the lead once per change", async () => {
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
+  await assign({ title: "Parser" }, { title: "Docs" });
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: "t2", patch: { status: "completed" } }],
+  });
+  delivered();
+
+  await detachTeamAgentSession(builder.id);
+  expect(delivered()).toEqual({
+    [team.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: "t1",
+            title: "Parser",
+            changes: ["lost its assignee, who was removed from the team"],
+          },
+        ],
+      },
+      immediate: true,
+    },
+  });
+  expect((await teams.listTasks(team.id)).map(({ assigneeId }) => assigneeId)).toEqual([
+    undefined,
+    undefined,
+  ]);
+  expect((await readTeamForAgent(team.id)).taskSummary).toEqual([
+    { taskId: "t1", title: "Parser", status: "pending", changedBy: builder.id },
+  ]);
+});
+
 test("an assignee asks the user in its task's thread, and the reply there answers it and wakes only the assignee", async () => {
   const { teams, team, builder, delivered, assign } = await reportingTeam();
   await assign({ title: "Parser" });
@@ -662,7 +828,22 @@ test("an assignee asks the user in its task's thread, and the reply there answer
   expect((await teams.getTeam(team.id))!.pendingRequests).toEqual([
     { sequence, threadSequence, agentId: builder.id },
   ]);
-  expect(delivered()).toEqual({});
+  // The lead hears of it with its hand-offs, merged.
+  expect(delivered()).toEqual({
+    [team.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: "t1",
+            title: "Parser",
+            changes: ["Builder asked the user a question in its thread"],
+          },
+        ],
+      },
+      immediate: true,
+    },
+  });
 
   await postTeamMessage({ id: "answer", teamId: team.id, content: "PEG.", threadSequence });
   expect(delivered()).toEqual({
@@ -891,7 +1072,7 @@ test("a report can continue its task later, at most three reports in a row", asy
 });
 
 test("handing a task off wakes its assignee for its highest-priority pending task after the turn", async () => {
-  const { teams, builder, delivered, assign } = await reportingTeam();
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
   await assign(
     { title: "Parser" },
     { title: "Docs", priority: "low" },
@@ -905,18 +1086,18 @@ test("handing a task off wakes its assignee for its highest-priority pending tas
       { taskId: "t3", status: "pending", note: "Not started." },
     ],
   });
-  expect(delivered()).toEqual({
-    [builder.id]: {
-      systemMessage: {
-        type: "team_task",
-        tasks: [
-          {
-            taskId: "t3",
-            title: "Fix",
-            changes: ["your highest-priority pending task, now that you handed off t1"],
-          },
-        ],
-      },
+  const calls = delivered();
+  expect(Object.keys(calls).sort()).toEqual([builder.id, team.id].sort());
+  expect(calls[builder.id]).toEqual({
+    systemMessage: {
+      type: "team_task",
+      tasks: [
+        {
+          taskId: "t3",
+          title: "Fix",
+          changes: ["your highest-priority pending task, now that you handed off t1"],
+        },
+      ],
     },
   });
   expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t3"]);

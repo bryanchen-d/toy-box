@@ -115,7 +115,10 @@ export function TaskCard({
         )}
         <dt className="text-muted-foreground">Changed</dt>
         <dd>
-          <RelativeTime date={task.updatedAt} />
+          <RelativeTime date={task.updatedAt} /> by{" "}
+          {task.updatedBy.type === "agent"
+            ? teamAgentIdentity(owners, task.updatedBy.agentId).name
+            : "you"}
         </dd>
       </dl>
     </div>
