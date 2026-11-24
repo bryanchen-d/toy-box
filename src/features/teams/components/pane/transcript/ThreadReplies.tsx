@@ -1,6 +1,11 @@
 import { CornerDownRight, UserRound } from "lucide-react";
 import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
-import { messageAuthorId, type TeamConversationMessage } from "@teams/model";
+import {
+  isTeamSystemMessage,
+  messageAuthorId,
+  type TeamConversationMessage,
+  type TeamMessage,
+} from "@teams/model";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { cn } from "@/shared/utils";
 import { useTeamPane } from "../TeamPaneContext";
@@ -46,13 +51,7 @@ export function ThreadSummary({
  * Replies that arrived after other messages separated them from their thread, shown where they
  * arrived so new replies stay in view, with the thread's top-level message for context.
  */
-export function ThreadActivity({
-  thread,
-  root,
-}: {
-  thread: TranscriptThread;
-  root?: TeamConversationMessage;
-}) {
+export function ThreadActivity({ thread, root }: { thread: TranscriptThread; root?: TeamMessage }) {
   const { agent, openThread } = useTeamPane();
   const latest = thread.replies.at(-1)!;
   const authorId = messageAuthorId(latest.sender);
@@ -138,9 +137,14 @@ function replyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
 
-/** One line of a message's text, or what it shared when it has none. */
-function messageExcerpt({ content, attachments }: TeamConversationMessage): string {
-  const text = content.replace(/\s+/g, " ").trim();
+/** One line of a message's text, what it shared when it has none, or the task a note opened. */
+function messageExcerpt(message: TeamMessage): string {
+  if (isTeamSystemMessage(message)) {
+    return message.content.type === "task_opened"
+      ? `${message.content.taskId}: ${message.content.title}`
+      : "";
+  }
+  const text = message.content.replace(/\s+/g, " ").trim();
   if (text) return text;
-  return attachments?.length ? "Shared an attachment" : "";
+  return message.attachments?.length ? "Shared an attachment" : "";
 }

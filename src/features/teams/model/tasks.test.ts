@@ -7,6 +7,7 @@ import {
   teamTaskState,
   teamTasksByPriority,
   teamTasksComplete,
+  teamTaskNotifications,
   teamTasksDiff,
   teamTasksForAgent,
   teamTaskTree,
@@ -312,6 +313,55 @@ test("notes name the task whose thread they post into, including one the batch o
       ],
     ),
   ).toThrow("can't take a note");
+});
+
+describe("who a task edit wakes", () => {
+  const assigned = task("t1", { assigneeId: "builder", status: "in_progress" });
+  const notified = (after: TeamTask[], editorId = "team", before: TeamTask[] = [assigned]) =>
+    teamTaskNotifications(before, after, editorId).map(
+      ({ agentId, taskId, change }) => `${agentId} ${taskId}: ${change}`,
+    );
+
+  test("assigning wakes the new assignee, and reassigning tells the previous one", () => {
+    expect(notified([assigned, task("t2", { position: 1, assigneeId: "critic" })])).toEqual([
+      "critic t2: assigned to you",
+    ]);
+    expect(notified([{ ...assigned, assigneeId: "critic" }])).toEqual([
+      "critic t1: assigned to you",
+      "builder t1: no longer assigned to you",
+    ]);
+    expect(notified([task("t1", { status: "in_progress" })])).toEqual([
+      "builder t1: no longer assigned to you",
+    ]);
+  });
+
+  test("anyone else's change to the work wakes the assignee", () => {
+    expect(notified([{ ...assigned, title: "Narrower" }])).toEqual(["builder t1: edited"]);
+    expect(notified([{ ...assigned, diff: { added: 1, removed: 0 } }])).toEqual([
+      "builder t1: edited",
+    ]);
+    expect(notified([{ ...assigned, status: "blocked" }])).toEqual([
+      "builder t1: moved to blocked",
+    ]);
+    expect(notified([{ ...assigned, status: "cancelled" }])).toEqual([
+      "builder t1: closed as cancelled",
+    ]);
+    expect(notified([])).toEqual(["builder t1: removed"]);
+  });
+
+  test("sending a review back wakes the assignee, but closing it wakes no one", () => {
+    const review = { ...assigned, status: "in_review" as const };
+    expect(notified([{ ...review, status: "in_progress" }], "team", [review])).toEqual([
+      "builder t1: moved to in_progress",
+    ]);
+    expect(notified([{ ...review, status: "completed" }], "team", [review])).toEqual([]);
+  });
+
+  test("the assignee's own changes and moving a task wake no one", () => {
+    expect(notified([{ ...assigned, status: "in_review" }], "builder")).toEqual([]);
+    expect(notified([{ ...assigned, parentId: "t9", position: 3 }])).toEqual([]);
+    expect(notified([assigned, task("t2", { assigneeId: "team" })])).toEqual([]);
+  });
 });
 
 test("an agent's queue lists high priority first, then tree order", () => {

@@ -9,6 +9,7 @@ import {
   resolveTeamAudience,
   type TeamAgent,
   type TeamMessage,
+  type TeamTask,
 } from ".";
 
 export const PERFORMANCE_BUCKETS = ["hour", "day", "week"] as const;
@@ -43,7 +44,8 @@ export type Deliveries = Record<WakeDelivery, number>;
 export type TeamWake = {
   agentId: string;
   at: string;
-  cause: "message" | "routine" | "follow_up";
+  /** What woke it: a message, its routine or follow-up, or a change to a task. */
+  cause: "message" | "routine" | "follow_up" | "task";
   /** The waking message's author key; absent for scheduled wakes. */
   author?: string;
   delivery: WakeDelivery;
@@ -176,7 +178,8 @@ export function performanceWindow(now: Date, bucket: PerformanceBucket): Date[] 
 /**
  * Counts each author's messages and each agent's wakes per bucket, measures how long agents take to
  * answer a wake publicly, records who addresses whom, counts how recorded wakes were delivered, and
- * adds runtime activity. Audiences follow the current roster, so a message routes as it would today.
+ * adds runtime activity. Audiences follow the current roster and tasks, so a message routes as it
+ * would today.
  */
 export function projectTeamPerformance(
   messages: readonly TeamMessage<unknown>[],
@@ -184,6 +187,7 @@ export function projectTeamPerformance(
     lead,
     members,
     coordinators,
+    tasks = [],
     bucket,
     starts,
     wakes = [],
@@ -192,6 +196,8 @@ export function projectTeamPerformance(
     lead: TeamAgent;
     members: readonly TeamAgent[];
     coordinators?: Readonly<Record<string, string>>;
+    /** The team's tasks, whose threads route their messages to the assignee. */
+    tasks?: readonly TeamTask[];
     bucket: PerformanceBucket;
     /** The window's bucket starts, oldest first. */
     starts: readonly Date[];
@@ -286,6 +292,7 @@ export function projectTeamPerformance(
       members,
       askedBy: message.askedBy,
       coordinators,
+      task: tasks.find(({ threadSequence }) => threadSequence === message.threadSequence),
     });
     for (const { id } of audience) {
       totalsFor(id).wakes += 1;

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TeamConversationMessage, TeamMessage } from "@teams/model";
+import { teamTask } from "@teams/model/testFixtures";
 import {
   pendingRequestRow,
   threadParticipants,
@@ -437,6 +438,56 @@ describe("threads", () => {
       { type: "agent", agentId: "lead" },
       { type: "agent", agentId: "engine" },
     ]);
+  });
+
+  describe("a task's thread", () => {
+    const opened = (sequence: number, taskId: string) =>
+      event(sequence, {
+        type: "task_opened",
+        taskId,
+        title: `Task ${taskId}`,
+        actor: { type: "agent", agentId: "lead" },
+      });
+    const tasks = [
+      teamTask("t1", { assigneeId: "engine", threadSequence: 1 }),
+      teamTask("t2", { position: 1, threadSequence: 2 }),
+    ];
+
+    test("each opening note with replies summarizes them, and quiet ones by one agent merge", () => {
+      const rows = transcriptRows(
+        [
+          opened(1, "t1"),
+          opened(2, "t2"),
+          reply(3, 2, "engine"),
+          opened(5, "t5"),
+          opened(6, "t6"),
+          reply(4, 1, "engine"),
+        ],
+        { lead, members, tasks },
+      );
+      expect(rowIds(rows)).toEqual([["1"], ["2"], ["5", "6"], ["4"]]);
+      expect(rows[1]).toMatchObject({ type: "system", thread: { sequence: 2 } });
+      expect(rows[1]!.type === "system" && rows[1].thread?.replies.map(({ id }) => id)).toEqual([
+        "3",
+      ]);
+      expect(rows[2]).not.toHaveProperty("thread");
+      expect(rows[3]).toMatchObject({ type: "thread", root: { id: "1" } });
+    });
+
+    test("an agent's message there names the assignee it wakes, or the lead without one", () => {
+      const rows = threadRows([opened(1, "t1"), reply(2, 1, "lead", "How's it going?")], 1, {
+        lead,
+        members,
+        tasks,
+      });
+      expect(rows[1]).toMatchObject({ type: "agent", entries: [{ addressee: "Engine" }] });
+      const unassigned = threadRows([opened(2, "t2"), reply(3, 2, "engine", "I can take it.")], 2, {
+        lead,
+        members,
+        tasks,
+      });
+      expect(unassigned[1]).toMatchObject({ type: "agent", entries: [{ addressee: "Lead" }] });
+    });
   });
 });
 

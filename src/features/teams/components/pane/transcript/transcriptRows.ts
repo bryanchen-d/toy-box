@@ -9,6 +9,7 @@ import {
   type TeamConversationMessage,
   type TeamMessage,
   type TeamSystemMessage,
+  type TeamTask,
 } from "@teams/model";
 
 // Consecutive messages from one agent within this window share a header.
@@ -24,18 +25,18 @@ export type TranscriptView = "all" | "yours" | "requests";
 type TranscriptRowContent =
   | { type: "user"; message: TeamConversationMessage; thread?: TranscriptThread }
   | { type: "agent"; agentId: string; entries: AgentRunEntry[] }
-  | { type: "system"; messages: TeamSystemMessage[] }
+  | { type: "system"; messages: TeamSystemMessage[]; thread?: TranscriptThread }
   | {
       type: "thread";
       /** The replies that arrived here, after other rows separated them from their thread. */
       thread: TranscriptThread;
-      /** The thread's top-level message, once loaded. */
-      root?: TeamConversationMessage;
+      /** The thread's top-level message, or a task's opening note, once loaded. */
+      root?: TeamMessage;
     };
 
 /**
- * One transcript row: a user's message, one agent's run, merged system messages, or replies in a
- * thread whose top-level message is further up.
+ * One transcript row: a user's message, one agent's run, merged system messages or a task's
+ * opening note, or replies in a thread whose top-level message is further up.
  */
 export type TranscriptRow = TranscriptRowContent & {
   /** The first message's ID, which the row keeps as later messages join it. */
@@ -84,13 +85,15 @@ type RowContext = {
   lead: TeamAgent;
   members: readonly TeamAgent[];
   coordinators?: Readonly<Record<string, string>>;
+  /** Each task by the sequence its thread starts at, which routes the thread's messages. */
+  tasksByThread: ReadonlyMap<number, TeamTask>;
   /** The messages that acknowledged every request before them, oldest first. */
   acknowledgements: readonly TeamMessage[];
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
 };
 
-type LoadedThread = { root?: TeamConversationMessage; replies: TeamConversationMessage[] };
+type LoadedThread = { root?: TeamMessage; replies: TeamConversationMessage[] };
 
 /**
  * The transcript's rows. A user message stands alone, one agent's consecutive messages form a run,
@@ -106,6 +109,7 @@ export function transcriptRows(
     lead,
     members,
     coordinators,
+    tasks = [],
     unreadAfter,
     view = "all",
   }: {
@@ -113,6 +117,8 @@ export function transcriptRows(
     members: readonly TeamAgent[];
     /** The team's connector coordinators, which connector messages wake. */
     coordinators?: Readonly<Record<string, string>>;
+    /** The team's tasks, whose threads route their messages to the assignee. */
+    tasks?: readonly TeamTask[];
     /** Where unread messages began on arrival; null or undefined marks none. */
     unreadAfter?: number | null;
     view?: TranscriptView;
@@ -122,6 +128,7 @@ export function transcriptRows(
     lead,
     members,
     coordinators,
+    tasksByThread: tasksByThread(tasks),
     acknowledgements: acknowledgements(messages),
     threads: loadedThreads(messages),
   };
@@ -139,16 +146,19 @@ export function threadRows(
     lead,
     members,
     coordinators,
+    tasks = [],
   }: {
     lead: TeamAgent;
     members: readonly TeamAgent[];
     coordinators?: Readonly<Record<string, string>>;
+    tasks?: readonly TeamTask[];
   },
 ): TranscriptRow[] {
   const context: RowContext = {
     lead,
     members,
     coordinators,
+    tasksByThread: tasksByThread(tasks),
     acknowledgements: acknowledgements(messages),
   };
   const thread = messages.filter(
@@ -244,7 +254,17 @@ function dividerBetween(
 }
 
 function startRow(message: TeamMessage, context: RowContext): TranscriptRowContent {
-  if (isTeamSystemMessage(message)) return { type: "system", messages: [message] };
+  if (isTeamSystemMessage(message)) {
+    // A task's opening note starts its thread, and summarizes its replies like any other.
+    const replies = context.threads?.get(message.sequence)?.replies;
+    return replies
+      ? {
+          type: "system",
+          messages: [message],
+          thread: transcriptThread(message.sequence, replies, context),
+        }
+      : { type: "system", messages: [message] };
+  }
   const thread = threadOf(message, context);
   if (thread) {
     return {
@@ -272,6 +292,8 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
   if (row.type === "system" && isTeamSystemMessage(message)) {
     const group = systemMessageGroup(message);
     if (group === undefined || group !== systemMessageGroup(row.messages[0]!)) return false;
+    // A task's opening note with replies keeps a row of its own, where it summarizes them.
+    if (row.thread || context.threads?.has(message.sequence)) return false;
     row.messages.push(message);
     return true;
   }
@@ -285,6 +307,7 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
     // A reply below its top-level message is already in its summary.
     return (
       (row.type === "user" && row.message.sequence === thread.sequence) ||
+      (row.type === "system" && row.messages[0]!.sequence === thread.sequence) ||
       (row.type === "agent" &&
         row.entries.some((entry) => entry.message.sequence === thread.sequence))
     );
@@ -302,7 +325,7 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
 function threadOf(
   { threadSequence: sequence }: TeamConversationMessage,
   { threads }: RowContext,
-): { sequence: number; root?: TeamConversationMessage } | undefined {
+): { sequence: number; root?: TeamMessage } | undefined {
   if (sequence === undefined || !threads) return undefined;
   return { sequence, root: threads.get(sequence)?.root };
 }
@@ -320,7 +343,7 @@ function transcriptThread(
   };
 }
 
-/** Each loaded thread's replies, and its top-level message when that is loaded too. */
+/** Each loaded thread's replies, and its top-level message or task note when that is loaded too. */
 function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThread> {
   const threads = new Map<number, LoadedThread>();
   for (const message of messages) {
@@ -331,7 +354,7 @@ function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThre
   }
   for (const message of messages) {
     const thread = threads.get(message.sequence);
-    if (thread && !isTeamSystemMessage(message)) thread.root = message;
+    if (thread) thread.root = message;
   }
   return threads;
 }
@@ -393,10 +416,19 @@ function agentRunEntry(
 
 /** Who an agent's message wakes, by name; none when it's for the user. */
 function addresseeOf(
-  { content, sender, askedBy }: TeamConversationMessage,
-  { lead, members, coordinators }: RowContext,
+  { content, sender, askedBy, threadSequence }: TeamConversationMessage,
+  { lead, members, coordinators, tasksByThread }: RowContext,
 ): string | undefined {
-  const audience = resolveTeamAudience({ content, sender, lead, members, askedBy, coordinators });
+  const task = threadSequence === undefined ? undefined : tasksByThread.get(threadSequence);
+  const audience = resolveTeamAudience({
+    content,
+    sender,
+    lead,
+    members,
+    askedBy,
+    coordinators,
+    task,
+  });
   // Everyone but the sender reads as "Everyone"; a message that wakes no agent is for the user.
   return audience.length > 0 ? teamAudienceLabel(audience, members.length) : undefined;
 }
@@ -412,10 +444,16 @@ function originKey({ origin }: TeamConversationMessage): string | undefined {
   return origin && `${origin.kind}:${origin.requester?.id ?? ""}`;
 }
 
-/** Membership changes merge, as do one agent's artifact shares; other system messages stand alone. */
+/**
+ * Membership changes merge, as do one agent's artifact shares and one opener's quiet task openings;
+ * other system messages stand alone.
+ */
 function systemMessageGroup({ content }: TeamSystemMessage): string | undefined {
   if (content.type === "member_joined" || content.type === "member_left") return content.type;
-  if (content.type === "artifact_shared" && content.actor.type === "agent") {
+  if (
+    (content.type === "artifact_shared" || content.type === "task_opened") &&
+    content.actor.type === "agent"
+  ) {
     return `${content.type}:${content.actor.agentId}`;
   }
   return undefined;
@@ -423,6 +461,12 @@ function systemMessageGroup({ content }: TeamSystemMessage): string | undefined 
 
 function isSameDay(left: string, right: string): boolean {
   return new Date(left).toDateString() === new Date(right).toDateString();
+}
+
+function tasksByThread(tasks: readonly TeamTask[]): Map<number, TeamTask> {
+  return new Map(
+    tasks.flatMap((task) => (task.threadSequence ? [[task.threadSequence, task] as const] : [])),
+  );
 }
 
 function startOfDay(date: Date): number {

@@ -197,8 +197,9 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       team_id           TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       agent_id          TEXT NOT NULL,
       at                TEXT NOT NULL,
-      cause             TEXT NOT NULL CHECK (cause IN ('message', 'routine', 'follow_up')),
-      -- The author key of a waking message: an agent, connector, or team ID, or 'user'.
+      cause             TEXT NOT NULL
+                        CHECK (cause IN ('message', 'routine', 'follow_up', 'task')),
+      -- Who caused it, for a message or task change: an agent, connector, or team ID, or 'user'.
       author            TEXT,
       message_sequence  INTEGER,
       disposition       TEXT NOT NULL

@@ -336,9 +336,10 @@ export class TeamDatabase {
 
   /**
    * Applies an ordered task batch with the editing agent's authority. Opened tasks take the team's
-   * next numbers, each note posts into its task's thread (a task without one starts it), and each
-   * changed or removed task publishes its own event. The lead's close that completes the list
-   * appends `tasks_completed`.
+   * next numbers, and each starts its thread with a typed opening note. Each note posts into its
+   * task's thread, first starting one for a task that has none, and each changed or removed task
+   * publishes its own event. The lead's close that completes the list appends `tasks_completed`.
+   * Returns the tasks before and after, and the notes, for deciding whom the change wakes.
    */
   async editTasks(agentId: string, { operations }: EditTeamTasksInput) {
     return inStateTransaction(this.db, async (db) => {
@@ -356,30 +357,54 @@ export class TeamDatabase {
       await assertTaskReferences(db, team.id, tasks, before);
       const events: TeamEvent[] = [];
       const threaded = new Map(tasks.map((task) => [task.id, task]));
-      for (const { taskId, note } of notes) {
+      const threadOf = async (taskId: string) => {
         const task = threaded.get(taskId)!;
+        if (task.threadSequence) return task.threadSequence;
+        const root = await appendSystemMessage(db, team.id, {
+          type: "task_opened",
+          taskId,
+          title: task.title,
+          actor: task.openedBy,
+        });
+        events.push(root);
+        threaded.set(taskId, { ...task, threadSequence: root.message.sequence });
+        return root.message.sequence;
+      };
+      const posted: TeamConversationMessage[] = [];
+      const postNote = async ({ taskId, note }: (typeof notes)[number]) => {
+        const threadSequence = await threadOf(taskId);
         const change = await appendMessage(db, team.id, (position) => ({
           ...position,
           id: crypto.randomUUID(),
           sender: { type: "agent" as const, agentId },
           content: note,
-          ...(task.threadSequence ? { threadSequence: task.threadSequence } : {}),
+          threadSequence,
         }));
         events.push(change);
-        if (!task.threadSequence) {
-          threaded.set(taskId, { ...task, threadSequence: change.message.sequence });
-        }
+        posted.push(change.message);
+      };
+      // An opened task's notes follow its opening note, so they read as its first replies.
+      for (const { id } of opened) {
+        await threadOf(id);
+        for (const note of notes.filter(({ taskId }) => taskId === id)) await postNote(note);
       }
-      events.push(...(await saveTasks(db, team.id, before, [...threaded.values()])));
+      for (const note of notes.filter(({ taskId }) => !opened.some(({ id }) => id === taskId))) {
+        await postNote(note);
+      }
+      const after = [...threaded.values()];
+      events.push(...(await saveTasks(db, team.id, before, after)));
       if (lastTaskNumber !== counter!.last_task_number) {
         await db`UPDATE teams SET last_task_number = ${lastTaskNumber} WHERE id = ${team.id}`;
       }
-      if (!teamTasksComplete(before) && teamTasksComplete(tasks)) {
+      if (!teamTasksComplete(before) && teamTasksComplete(after)) {
         events.push(await appendSystemMessage(db, team.id, { type: "tasks_completed" }));
       }
       return {
         ...(await recordTeamChange(db, team, events)),
         opened: opened.map(({ id }) => threaded.get(id)!),
+        before,
+        after,
+        notes: posted,
       };
     });
   }
@@ -667,6 +692,8 @@ export class TeamDatabase {
         ...(await recordTeamChange(db, team, [change])),
         message: change.message,
         acknowledgedRequest,
+        // The task whose thread holds the message, which decides whom it notifies.
+        task: thread === undefined ? undefined : await taskByThread(db, teamId, thread),
       };
     });
   }
@@ -1349,20 +1376,39 @@ function messageColumns(message: TeamMessage) {
   };
 }
 
-/** Replying within a thread joins it, so threads stay one level deep. */
+/**
+ * Replying within a thread joins it, so threads stay one level deep. A thread starts at a user or
+ * agent message, or at a task's opening note.
+ */
 async function resolveThreadSequence(
   db: Bun.SQL,
   teamId: string,
   sequence: number,
 ): Promise<number> {
-  const [row] = await db<Pick<TeamMessageRow, "sender_type" | "thread_sequence">[]>`
-    SELECT sender_type, thread_sequence FROM team_messages
+  const [row] = await db<Pick<TeamMessageRow, "sender_type" | "thread_sequence" | "content">[]>`
+    SELECT sender_type, thread_sequence, content FROM team_messages
     WHERE team_id = ${teamId} AND sequence = ${sequence}
   `;
-  if (!row || row.sender_type === "system") {
-    throw new Error("Reply to a user or agent message in this team.");
+  if (
+    !row ||
+    (row.sender_type === "system" &&
+      teamSystemMessageContentSchema.parse(JSON.parse(row.content)).type !== "task_opened")
+  ) {
+    throw new Error("Reply to a user or agent message, or a task's thread, in this team.");
   }
   return row.thread_sequence ?? sequence;
+}
+
+/** The task whose thread starts at this sequence, if a task's does. */
+async function taskByThread(
+  db: Bun.SQL,
+  teamId: string,
+  threadSequence: number,
+): Promise<TeamTask | undefined> {
+  const [row] = await db<TeamTaskRow[]>`
+    SELECT * FROM team_tasks WHERE team_id = ${teamId} AND thread_sequence = ${threadSequence}
+  `;
+  return row && taskFromRow(row);
 }
 
 type ConversationRow = Pick<

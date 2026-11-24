@@ -275,7 +275,7 @@ const sendLeadMessageParameters = sendTeamMessageParameters.extend({
 const sendTeamMessageTool = defineTool("send_team_message", {
   alwaysAvailable: true,
   description:
-    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, video, Markdown, text, and PDF paths in attachments; a message to a connector carries its images, Markdown, text, and PDF files, up to 4 files of 10 MB each. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. Without mentions, member messages wake the lead and lead messages wake nobody. A lead can open a message with another team's mention from list_teams to send it to that team's lead.",
+    "Publishes a Markdown team message without ending the turn, or replies in a thread with threadSequence. Pass screenshot, image, video, Markdown, text, and PDF paths in attachments; a message to a connector carries its images, Markdown, text, and PDF files, up to 4 files of 10 MB each. Name-derived @mentions wake the addressed agents, in a thread or not. @everyone wakes the lead and all members. In a task's thread, a message also wakes the task's assignee, or the lead when no one is assigned, and the assignee's own messages wake only those they mention. Elsewhere, without mentions, member messages wake the lead and lead messages wake nobody. A lead can open a message with another team's mention from list_teams to send it to that team's lead.",
   parameters: sendTeamMessageParameters,
   handler: async (args: z.output<typeof sendLeadMessageParameters>, invocation) => {
     const { sendTeamMessageFromAgent } = await import("@teams/server");
@@ -517,8 +517,15 @@ async function toTeamReadToolResult(
       : {}),
   }));
   const images: Attachment[] = [];
+  const taskThreads = new Map(
+    result.tasks.flatMap(({ id, threadSequence }) =>
+      threadSequence ? [[threadSequence, id] as const] : [],
+    ),
+  );
   const messages = await Promise.all(
     result.messages.map(async (message) => {
+      // A task's thread names its task, so agents know what each message is about.
+      const taskId = taskThreads.get(message.threadSequence ?? message.sequence);
       if (isTeamSystemMessage(message)) {
         const content = message.content;
         const { id: _id, ...rest } = message;
@@ -568,6 +575,7 @@ async function toTeamReadToolResult(
           teamId: result.team.id,
           sequence: message.sequence,
         }),
+        ...(taskId ? { taskId } : {}),
         ...(from ? { from } : {}),
         ...(attachmentsForTool?.length ? { attachments: attachmentsForTool } : {}),
       };

@@ -28,15 +28,17 @@ export async function getTeamPerformance(
   const to = nextBucketStart(starts.at(-1)!, bucket);
   // Activity outlives membership, so a removed or moved agent's hours count only while it's here.
   const agentIds = [roster.lead, ...roster.members].map(({ id }) => id);
-  const [messages, wakes, activity] = await Promise.all([
+  const [messages, wakes, activity, tasks] = await Promise.all([
     database.listConversationSince(teamId, from.toISOString()),
     database.listWakesSince(teamId, from.toISOString()),
     listSessionActivity(agentIds, from, to),
+    database.listTasks(teamId),
   ]);
   return projectTeamPerformance(messages, {
     lead: roster.lead,
     members: roster.members,
     coordinators: team.connectorCoordinators,
+    tasks,
     bucket,
     starts,
     wakes,

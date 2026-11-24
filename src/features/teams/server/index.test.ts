@@ -4,7 +4,7 @@ import { beforeEach, expect, mock, onTestFinished, setSystemTime, spyOn, test } 
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { teamAgentMetadataSchema, type TeamEvent } from "@teams/model";
+import { teamAgentMetadataSchema, teamLead, type TeamEvent } from "@teams/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { reduceTeamState } from "@teams/model/reducer";
 import { createTestDatabase } from "@/server/database";
@@ -39,6 +39,7 @@ const {
   editTeamTasksFromAgent,
   finishTeamAgentTurn,
   markTeamRead,
+  postTeamMessage,
   postTeamMessageFromSession,
   readTeamForAgent,
   readTeamForSession,
@@ -427,7 +428,14 @@ test("agents read their queue, open tasks in full, closed ones compactly, and on
   const teams = await openTeams();
   const team = await createStoredTeam(teams, { name: "Queue", ...TEAM_DEFAULTS });
   const { member } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
-  onTestFinished(() => releaseTeamEvents(team.id));
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "started",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => {
+    releaseTeamEvents(team.id);
+    deliver.mockRestore();
+  });
   await editTeamTasksFromAgent(team.id, {
     operations: [
       { type: "add", title: "Polish", priority: "low", assigneeId: member.id },
@@ -465,15 +473,141 @@ test("agents read their queue, open tasks in full, closed ones compactly, and on
 
   const seenThrough = (await teams.getAgent(member.id))?.seenThrough;
   expect(await invokeTool("read_team", { taskId: "t2" }, member.id, teamMemberTools)).toMatchObject(
-    { task: { taskId: "t2", title: "Build" }, messages: [{ content: "Start with the parser." }] },
+    {
+      task: { taskId: "t2", title: "Build" },
+      messages: [
+        { content: { type: "task_opened", taskId: "t2" } },
+        { content: "Start with the parser.", taskId: "t2" },
+      ],
+    },
   );
   expect((await teams.getAgent(member.id))?.seenThrough).toBe(seenThrough);
   const session = await invokeTool("read_team", { teamId: team.id, taskId: "t1" });
-  expect(session).toMatchObject({ task: { taskId: "t1" }, messages: [] });
+  expect(session).toMatchObject({
+    task: { taskId: "t1" },
+    messages: [{ content: { type: "task_opened", taskId: "t1" } }],
+  });
   expect(session).not.toHaveProperty("yourTasks");
   await expect(
     invokeTool("read_team", { taskId: "t9" }, member.id, teamMemberTools),
   ).rejects.toThrow('Task "t9" was not found');
+});
+
+test("a saved task change wakes each agent once, with every task and what changed", async () => {
+  const teams = await openTeams();
+  const team = await createStoredTeam(teams, { name: "Routing", ...TEAM_DEFAULTS });
+  const { member: builder } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  const { member: critic } = await teams.createMember(teamAgent(team.id, "critic", "Critic"));
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "steered",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => {
+    releaseTeamEvents(team.id);
+    deliver.mockRestore();
+  });
+  const delivered = () => {
+    const calls = Object.fromEntries(deliver.mock.calls.map(([id, message]) => [id, message]));
+    deliver.mockClear();
+    return calls;
+  };
+  const lead = teamLead(team.id);
+
+  await editTeamTasksFromAgent(team.id, {
+    operations: [
+      {
+        type: "add",
+        title: "Parser",
+        assigneeId: builder.id,
+        note: "@critic please review the grammar with Builder.",
+      },
+      { type: "add", title: "Docs", assigneeId: builder.id },
+    ],
+  });
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: {
+        type: "team_task",
+        senderName: lead.name,
+        tasks: [
+          {
+            taskId: "t1",
+            title: "Parser",
+            changes: ["assigned to you", "a new message for you in its thread"],
+          },
+          { taskId: "t2", title: "Docs", changes: ["assigned to you"] },
+        ],
+      },
+      immediate: true,
+    },
+    [critic.id]: {
+      systemMessage: {
+        type: "team_task",
+        senderName: lead.name,
+        tasks: [
+          { taskId: "t1", title: "Parser", changes: ["a new message for you in its thread"] },
+        ],
+      },
+      immediate: true,
+    },
+  });
+  expect(
+    (await teams.listWakesSince(team.id, new Date(0).toISOString())).map(
+      ({ agentId, cause, author }) => [agentId, cause, author],
+    ),
+  ).toEqual(
+    expect.arrayContaining([
+      [builder.id, "task", team.id],
+      [critic.id, "task", team.id],
+    ]),
+  );
+
+  // The assignee's own progress wakes no one; anyone else's message in its thread wakes it.
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [
+      { type: "update", taskId: "t1", patch: { status: "in_progress" }, note: "Starting." },
+    ],
+  });
+  expect(delivered()).toEqual({});
+  const [parser, docs] = await teams.listTasks(team.id);
+  await postTeamMessage({
+    id: "question",
+    teamId: team.id,
+    content: "Any blockers?",
+    threadSequence: parser!.threadSequence!,
+  });
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: { type: "team_message", senderName: "the user" },
+      immediate: true,
+    },
+  });
+
+  // Closing a hand-off wakes no one, since its assignee has moved on.
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [{ type: "update", taskId: docs!.id, patch: { status: "in_review" } }],
+  });
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: docs!.id, patch: { status: "completed" } }],
+  });
+  expect(delivered()).toEqual({});
+
+  // An unassigned task's thread reaches the lead, and a paused team wakes no one.
+  const { opened } = await teams.editTasks(team.id, {
+    operations: [{ type: "add", title: "Triage" }],
+  });
+  await postTeamMessage({
+    id: "triage",
+    teamId: team.id,
+    content: "Who takes this?",
+    threadSequence: opened[0]!.threadSequence!,
+  });
+  expect(Object.keys(delivered())).toEqual([team.id]);
+  await teams.editTeam({ teamId: team.id, paused: true });
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "assign", taskId: opened[0]!.id, assigneeId: critic.id }],
+  });
+  expect(delivered()).toEqual({});
 });
 
 test("joining starts onboarding before any mention; later assignments use normal delivery", async () => {
@@ -929,13 +1063,8 @@ test("committed edits and reads replay to the durable view and only a new purpos
   expect(teamEvents).toHaveLength(3);
   expect(workspaceUpdates).toEqual(["Shipping", "Shipped"]);
 
-  const beforeTasks = (await teams.getTeam(team.id))!;
   await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "add", title: "Verify" }],
-  });
-  expect(await teams.getTeam(team.id)).toMatchObject({
-    latestSequence: beforeTasks.latestSequence,
-    updatedAt: beforeTasks.updatedAt,
   });
   await updateTeamFromLead(team.id, {
     preview: { kind: "url", url: "http://localhost:3000" },
@@ -947,21 +1076,28 @@ test("committed edits and reads replay to the durable view and only a new purpos
   await updateTeamFromLead(team.id, {
     preview: { kind: "url", url: "http://localhost:3000" },
   });
+  const beforeUpdate = (await teams.getTeam(team.id))!;
   await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "update", taskId: "t1", patch: { diff: { added: 3, removed: 1 } } }],
   });
+  // Updating a task stays out of the transcript and the catalog's ordering.
+  expect(await teams.getTeam(team.id)).toEqual(beforeUpdate);
   await editTeam({ teamId: team.id, model });
   expect(teamEvents.slice(3).map(({ type, revision }) => [type, revision])).toEqual([
-    ["task", 4],
-    ["message", 5],
-    ["model", 6],
-    ["read", 7],
-    ["task", 8],
+    ["message", 4],
+    ["task", 5],
+    ["message", 6],
+    ["model", 7],
+    ["read", 8],
+    ["task", 9],
   ]);
+  expect(teamEvents[3]).toMatchObject({
+    message: { sequence: 4, content: { type: "task_opened", taskId: "t1" } },
+  });
   expect(teamEvents.at(-2)).toEqual({
     type: "read",
-    revision: 7,
-    seenThrough: 4,
+    revision: 8,
+    seenThrough: 5,
   });
   const projected = teamEvents.reduce(reduceTeamState, initial);
   expect(projected).toEqual((await getTeamSnapshot(team.id))!);

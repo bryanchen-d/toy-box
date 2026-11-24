@@ -53,7 +53,12 @@ export function TeamThread({
   const scrollRef = useRef<HTMLElement>(null);
   const followsEndRef = useRef(true);
   const landedRef = useRef(false);
-  const rows = threadRows(state.messages, sequence, { lead, members, coordinators });
+  const rows = threadRows(state.messages, sequence, {
+    lead,
+    members,
+    coordinators,
+    tasks: state.tasks,
+  });
   const replyCount = state.messages.filter(
     ({ threadSequence }) => threadSequence === sequence,
   ).length;

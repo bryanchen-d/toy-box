@@ -23,6 +23,7 @@ import {
   teamLead,
   teamMemberIdentity,
   resolveTeamAudience,
+  teamTaskNotifications,
   isTeamSystemMessage,
   messageAuthorId,
 } from "@teams/model";
@@ -140,11 +141,62 @@ export async function updateTeamFromLead(sessionId: string, input: UpdateTeamInp
   return change.team;
 }
 
-/** Applies a task batch with the agent's authority and returns the tasks it opened. */
+/**
+ * Applies a task batch with the agent's authority, wakes each agent the saved change notifies, and
+ * returns the tasks it opened.
+ */
 export async function editTeamTasksFromAgent(sessionId: string, input: EditTeamTasksInput) {
-  const change = await new TeamDatabase(await getStateDatabase()).editTasks(sessionId, input);
+  const database = new TeamDatabase(await getStateDatabase());
+  const change = await database.editTasks(sessionId, input);
   publishTeamChange(change);
+  await wakeForTaskChange(change, sessionId, await database.listMembers(change.teamId));
   return change.opened;
+}
+
+/**
+ * Wakes each agent a saved task change notifies once, with every task and what changed for it: the
+ * changes themselves, and the notes they posted, routed as any message in those threads is.
+ */
+async function wakeForTaskChange(
+  { teamId, before, after, notes }: Awaited<ReturnType<TeamDatabase["editTasks"]>>,
+  editorId: string,
+  members: readonly TeamMember[],
+) {
+  const lead = teamLead(teamId);
+  const titles = new Map([...before, ...after].map(({ id, title }) => [id, title]));
+  const wakes = new Map<string, Map<string, Set<string>>>();
+  const notify = (agentId: string, taskId: string, change: string) => {
+    const tasks = wakes.get(agentId) ?? new Map<string, Set<string>>();
+    tasks.set(taskId, (tasks.get(taskId) ?? new Set()).add(change));
+    wakes.set(agentId, tasks);
+  };
+  for (const { agentId, taskId, change } of teamTaskNotifications(before, after, editorId)) {
+    notify(agentId, taskId, change);
+  }
+  for (const note of notes) {
+    const task = after.find(({ threadSequence }) => threadSequence === note.threadSequence)!;
+    for (const { id } of resolveTeamAudience({ ...note, lead, members, task })) {
+      notify(id, task.id, "a new message for you in its thread");
+    }
+  }
+  const senderName = [lead, ...members].find(({ id }) => id === editorId)?.name ?? "an agent";
+  await Promise.all(
+    [...wakes].map(([agentId, tasks]) =>
+      wakeTeamAgent(
+        agentId,
+        {
+          type: "team_task",
+          senderName,
+          tasks: [...tasks].map(([taskId, changes]) => ({
+            taskId,
+            title: titles.get(taskId)!,
+            changes: [...changes],
+          })),
+        },
+        { author: editorId },
+      ).catch((error) => console.error(`Failed to wake Team agent ${agentId}:`, error)),
+    ),
+  );
 }
 
 /** Clears the user's pending requests without waking anyone. Reports whether any were pending. */
@@ -634,6 +686,7 @@ export async function postMessage(
     members,
     askedBy,
     coordinators: change.team.connectorCoordinators,
+    task: change.task,
     acknowledgedRequest: change.acknowledgedRequest,
   });
 
@@ -746,12 +799,12 @@ export function publishTeamChange({ teamId, events, team }: TeamChange): void {
 /**
  * Delivers a wake into the agent's turn at once, then records how it landed, so the team can see
  * how often new input reaches its agents mid-turn. An urgent team message stops that turn instead.
- * `cause` names the message that woke it, when one did.
+ * `cause` names who caused it, and the message that woke it when one did.
  */
 export async function wakeTeamAgent(
   agentId: string,
   systemMessage: SessionSystemMessage,
-  cause?: { author: string; sequence: number },
+  cause?: { author: string; sequence?: number },
 ): Promise<void> {
   const database = new TeamDatabase(await getStateDatabase());
   const agent = await requireTeamAgent(database, agentId);
@@ -779,7 +832,9 @@ export async function wakeTeamAgent(
           ? "routine"
           : systemMessage.type === "team_follow_up"
             ? "follow_up"
-            : "message",
+            : systemMessage.type === "team_task"
+              ? "task"
+              : "message",
       ...(cause ? { author: cause.author, messageSequence: cause.sequence } : {}),
       delivery: disposition,
     })

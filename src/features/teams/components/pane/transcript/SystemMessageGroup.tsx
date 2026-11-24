@@ -5,6 +5,7 @@ import {
   FileUp,
   Folder,
   Hourglass,
+  ListTodo,
   MonitorPlay,
   PanelsTopLeft,
   Pause,
@@ -107,6 +108,26 @@ const SYSTEM_MESSAGES: {
   tasks_completed: {
     icon: <DoneIndicator className="size-4 shrink-0" />,
     present: () => ({ content: "All tasks completed" }),
+  },
+  task_opened: {
+    icon: <ListTodo className="size-3.5 shrink-0" />,
+    present: (contents, { agent }) => {
+      const [{ actor }] = contents;
+      const opener = actor.type === "user" ? "You" : agent(actor.agentId).name;
+      return {
+        content: (
+          <>
+            {opener} opened{" "}
+            {contents.map(({ taskId, title }, index) => (
+              <span key={taskId}>
+                {index > 0 && listSeparator(index, contents.length)}
+                {taskId}: <Value text={title} />
+              </span>
+            ))}
+          </>
+        ),
+      };
+    },
   },
   requests_resolved: {
     icon: <CheckCheck className="size-3.5 shrink-0" />,
@@ -253,12 +274,7 @@ const SYSTEM_MESSAGES: {
             {artifacts.map((artifact, index) => (
               // eslint-disable-next-line react/no-array-index-key -- The same file can be shared twice in a run.
               <span key={index}>
-                {index > 0 &&
-                  (index === artifacts.length - 1
-                    ? artifacts.length > 2
-                      ? ", and "
-                      : " and "
-                    : ", ")}
+                {index > 0 && listSeparator(index, artifacts.length)}
                 <LinkButton title={artifact.file.path} onClick={() => revealFile?.(artifact.file)}>
                   {artifact.title}
                 </LinkButton>
@@ -284,6 +300,12 @@ const SYSTEM_MESSAGES: {
 };
 
 const MAX_VALUE_LENGTH = 120;
+
+/** What comes before the item at `index` in an English list: ", ", " and ", or ", and ". */
+function listSeparator(index: number, length: number): string {
+  if (index < length - 1) return ", ";
+  return length > 2 ? ", and " : " and ";
+}
 
 /** A name in an event that opens what it names. */
 function LinkButton({

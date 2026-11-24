@@ -127,6 +127,54 @@ export function teamTasksComplete(tasks: readonly TeamTask[]): boolean {
   );
 }
 
+/**
+ * Who a task edit wakes, and what changed for them: a task's new assignee, and its assignee
+ * whenever anyone else changes its work, as editing, sending back, closing, reassigning, or
+ * removing it does. Closing a task in review wakes no one, since its assignee has moved on; moving
+ * a task only arranges the list; and an editor is never woken by its own change.
+ */
+export function teamTaskNotifications(
+  before: readonly TeamTask[],
+  after: readonly TeamTask[],
+  editorId: string,
+): { agentId: string; taskId: string; change: string }[] {
+  const previous = new Map(before.map((task) => [task.id, task]));
+  const kept = new Set(after.map(({ id }) => id));
+  const notifications: { agentId: string; taskId: string; change: string }[] = [];
+  const notify = (agentId: string | undefined, taskId: string, change: string) => {
+    if (agentId && agentId !== editorId) notifications.push({ agentId, taskId, change });
+  };
+  for (const task of after) {
+    const was = previous.get(task.id);
+    if (task.assigneeId !== was?.assigneeId) {
+      notify(task.assigneeId, task.id, "assigned to you");
+      notify(was?.assigneeId, task.id, "no longer assigned to you");
+    } else if (was && changedWork(was, task)) {
+      if (!isTeamTaskOpen(task)) {
+        if (was.status !== "in_review")
+          notify(task.assigneeId, task.id, `closed as ${task.status}`);
+      } else {
+        notify(
+          task.assigneeId,
+          task.id,
+          task.status === was.status ? "edited" : `moved to ${task.status}`,
+        );
+      }
+    }
+  }
+  for (const task of before) if (!kept.has(task.id)) notify(task.assigneeId, task.id, "removed");
+  return notifications;
+}
+
+/** Whether the work a task asks for changed, as opposed to where it sits or when. */
+function changedWork(before: TeamTask, after: TeamTask): boolean {
+  return (
+    (["title", "description", "status", "priority", "artifactId"] as const).some(
+      (key) => before[key] !== after[key],
+    ) || JSON.stringify(before.diff) !== JSON.stringify(after.diff)
+  );
+}
+
 /** Whether text cites a task by its whole ID, as agents name tasks such as t12 in messages. */
 export function mentionsTeamTask(text: string, taskId: string): boolean {
   for (let at = text.indexOf(taskId); at >= 0; at = text.indexOf(taskId, at + 1)) {

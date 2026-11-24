@@ -1,6 +1,6 @@
 import { teamAgent, createStoredTeam } from "@teams/server/testFixtures";
 import { describe, expect, onTestFinished, setSystemTime, test } from "bun:test";
-import type { EditTeamTasksInput } from "@teams/model";
+import type { EditTeamTasksInput, TeamEvent } from "@teams/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { createTestDatabase } from "@/server/database";
 import { TeamDatabase } from "./database";
@@ -9,6 +9,17 @@ const TEAM_DEFAULTS = {
   purpose: "Coordinate the work to a useful result.",
   model: { provider: "copilot", name: "gpt-5.5" },
 } as const;
+
+/** The event that records the task list becoming complete. */
+function isCompletion<Event extends TeamEvent<unknown>>(
+  event: Event,
+): event is Extract<Event, { type: "message" }> {
+  return (
+    event.type === "message" &&
+    typeof event.message.content === "object" &&
+    event.message.content.type === "tasks_completed"
+  );
+}
 
 async function openTeams() {
   const database = await createTestDatabase();
@@ -166,7 +177,7 @@ describe("team attention", () => {
           .opened[0]!.id;
       await edit([{ type: "update", taskId, patch: { status: "in_progress" } }]);
       const { events } = await edit([{ type: "update", taskId, patch: { status: "completed" } }]);
-      return events.find((event) => event.type === "message")!.message;
+      return events.filter(isCompletion)[0]!.message;
     };
     const edit = (operations: EditTeamTasksInput["operations"]) =>
       teams.editTasks(team.id, { operations });
@@ -187,19 +198,21 @@ describe("team attention", () => {
   test("completion follows the list becoming complete: every task closed, one completed", async () => {
     const { teams, team, edit } = await setup();
     const completions = async (operations: EditTeamTasksInput["operations"]) =>
-      (await edit(operations)).events.filter((event) => event.type === "message").length;
-    expect(await completions([{ type: "add", title: "Release" }])).toBe(0);
-    expect(
-      await completions([{ type: "update", taskId: "t1", patch: { status: "completed" } }]),
-    ).toBe(1);
-    expect((await teams.getTeam(team.id))?.completedSequence).toBe(1);
-    expect(await completions([{ type: "update", taskId: "t1", patch: { title: "Ship" } }])).toBe(0);
-    expect(await completions([{ type: "add", title: "Notes" }])).toBe(0);
+      (await edit(operations)).events.filter(isCompletion);
+    expect(await completions([{ type: "add", title: "Release" }])).toEqual([]);
+    const [completed] = await completions([
+      { type: "update", taskId: "t1", patch: { status: "completed" } },
+    ]);
+    expect((await teams.getTeam(team.id))?.completedSequence).toBe(completed!.message.sequence);
+    expect(await completions([{ type: "update", taskId: "t1", patch: { title: "Ship" } }])).toEqual(
+      [],
+    );
+    expect(await completions([{ type: "add", title: "Notes" }])).toEqual([]);
     expect(
       await completions([{ type: "update", taskId: "t2", patch: { status: "cancelled" } }]),
-    ).toBe(1);
-    expect(await completions([{ type: "remove", taskId: "t1" }])).toBe(0);
-    expect(await completions([{ type: "remove", taskId: "t2" }])).toBe(0);
+    ).toHaveLength(1);
+    expect(await completions([{ type: "remove", taskId: "t1" }])).toEqual([]);
+    expect(await completions([{ type: "remove", taskId: "t2" }])).toEqual([]);
   });
 
   test("a request persists on the lead message without an extra transcript entry", async () => {
@@ -212,15 +225,15 @@ describe("team attention", () => {
 
   test("catalog attention includes messages outside the loaded window", async () => {
     const { teams, team, post, complete, ask } = await setup();
-    await complete();
-    await ask("What should we do next?");
+    const done = await complete();
+    const question = await ask("What should we do next?");
     for (let index = 0; index < 105; index++) await post(`Update ${index}`);
     const snapshot = await teams.getSnapshot(team.id, 100);
     expect(snapshot?.messages).toHaveLength(100);
     expect(snapshot?.request).toMatchObject({ content: "What should we do next?" });
     expect((await teams.listTeams()).teams[0]).toMatchObject({
-      completedSequence: 1,
-      requestSequence: 2,
+      completedSequence: done.sequence,
+      requestSequence: question.sequence,
     });
     await ask("Which follow-up should we prioritize?");
     expect((await teams.getSnapshot(team.id, 1))?.request).toMatchObject({
@@ -245,7 +258,10 @@ describe("team attention", () => {
     expect(reply.team).toEqual((await teams.getTeam(team.id))!);
     expect((await teams.getSnapshot(team.id, 1))?.request).toBeNull();
     expect(
-      (await teams.listMessagesAfter(team.id)).filter(({ sender }) => sender.type === "system"),
+      (await teams.listMessagesAfter(team.id)).filter(
+        ({ sender, content }) =>
+          sender.type === "system" && typeof content === "object" && content.type !== "task_opened",
+      ),
     ).toEqual([done]);
   });
 
@@ -345,7 +361,7 @@ describe("team threads", () => {
     expect((await teams.getSnapshot(team.id, 100))?.messages).toEqual([root, reply]);
   });
 
-  test("only a user or agent message in the same team starts a thread", async () => {
+  test("only a user or agent message, or a task's opening note, in the same team starts a thread", async () => {
     const { teams, team, post } = await setup();
     const other = await createStoredTeam(teams, { name: "Other", ...TEAM_DEFAULTS });
     for (const content of ["One", "Two", "Three"]) {
@@ -362,10 +378,15 @@ describe("team threads", () => {
     expect(onlyElsewhere).toBeGreaterThan(latest);
     for (const sequence of [latest, onlyElsewhere]) {
       await expect(post("Reply", sequence)).rejects.toThrow(
-        "Reply to a user or agent message in this team.",
+        "Reply to a user or agent message, or a task's thread, in this team.",
       );
     }
     expect((await teams.getTeam(team.id))?.latestSequence).toBe(latest);
+    const [task] = (
+      await teams.editTasks(team.id, { operations: [{ type: "add", title: "Ship" }] })
+    ).opened;
+    const reply = await post("On it.", task!.threadSequence);
+    expect(reply.threadSequence).toBe(task!.threadSequence);
   });
 
   test("a thread lists its top-level message and every reply, from any message in it", async () => {
@@ -413,15 +434,26 @@ describe("team task edits", () => {
       ["t3", "t2"],
     ]);
     expect(opened).toEqual(tasks.slice(1));
-    expect(events).toEqual(
-      tasks.map((task, index) => ({ type: "task", task, revision: revision + 1 + index })),
+    const lead = { type: "agent", agentId: team.id };
+    expect(events.slice(0, 2)).toMatchObject([
+      {
+        revision: revision + 1,
+        message: { content: { type: "task_opened", taskId: "t2", actor: lead } },
+      },
+      {
+        revision: revision + 2,
+        message: { content: { type: "task_opened", taskId: "t3", actor: lead } },
+      },
+    ]);
+    expect(events.slice(2)).toEqual(
+      tasks.map((task, index) => ({ type: "task", task, revision: revision + 3 + index })),
     );
     expect(tasks[0]).toMatchObject({ status: "in_progress", priority: "high" });
     expect((await teams.getSnapshot(team.id, 100))?.tasks).toEqual(tasks);
     const removed = await edit([{ type: "remove", taskId: "t2" }]);
     expect(removed.events).toEqual([
-      { type: "task_removed", taskId: "t3", revision: revision + 4 },
-      { type: "task_removed", taskId: "t2", revision: revision + 5 },
+      { type: "task_removed", taskId: "t3", revision: revision + 6 },
+      { type: "task_removed", taskId: "t2", revision: revision + 7 },
     ]);
     expect(await teams.listTasks(team.id)).toEqual([tasks[0]!]);
   });
@@ -548,34 +580,47 @@ describe("team task edits", () => {
     expect(events.slice(1).map((event) => event.type)).toEqual(["message"]);
   });
 
-  test("a note posts into its task's thread in the same change, starting the thread once", async () => {
-    const { teams, team, task, edit } = await setup();
+  test("an opened task starts its thread with a typed note, and notes reply in it", async () => {
+    const { database, teams, team, task, edit } = await setup();
+    const [opening] = await teams.listThread(team.id, task.threadSequence!);
+    expect(opening).toMatchObject({
+      sender: { type: "system" },
+      content: {
+        type: "task_opened",
+        taskId: task.id,
+        title: "Review",
+        actor: { type: "agent", agentId: team.id },
+      },
+    });
     const first = await edit([
       { type: "update", taskId: task.id, patch: { status: "in_progress" }, note: "Starting." },
     ]);
-    const [note, changed] = first.events;
-    expect(note).toMatchObject({
-      type: "message",
-      message: { sender: { type: "agent", agentId: team.id }, content: "Starting." },
-    });
-    const root = note!.type === "message" ? note.message.sequence : 0;
-    expect(note!.type === "message" && note.message.threadSequence).toBeUndefined();
-    expect(changed).toMatchObject({
-      type: "task",
-      task: { id: task.id, status: "in_progress", threadSequence: root },
-    });
-    const { events, opened } = await edit([
+    expect(first.events.filter((event) => event.type === "message")).toMatchObject([
+      {
+        message: {
+          sender: { type: "agent", agentId: team.id },
+          content: "Starting.",
+          threadSequence: task.threadSequence,
+        },
+      },
+    ]);
+    // A migrated task has no thread until something posts into it.
+    await database`
+      UPDATE team_tasks SET thread_sequence = NULL WHERE team_id = ${team.id} AND id = ${task.id}
+    `;
+    const { events } = await edit([
       { type: "update", taskId: task.id, patch: { title: "Review the API" }, note: "Narrowed." },
-      { type: "add", parentId: task.id, title: "Draft", note: "Split out." },
     ]);
-    expect(events.filter((event) => event.type === "message")).toMatchObject([
-      { message: { content: "Narrowed.", threadSequence: root } },
-      { message: { content: "Split out." } },
-    ]);
-    expect(opened[0]?.threadSequence).toBe(root + 2);
-    expect((await teams.listThread(team.id, root)).map(({ content }) => content)).toEqual([
-      "Starting.",
-      "Narrowed.",
+    const [root, note, changed] = events;
+    expect(root).toMatchObject({
+      message: { content: { type: "task_opened", taskId: task.id, title: "Review the API" } },
+    });
+    const thread = root!.type === "message" ? root.message.sequence : 0;
+    expect(note).toMatchObject({ message: { content: "Narrowed.", threadSequence: thread } });
+    expect(changed).toMatchObject({ type: "task", task: { threadSequence: thread } });
+    expect((await teams.listThread(team.id, thread)).map(({ sequence }) => sequence)).toEqual([
+      thread,
+      thread + 1,
     ]);
   });
 

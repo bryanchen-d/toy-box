@@ -382,6 +382,7 @@ function TeamContent({
                         // Each view lands afresh, since its rows and their keys differ.
                         key={view}
                         messages={state.messages}
+                        tasks={state.tasks}
                         view={view}
                         unreadAfter={unreadAfter}
                         handleRef={transcriptRef}

@@ -167,13 +167,15 @@ test("cached reconnects replay before presence; an expired cursor replaces histo
   const reads = spyOn(TeamDatabase.prototype, "getSnapshot");
   onTestFinished(() => reads.mockRestore());
   const client = observe(team.id, 0);
-  expect(await client.next()).toEqual(resolveEventResources(changed.events[0]!));
+  for (const event of changed.events) {
+    expect(await client.next()).toEqual(resolveEventResources(event));
+  }
   expect(await client.next()).toEqual({
     type: "resumed",
     presence: { [team.id]: { state: "idle" } },
   });
   client.stop();
-  const current = observe(team.id, changed.events[0]!.revision);
+  const current = observe(team.id, changed.events.at(-1)!.revision);
   expect(await current.next()).toMatchObject({ type: "resumed" });
   expect(reads).not.toHaveBeenCalled();
   current.stop();

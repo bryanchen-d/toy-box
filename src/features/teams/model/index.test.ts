@@ -139,6 +139,54 @@ describe("team delivery policy", () => {
       resolveTeamAudience({ content: "@critic @everyone go", sender: team, lead, members }),
     ).toEqual([lead]);
   });
+
+  describe("in a task's thread", () => {
+    const builder = { type: "agent", agentId: "builder" } as const;
+    const inTask = (
+      content: string,
+      sender: typeof user | typeof critic | typeof leadSender | typeof builder,
+      assigneeId?: string,
+    ) => resolveTeamAudience({ content, sender, lead, members, task: { assigneeId } });
+
+    test("anyone else's message wakes the assignee", () => {
+      for (const sender of [user, leadSender, critic]) {
+        expect(inTask("How's it going?", sender, "builder")).toEqual([members[1]]);
+      }
+    });
+
+    test("the assignee's own message wakes only those it mentions", () => {
+      expect(inTask("Parser done.", builder, "builder")).toEqual([]);
+      expect(inTask("@critic can you check the parser?", builder, "builder")).toEqual([members[0]]);
+      expect(inTask("@lead please reassign this", builder, "builder")).toEqual([lead]);
+    });
+
+    test("an unassigned task's thread wakes the lead, but never with its own message", () => {
+      expect(inTask("Who takes this?", user)).toEqual([lead]);
+      expect(inTask("I can take it.", critic)).toEqual([lead]);
+      expect(inTask("Planning it.", leadSender)).toEqual([]);
+      expect(inTask("Planning it.", leadSender, "removed")).toEqual([]);
+    });
+
+    test("mentions add to the assignee, once each and never the author", () => {
+      expect(inTask("@critic please pair with Builder", leadSender, "builder")).toEqual(members);
+      expect(inTask("@builder look at this", user, "builder")).toEqual([members[1]]);
+      expect(inTask("@everyone status?", critic, "builder")).toEqual([lead, members[1]]);
+    });
+
+    test("a connector's reply still answers the agent that asked", () => {
+      const connector = { type: "connector", connectorId: "bryanbot" } as const;
+      expect(
+        resolveTeamAudience({
+          content: "Posted.",
+          sender: connector,
+          lead,
+          members,
+          askedBy: "critic",
+          task: { assigneeId: "builder" },
+        }),
+      ).toEqual([members[0]]);
+    });
+  });
 });
 
 describe("team addressing", () => {

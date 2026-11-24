@@ -1,6 +1,6 @@
 import { useImperativeHandle, useState, type RefObject } from "react";
 import { WorkingAgents } from "@teams/components/agents/WorkingAgents";
-import type { TeamMessage } from "@teams/model";
+import type { TeamMessage, TeamTask } from "@teams/model";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ScrollToBottomButton } from "@/shared/ui/scroll-to-bottom-button";
@@ -10,7 +10,7 @@ import { AgentRun } from "./AgentRun";
 import { TeamPlaceholder } from "./TeamPlaceholder";
 import { TeamUserMessage } from "./TeamUserMessage";
 import { SystemMessageGroup } from "./SystemMessageGroup";
-import { ThreadActivity } from "./ThreadReplies";
+import { ThreadActivity, ThreadSummary } from "./ThreadReplies";
 import {
   transcriptDayLabel,
   transcriptRows,
@@ -24,6 +24,7 @@ export type TeamTranscriptHandle = { followNextPost: () => void; showRequest: ()
 
 export function TeamTranscript({
   messages,
+  tasks,
   view,
   unreadAfter,
   handleRef,
@@ -31,6 +32,8 @@ export function TeamTranscript({
   onLoadPrevious,
 }: {
   messages: TeamMessage[];
+  /** The team's tasks, whose threads route their messages. */
+  tasks: readonly TeamTask[];
   view: TranscriptView;
   /** Arrival read position; null means read, undefined awaits the connection's initial state. */
   unreadAfter: number | null | undefined;
@@ -39,7 +42,7 @@ export function TeamTranscript({
   onLoadPrevious: (throughSequence?: number) => Promise<void>;
 }) {
   const { lead, members, coordinators } = useTeamPane();
-  const rows = transcriptRows(messages, { lead, members, coordinators, unreadAfter, view });
+  const rows = transcriptRows(messages, { lead, members, coordinators, tasks, unreadAfter, view });
   const needsOlderHistory = viewNeedsOlderHistory(messages, view, requestSequence);
   const {
     scrollRef,
@@ -117,7 +120,12 @@ export function TranscriptRowContent({ row }: { row: TranscriptRow }) {
     case "agent":
       return <AgentRun agentId={row.agentId} entries={row.entries} />;
     case "system":
-      return <SystemMessageGroup messages={row.messages} />;
+      return (
+        <>
+          <SystemMessageGroup messages={row.messages} />
+          {row.thread && <ThreadSummary thread={row.thread} className="mt-1 ml-10" />}
+        </>
+      );
     case "thread":
       return <ThreadActivity thread={row.thread} root={row.root} />;
   }

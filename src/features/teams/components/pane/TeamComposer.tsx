@@ -106,6 +106,9 @@ export function TeamComposer({
     sender: { type: "user" },
     lead,
     members,
+    task: inThread
+      ? state?.tasks.find((task) => task.threadSequence === threadSequence)
+      : undefined,
     acknowledgedRequest: needsReply,
   });
   const recipients = [

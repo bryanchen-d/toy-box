@@ -416,6 +416,15 @@ export const teamRoutineIdentitySchema = z
 export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("team_paused"), paused: z.boolean() }).strict(),
   z.object({ type: z.literal("tasks_completed") }).strict(),
+  /** A task's opening note, which starts its thread; its replies are the task's history. */
+  z
+    .object({
+      type: z.literal("task_opened"),
+      taskId: durableIdSchema,
+      title: z.string(),
+      actor: teamMessageActorSchema,
+    })
+    .strict(),
   /** The lead got what every pending request asked for another way, so none waits on the user. */
   z.object({ type: z.literal("requests_resolved") }).strict(),
   z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
@@ -732,6 +741,7 @@ export function resolveTeamAudience({
   members,
   askedBy,
   coordinators,
+  task,
   acknowledgedRequest = false,
 }: {
   content: string;
@@ -742,6 +752,8 @@ export function resolveTeamAudience({
   askedBy?: string;
   /** The team's connector coordinators, by connector ID; see `Team.connectorCoordinators`. */
   coordinators?: Readonly<Record<string, string>>;
+  /** The task whose thread holds the message. */
+  task?: Pick<TeamTask, "assigneeId">;
   /** Persistence established that this user reply acknowledged a pending request. */
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
@@ -758,7 +770,13 @@ export function resolveTeamAudience({
     agents.filter(({ name }) => addressed.includes(agentHandleFromName(name))).map(({ id }) => id),
   );
   const senderId = sender.type === "agent" ? sender.agentId : undefined;
+  // A task's thread notifies its assignee of anyone else's message, or the lead while it has none.
+  const taskRecipient =
+    task && sender.type !== "connector"
+      ? (agents.find(({ id }) => id === task.assigneeId) ?? lead)
+      : undefined;
   if (!mentionAll && addressed.length === 0) {
+    if (taskRecipient) return taskRecipient.id === senderId ? [] : [taskRecipient];
     // A reply answers whoever asked, and any other connector message reaches the agent that
     // coordinates that connector, each only while it's still on the team.
     const coordinator =
@@ -771,7 +789,10 @@ export function resolveTeamAudience({
   return agents.filter(
     ({ id }) =>
       id !== senderId &&
-      (mentionAll || mentionedIds.has(id) || (acknowledgedRequest && id === lead.id)),
+      (mentionAll ||
+        mentionedIds.has(id) ||
+        id === taskRecipient?.id ||
+        (acknowledgedRequest && id === lead.id)),
   );
 }
 
