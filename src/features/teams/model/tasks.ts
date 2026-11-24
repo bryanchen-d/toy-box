@@ -55,7 +55,7 @@ export type TeamTask = {
   threadSequence?: number;
   openedAt: string;
   updatedAt: string;
-  /** Who made its latest change, the lead or its assignee; the opener until then. */
+  /** Who made its latest change: the lead, its assignee, or a member whose leaving released it. */
   updatedBy: TeamMessageActor;
   closedAt?: string;
 };

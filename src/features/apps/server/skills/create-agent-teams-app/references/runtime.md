@@ -377,17 +377,27 @@ function Office({ teamId }: { teamId: string }) {
 }
 ```
 
-`state` is the canonical `TeamState`: team metadata and tasks, lead, members,
+`state` is the canonical `TeamState`: team metadata, `tasks`, lead, members,
 messages, pending `requests` (the questions waiting on the user, oldest first and one per
 thread), artifacts, routines, and authoritative `presence`.
 Use presence to place agents in working, waiting, or idle areas; waiting includes
-optional `wakeAt`. Avatars contain a hex `color` and SVG path `mark` in a 24×24
+optional `wakeAt`, and working includes optional `tasks`, the IDs of the tasks its running turn is on.
+Avatars contain a hex `color` and SVG path `mark` in a 24×24
 viewBox. Artifact `file`s work with `useFile` and `actions.openFile`. `state.artifacts` follows
 the user's arrangement, newest share first unless moved; one the user archived carries
 `archived: true` and stays shared, so present it apart or leave it out.
-A task's `artifactId` is the `id` of its artifact in `state.artifacts`. `teamTasksDiff(tasks)`
-sums their direct and reported descendant diffs, or returns `undefined` when none are reported;
-pass `[task]` for one subtree. It reuses the Teams logic.
+`state.tasks` is a flat list of task rows; arrange them by `parentId` and ascending `position`.
+Each has an `id` such as `t12`, `title`, optional Markdown `description`, `status`, `priority`
+(`"high"`, `"normal"`, or `"low"`), optional `assigneeId` (one team agent), `openedBy` and
+`updatedBy` (`{ type: "agent", agentId }` or `{ type: "user" }`), optional `artifactId` and
+`diff`, optional `threadSequence` (the root of the task's thread; pass it to `postMessage` to
+reply there), and ISO `openedAt`, `updatedAt`, and, once closed, `closedAt`. A status is open
+(`"pending"`, `"in_progress"`, `"blocked"`, or `"in_review"`, handed off for review) or closed
+(`"completed"`, `"cancelled"`, `"deferred"`, `"cut"`, or `"duplicate"`); count any closed status
+as finished. A task's `artifactId` is the `id` of its artifact in `state.artifacts`.
+`teamTasksDiff(tasks)` sums the reported diffs of the tasks you pass, or returns `undefined` when
+none are reported: pass `state.tasks` for the whole list, or a task and its descendants for one
+subtree. It reuses the Teams logic.
 `loadPrevious(sequence?)` loads one older page or pages through a target message.
 `postMessage({ content, attachments?, threadSequence? })` uses the shared optimistic mutation and
 returns a promise for the persisted `TeamMessage`. Pass a message's `sequence` as

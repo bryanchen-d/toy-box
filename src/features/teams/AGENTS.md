@@ -1,13 +1,13 @@
 # Teams
 
 A Team is a standing group of agents that works toward a purpose on the user's behalf. The user
-says what they want. The Team's lead frames the work, keeps a public task list, and brings in
-specialist members only when their work becomes actionable. The team coordinates in one shared
-transcript, much like a team chat: agents mention one another to hand off work, react to
-acknowledge it, post statuses while they work, and share artifacts and a runnable preview as the
-result takes shape. The team lives on the server, so work continues after the browser closes, and
-the sidebar draws the user back only when it matters: an unread update, a question the lead
-flagged, or a task list it completed.
+says what they want. The Team's lead frames the work, opens tasks and assigns each to one agent, and
+brings in specialist members only when their work becomes actionable. The team coordinates in one
+shared transcript, much like a team chat: each task's work happens in its own thread, agents
+mention one another to hand off work, react to acknowledge it, post statuses while they work, and
+share artifacts and a runnable preview as the result takes shape. The team lives on the server, so
+work continues after the browser closes, and the sidebar draws the user back only when it matters:
+an unread update, a question an agent flagged, or a task list the lead completed.
 
 A Team is not a filtered Session or several Sessions side by side. Its defining split is private
 thinking versus public collaboration. The lead and every member are durable Team-owned Workers
@@ -63,11 +63,15 @@ The transcript row's name opens the stalled session's pane, where the owner can 
    finishing. Without a purpose, it uses the team's name rather than deferring avatar setup.
 2. **Staff.** As work becomes actionable, the lead creates members with focused roles. Each one
    onboards by reading the Team and establishing its role and avatar.
-3. **Coordinate.** One audience policy routes every message, and mentions wake exactly the agents
-   they name. A woken agent runs one private turn: it reads the Team, acts publicly, and
-   finishes, optionally leaving a waiting status.
-4. **Involve the user.** The lead sends a question flagged as a request, or posts a result and
-   completes the task list. The sidebar holds each until the user replies or reads it.
+3. **Coordinate.** The lead opens tasks and assigns each to the one agent directly responsible,
+   which wakes it with the task. Work on a task happens in its thread. One audience policy routes
+   every message, and mentions wake exactly the agents they name. A woken agent runs one private
+   turn: it reads the Team, acts publicly, and finishes, reporting on each task it was woken for or
+   leaving a waiting status. An assignee hands its task off for review, and the lead closes it with
+   a status or sends it back.
+4. **Involve the user.** The lead, or an assignee in its own task's thread, sends a question
+   flagged as a request, and the lead posts results and completes the task list. The sidebar holds
+   each until the user replies or reads it.
 5. **Keep going.** Follow-ups wake the lead and routines wake their selected agent on a schedule, so ongoing work
    advances without anyone posting.
 6. **Pause.** The user can pause or resume the Team from either team menu. Pausing durably
@@ -79,31 +83,42 @@ The transcript row's name opens the stalled session's pane, where the owner can 
 ## Domain model
 
 ```text
-Team           name, purpose, directory, lead model, tasks, preview, user read position
+Team           name, purpose, directory, lead model, preview, user read position
 ├─ Roster      the Team's agents
 │  ├─ Lead     intrinsic and fixed; its Worker and Session ID is the Team ID
 │  └─ Members  created on demand; editable and removable
+├─ Tasks       the unit of work: numbered t<N>, one assignee each, and a thread for its history
 ├─ Transcript  sequenced user, agent, and system messages, plus agent reactions; replies form threads
 ├─ Artifacts   shared workspace files
 ├─ Routines    scheduled prompts that privately wake a team agent
 └─ Advice      proposed improvements the user applies or dismisses
 ```
 
-- `Team` owns its name, optional avatar, purpose and working directory, lead model, public
-  tasks, paused state, optional URL-or-screen preview, human read position, latest message sequence, and updated time.
-  Its `requestSequence` and `completedSequence` refer to transcript milestones. Completion is unread
-  when it follows `seenThrough`; a request remains pending until a user reply or the lead's
-  resolution clears its sequence.
+- `Team` owns its name, optional avatar, purpose and working directory, lead model, paused state,
+  optional URL-or-screen preview, human read position, latest message sequence, and updated time.
+  Its `attentionSequence` and `completedSequence` refer to transcript milestones, and
+  `pendingRequests` lists the questions waiting on the user, at most one per thread, oldest first.
+  `attentionSequence` is the newest message that involves the user: a top-level message, a
+  question, the user's own message, or a reply in a thread the user posted in; unread compares it
+  with `seenThrough`. Completion is unread when it follows `seenThrough`; a request remains
+  pending until the user answers it where it was asked or the lead resolves it.
   Its avatar is an authored SVG path and background color, using the same constrained format as
   member avatars, but represents the team rather than its lead's fixed star identity.
-- `TeamTask` has a short, stable, team-unique ID such as `t12`, title, status, optional owner
-  and subtasks. Its optional `artifactId` is a shared artifact's `id`; file metadata
-  stays with the artifact. Its optional `diff: DiffStats` uses `shared/diffStats.ts`, like Session
-  diffs, and measures directly attributed work. `teamTasksDiff` derives totals from direct
-  and descendant diffs, never storing aggregates. Unreported work differs from a measured zero;
-  totals summarize reported work, not necessarily the net repository diff. Messages link to a task
-  only by citing its whole ID in their text, as agents are asked to; `mentionsTeamTask` defines
-  that citation, so the task list leads to the newest citing message without a stored link.
+- `TeamTask` (`model/tasks.ts`) is one `team_tasks` row: a server-numbered ID (`t12`, from the
+  team's `last_task_number`, which never reuses a number; tasks from before the rows keep their
+  text IDs), optional parent and sibling position, title, Markdown description, status, priority
+  (high, normal, low), at most one assignee, its opener (an agent or the user), optional
+  `artifactId` and `diff`, the `threadSequence` rooting its thread once it has one, and when it
+  opened, last changed (with `updatedBy`, who changed it), and closed. `TEAM_TASK_STATUSES` is the
+  one grouping that decides open (pending, in_progress, blocked, in_review) or closed (completed,
+  cancelled, deferred, cut, duplicate), so filters, counts, and wakes never disagree with a status.
+  `artifactId` is a shared artifact's `id`; file metadata stays with the artifact. `diff:
+  DiffStats` uses `shared/diffStats.ts`, like Session diffs, and measures directly attributed work.
+  `teamTasksDiff` derives totals from direct and descendant diffs, never storing aggregates.
+  Unreported work differs from a measured zero; totals summarize reported work, not necessarily
+  the net repository diff. A task's thread is its link to the conversation; a task without one,
+  as migrated tasks are until their next activity, still leads to the newest message citing its
+  whole ID (`mentionsTeamTask`).
 - `TeamAgent` is the shared public identity of anyone on the team, the lead or a member: ID,
   name, role, avatar, and status. A Team's agents, lead first, form its roster, which the overview
   presents as Team members.
@@ -123,12 +138,17 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   a member preserves prior content while the UI presents a deleted identity. A connector sender
   retains its connector ID, and its message may carry `origin`: where the content came from and
   whether its requester is the owner. See [Connectors](../connectors/AGENTS.md).
-  `tasks_completed` records the task list becoming complete. The lead flags an ordinary message with
-  `request: true`; `requestSequence` points to that question until a user replies.
-  `requests_resolved` records the lead settling every pending request without the user.
+  `tasks_completed` records the task list becoming complete. `task_opened` (task ID, title,
+  opener) roots a task's thread. The server's own notes about a task, such as `task_turn_ended`,
+  and a threaded `requests_resolved` are system replies in its thread. The lead anywhere, or an
+  assignee in the thread of its own open task, flags an ordinary message with `request: true`; it
+  waits in `pendingRequests`, replacing any question still pending in its thread.
+  `requests_resolved` records the lead settling pending requests without the user: in a thread,
+  that thread's; top-level, every one.
   A user, Agent, or connector message may reply in a thread: its `threadSequence` is the sequence of the
   earlier top-level conversation message that starts the thread. Threads are one level deep, so
-  replying to a reply joins the same thread, and system messages neither start nor join one. A
+  replying to a reply joins the same thread. A system message starts a thread only as a task's
+  `task_opened`, and joins one only as a note about its task. A
   reply is an ordinary message in the same sequence, so reading, paging, reactions, requests,
   status targets, and replay need nothing thread-specific. A connector message that answers an
   agent's message records that agent as `askedBy`.
@@ -157,14 +177,15 @@ Team           name, purpose, directory, lead model, tasks, preview, user read p
   deleting one each append a typed system message that shows its title. Only the lead adds or changes
   routines. The user can run one immediately or delete it. Removing a member deletes its
   targeted routines with ordinary `routine_deleted` events in the same transaction.
-- `TeamState` is the canonical reduced detail: Team metadata, lead, members, messages,
-  pending request, artifacts, routines, presence, and revision. A snapshot is a state value at one
+- `TeamState` is the canonical reduced detail: Team metadata, lead, members, tasks, messages,
+  pending requests, artifacts, routines, presence, and revision. A snapshot is a state value at one
   instant, not a separate type. Earlier messages page by sequence; revision is the durable replay cursor.
 
 There is no separate Agent or membership database. Workers persists ownership, name, and opaque
-metadata. Teams validates that metadata as role, model, avatar, `seenThrough`, and status, then
-projects it into the fixed lead or an editable `TeamMember`. `model/worker.ts` owns these pure
-projections for persistence and runtime configuration; private read positions stay out of public members.
+metadata. Teams validates that metadata as role, model, avatar, `seenThrough`, status, the running
+turn's `turnTasks`, and, for the lead, its `taskSummary` cursor, then projects it into the fixed
+lead or an editable `TeamMember`. `model/worker.ts` owns these pure projections for persistence and
+runtime configuration; private read positions and the summary cursor stay out of public members.
 
 ## Algebra
 
@@ -179,22 +200,12 @@ projections for persistence and runtime configuration; private read positions st
   at each agent's next execution, not during active work.
 - Let only the lead among Team agents rename the Team, revise its purpose, or change its
   working directory. Name, purpose, and directory changes create a durable system message;
-  preview changes also create a system message, like sharing an artifact. Ordinary task updates
-  stay out of the transcript and do not create unread state or list movement.
+  preview changes also create a system message, like sharing an artifact. A task change without
+  a note stays out of the transcript and does not create unread state or list movement.
 - The lead designs a missing team avatar in its initial turn after the kickoff
   or question, and saves or replaces it through `update_team({avatar:{mark,color}})`.
   This uses no image-generation service, separate generation job, or additional wake. Keep the
   icon across renames and purpose changes unless deliberately redesigned. Null clears it.
-- Let the lead add, update, remove, and move tasks by ID with `edit_team_tasks`, committing an ordered
-  batch against the latest tree. Updates preserve omitted fields and children; null clears optional
-  fields. Removal deletes a subtree; moving appends it intact at the root or under a parent outside
-  that subtree. Reserve `update_team`'s whole-tree replacement for initial
-  planning or restructuring, preserving retained IDs and outcomes.
-  Incremental edits validate new or changed owner and artifact references, so an unchanged stale
-  reference cannot block unrelated progress or moves. Whole-tree replacement validates every
-  reference. Stale artifact links remain unavailable until explicitly corrected or cleared.
-  When relocating machine artifacts, update their registered paths and dependent task artifact IDs
-  in the same transaction, then verify every reference; never infer a replacement from a basename.
 - Create, edit, start, finish, and remove Team members through their owned Workers.
 - Let ordinary Sessions create and staff Teams, then read, post, share, and wait for the lead or
   members on the user's behalf. Let the lead create peers within its own Team.
@@ -206,12 +217,70 @@ Mentioning a current member delivers instructions through the ordinary Session m
 Members never exist outside their Team and cannot be invited from a global pool. The intrinsic
 lead exists for the Team's lifetime and is addressed as `@lead`.
 
+### Tasks
+
+- Edit tasks with `edit_team_tasks`: one ordered batch against the latest rows, of `add` (with
+  optional children, returning the IDs the server numbered), `update` (a patch of title,
+  description, status, priority, artifact, or diff; null clears optional fields), `assign`,
+  `move` (appending the subtree intact at the root or under a parent outside it), and `remove`
+  (deleting a subtree, for mistakes; otherwise close as cancelled). `applyTeamTaskEdits` checks
+  each operation against the editing agent as the batch stands at that operation, stamps
+  `updatedAt` and `updatedBy`, and records `closedAt` once. The lead edits any task. An assignee
+  adds subtasks under its own open tasks, always assigned to itself, and updates its own open
+  tasks with any open status up to `in_review`; closing, assigning, moving, and removing are the
+  lead's, and a refusal tells the agent to mention the lead in the task's thread instead.
+  `update_team` no longer takes tasks. Each sibling list holds at most 50 tasks. Edits validate new
+  or changed assignee and artifact references, so an unchanged stale reference cannot block
+  unrelated progress; stale artifact links stay unavailable until corrected or cleared. When
+  relocating machine artifacts, update their registered paths and dependent task artifact IDs in
+  the same transaction, then verify every reference; never infer a replacement from a basename.
+- Post a note with `add`, `update`, or `assign`: it is the agent's message in the task's thread,
+  saved in the same transaction. Opening a task posts `task_opened` to root its thread; a task
+  without a thread gets one before its first note.
+- Wake each agent a saved change notifies once, with every task and what changed for it
+  (`teamTaskNotifications`, a `team_task` wake): the new assignee, the previous one on
+  reassignment, and the assignee when anyone else changes, sends back, or closes its work. Closing
+  a task in review, a move alone, and the assignee's own changes wake no one, except that handing
+  a task off for review wakes the lead (below). Notes wake whoever the thread's routing names.
+- Report on tasks at a turn's end. A wake about a task adds the assignee's open task to its turn
+  (`turnTasks`, published as a `turn` event so presence shows what each running agent works on).
+  `finish_agent_turn({ tasks })` is rejected, naming the missing IDs, until every such task still
+  open and assigned to the agent has a report: a status, a note posted into its thread, and for
+  `in_progress` optionally `continueAfterMinutes` (5 to 120), which wakes the assignee again when
+  due, at most 3 reports in a row (`TEAM_TASK_CONTINUE_LIMIT`). Reports apply as one task edit
+  with the agent's own authority. Handing a task off as `in_review` queues a wake for the
+  assignee's highest-priority pending task after the turn.
+- Settle a turn that ends without its reports from how its execution ended. Startup subscribes to
+  idle status and completions: a completed execution posts `task_turn_ended` in each task's
+  thread and wakes the assignee once more (a second unreported turn in a row only posts the
+  note); a failed or stopped one, including a turn the server's last stop interrupted, posts its
+  note with the error and wakes the lead once, except for the lead's own turn. Any change of
+  status or assignee clears a task's continuation and unreported count.
+- Keep the lead current without flooding it. An assignee handing its task off for review, or
+  asking the user in its task's thread, wakes the lead, but only the first since its last read
+  claims that wake (`taskSummary.woken`); it stands for every later one until the lead reads or
+  its turn ends, startup included, so a lost wake can't silence later ones. The lead's
+  `read_team` adds `taskSummary`: each task changed since its last read other than by the lead, or
+  with news from the user or a member in its thread, with `changedBy`, the latest such note, and
+  whether its thread holds a question. Reading moves the cursor and clears the claim. An open task
+  losing its assignee to a removal or move wakes the lead once per change and counts as that
+  member's change; closed tasks just drop the assignee.
+- Keep each agent's reading to its own work. `teamMessageReaches` keeps a task's thread, its
+  opening note included, for the task's assignee (the lead while unassigned) and whoever it
+  mentions, so `read_team` leaves other task threads out. `read_team` also returns `yourTasks`
+  (open, assigned to the reader, highest priority first) and the tasks: open ones in full, closed
+  ones by ID, title, and status. `read_team({ taskId })` reads one task's record and whole thread
+  without moving the read position.
+- Complete the list: the saved change that takes it from incomplete to complete, meaning every
+  task closed and at least one completed, appends `tasks_completed`. Since only the lead closes
+  tasks, that change is the lead's.
+
 ### Messages
 
 - Append user, Agent, and typed system messages with one transactionally allocated sequence.
 - Reply in a thread by naming any message in it. The append transaction resolves the thread's
-  top-level message, rejecting system messages and messages outside the Team. Read one thread
-  whole, without changing read state.
+  top-level message, rejecting system messages other than a task's opening note and its notes, and
+  messages outside the Team. Read one thread whole, without changing read state.
 - Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
   or connector message wakes the lead, except that a connector's reply wakes its `askedBy` agent,
   and any other connector message wakes that connector's coordinator, each while that agent is on
@@ -220,8 +289,10 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   An agent's handle addresses it anywhere in a message; any other handle, such as a connector's,
   addresses only among the mentions a message opens with and is otherwise plain text.
   The composer resolves the same policy for its draft, so it shows exactly who a message will wake.
-  A thread never routes: its participants wake only as any message would wake them, so agents
-  replying to each other can't loop without mentioning each other.
+  A task's thread routes to the task: a message there wakes its assignee unless the assignee wrote
+  it, or the lead while no one is assigned, plus exactly the agents it mentions. Any other thread
+  never routes: its participants wake only as any message would wake them, so agents replying to
+  each other can't loop without mentioning each other.
 - Send a user or Agent message to each connector it opens by addressing, in the conversation its
   thread holds, and post a connector's events back into that thread. The composer shows addressed
   connectors as recipients beside the agents a message wakes. `readConnectorUse` reads a
@@ -260,25 +331,35 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 
 ### Attention and completion
 
-- Let only the lead flag a user request or complete the task list. A flagged request commits with
-  its message, and the completing task update appends `tasks_completed`. Both travel through the
-  normal detail stream without ending the lead's turn.
+- Let the lead flag a user request anywhere, and an assignee only in the thread of its own open
+  task, through `request: true` on `send_team_message`. A flagged request commits with its message
+  into `pendingRequests`, replacing any question still pending in its thread, and travels through
+  the normal detail stream without ending the turn. A member's question also claims the lead's
+  merged wake (see Tasks). Only the lead completes the task list, whose completing change appends
+  `tasks_completed`.
   Reading a completion message acknowledges its sidebar indication. Reading a request does not:
-  any later committed user message acknowledges it and also reaches the lead, preserving any
-  explicitly mentioned recipients.
+  the user's later message where it was asked acknowledges it (`acknowledgesTeamRequest`). A
+  question in a thread is answered in that thread, which wakes its assignee by the thread's
+  routing; a top-level question is answered top-level or in its own thread, which reaches the
+  lead. An answer in a task's thread also wakes the lead only when it answers the lead's own
+  question; mentions still wake whoever they name.
   Acknowledgement does not imply that the user's response resolves the request.
-- Let the lead resolve every pending request when it gets what they asked for some other way, such
-  as from a member, connector, or another team. `resolve_team_requests` appends
-  `requests_resolved`, which acknowledges every earlier request like a user reply, without waking
-  anyone; with nothing pending it changes nothing. Resolution covers all pending requests, so the
-  lead flags a new one for anything still missing.
+- Let the lead resolve pending requests when it gets what they asked for some other way, such as
+  the user's answer to its gathered question, a member, a connector, or another team.
+  `resolve_team_requests({ taskIds })` posts `requests_resolved` into each task's thread, settling
+  only that thread's question, and errs for a task with none waiting; without `taskIds` it appends
+  one top-level `requests_resolved` that acknowledges every earlier request. Neither wakes anyone,
+  and with nothing pending nothing changes. The lead gathers assignees' questions into one flagged
+  question, then decides which tasks the user's answer covers, relays each answer into its task's
+  thread, and resolves those.
 
 ### Scheduled wakes
 
 - Wake the selected agent privately when a routine comes due or the user runs it; omitted
   `agentId` targets the lead. Wake the lead when its follow-up comes due,
   through ordinary Session delivery. A run adds nothing to the transcript, and the agent
-  posts only if something needs the team. Running a routine leaves its schedule unchanged.
+  posts only if something needs the team. Running a routine leaves its schedule unchanged. Wake a
+  task's assignee when its report's continuation comes due.
 - Paused Teams are excluded from due claims without consuming their follow-ups or advancing
   routine schedules. On resume, missed routine occurrences collapse into one as usual. Manual runs
   and new member admission reject while paused; user messages save without waking anyone.
@@ -297,8 +378,8 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   public message (P50, P90, mean, or max, with unanswered notifications left open), lists who
   addresses whom, and sums AI credits, tokens, busy time, and turns. Reactions carry no time, so
   they don't count as answers.
-- `wakeTeamAgent` records each delivery's outcome in `team_wakes`: its cause (message, routine, or
-  follow-up), the message author and sequence when a message caused it, and the Sessions
+- `wakeTeamAgent` records each delivery's outcome in `team_wakes`: its cause (message, routine,
+  follow-up, or task), the message author and sequence when a message caused it, and the Sessions
   disposition. `started` woke an idle agent, `steered` joined its running turn at the next model
   step without stopping current work, `interrupted` stopped that turn, current step included, to
   start a turn with the message, and `queued` waited for that turn to end. Every wake steers except
@@ -313,7 +394,7 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   reopens the advice if the action fails. Advice travels as a quiet revisioned `advice` event and
   `TeamState.advice` holds every open item plus the 20 most recently resolved.
 - Move members with their Sessions and histories intact. The source team releases their tasks,
-  deletes their targeted routines, and records `member_left`; the target records `member_joined`
+  waking its lead for those still open, deletes their targeted routines, and records `member_left`; the target records `member_joined`
   and each moved member reads it from its latest message onward with no stale status. Moving rejects
   a lead, a paused target, and a name already taken there. The agent's next execution configures it
   for its new team.
@@ -328,8 +409,8 @@ Sessions owns directory fallback and applying configuration between executions. 
 inspect the same model catalog as the client before creating peers. Member profile and Team
 directory changes apply between executions without mutating provider history. The lead receives its
 fixed identity and responsibilities from the Team rather than editable Worker metadata. Among
-Team agents, it alone creates members and updates the directory, public purpose, tasks, and
-preview.
+Team agents, it alone creates members, updates the directory, public purpose, and preview, and
+closes, assigns, moves, and removes tasks.
 
 A lead and member always receive `read_team`, `send_team_message`, `set_agent_status`,
 and `finish_agent_turn` without tool discovery. These declarations set Sessions' `alwaysAvailable`
@@ -377,7 +458,12 @@ members whose wait it fulfills, and finish every turn explicitly. Agents answer 
 thread, keep responding in a thread whose reply woke them, and post top-level for kickoffs, new
 topics, milestones, and results; `read_team` with a `threadSequence` reads one thread whole.
 The lead asks a question about a thread's topic in that thread and posts its closing result
-top-level. Public messages, reactions,
+top-level. Work on a task happens in its thread: progress, questions, reviews, and replies. An
+agent asked about a task in the main chat reads it with `read_team({ taskId })` and answers there,
+adding to the thread only what is missing from it. An assignee that needs another agent's help,
+new work, or a reassignment mentions that agent, or the lead, in the task's thread, and proposes
+closing without completing (cancelled, deferred, cut, or duplicate) by handing the task off for
+review with the status in its note. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Team. Agents reach connectors by opening a message with their handle,
 and name them without @ when only talking about them. They keep each connector
@@ -405,16 +491,22 @@ durable long-form work stays in canonical shared artifacts; browser messages ret
 model's 12,000-character limit.
 
 The built-in lead role establishes the purpose with the user when needed, scales planning to the
-work, keeps a lightweight task list with reviewable outcomes, creates each member only when their
-work is actionable, drives quality through review and iteration, and keeps the public progress
-surfaces current.
+work, opens tasks with reviewable outcomes and assigns each to the one agent directly responsible,
+putting the outcome and context in its description and an assignment note, creates each member
+only when their work is actionable, drives quality by reviewing each hand-off and closing it with a
+status or sending it back, and keeps the public progress surfaces current. A hand-off or a member's
+question wakes it once for everything it hasn't read, which its `taskSummary` lists; it reports to
+the user in one update for finished work and gathers what assignees need from the user into one
+flagged question. Patterns across tasks, such as a fix others should apply, go into a routine,
+such as a daily review of closed tasks, rather than reactions to each change.
 Each sibling list is capped at 50 tasks; use ID-based moves to regroup growing lists into milestones without discarding
 useful outcomes or copying child counts into a parent's direct diff.
 Routines serve the purpose, so setting one never rewrites the purpose or adds tasks.
 Delegation never transfers accountability for the purpose or the quality of a member's outcome.
-During working communication, the lead flags what it needs from the user by setting
+During working communication, an agent flags what it needs from the user by setting
 `request` on `send_team_message`; the same transaction appends that flagged message and updates
-the pending cursor. Only the lead's version of the tool accepts the flag. A message steers into
+`pendingRequests`. The lead's version accepts it anywhere and a member's only in the thread of its
+own open task. A message steers into
 each woken agent's running turn at its next step, so the step underway still finishes. When that
 step could do harm, such as relaying the user's stop or wait, the lead sets `interrupt` instead:
 each woken agent's running turn stops, current tool call included, and its next turn starts with
@@ -422,14 +514,15 @@ an urgent `team_message` that says the stopped step may not have finished. Only 
 accepts it and `sendTeamMessageFromAgent` rejects it from anyone else. It isn't stored on the
 message; a wake records `interrupted` only when it stopped a running turn. Completion
 needs no separate operation:
-when a lead's task edit or replacement takes the list from incomplete to complete, meaning it has
-tasks and every task and subtask is done, the same transaction appends `tasks_completed`. Completion
-compares the committed tree before and after the entire batch, never intermediate edits. Rewriting an
-already complete list never repeats it; reopening and finishing a task does.
+when a saved task change takes the list from incomplete to complete, meaning every task is closed
+and at least one completed, the same transaction appends `tasks_completed`. Completion compares
+the committed rows before and after the entire batch, never intermediate edits. Changing an
+already complete list never repeats it; reopening and closing a task again does.
 
 A turn start clears only a prior waiting status. Session completion clears any remaining working
 status; startup clears working status left behind by inactive executions. `finish_agent_turn` clears active status and its
-projected activity reaction, or leaves a concise waiting status, then closes the turn. Only the
+projected activity reaction, or leaves a concise waiting status, then closes the turn; its `tasks`
+reports cover every task the turn was woken for (see Tasks). Only the
 lead's version accepts `wakeAfterMinutes`, from 5 to 120, for a follow-up on a member or external
 work. The follow-up is the waiting status's `wakeAt`, so any earlier wake clears it.
 
@@ -443,13 +536,14 @@ Teams spawns the lead and members through Workers with durable retention. Its ad
 commits the Team and lead together, or a member and its membership message together, before
 execution begins, and returns the committed Team or member through the Worker receipt. Removing a
 member transactionally changes the Worker record and appends its typed system message.
-Removing a member also clears that member from task ownership. Profile and status changes update
+Removing a member also releases its tasks: an open one wakes the lead and counts as that member's
+change, and a closed one just drops the assignee. Profile and status changes update
 Worker metadata and advance the Team revision. Deleting a Team removes its rows and Worker
 ownership together, publishes one deletion, then tears down every captured agent Session. Those
 teardowns cannot produce member departures for the deleted Team. Name, purpose, and directory
 changes update Team metadata and append a separate typed system message for each changed property
 in one transaction, advancing sequence and revision for each; a user purpose change also wakes the lead
-to read the new direction. Preview changes append `preview_changed`; tasks and lead-model changes
+to read the new direction. Preview changes append `preview_changed`; task and lead-model changes
 have their own revisioned events without a transcript entry. The optional avatar is stored on the
 Team row; its `avatar` event updates detail clients and the usual catalog upsert updates all other
 surfaces without unread activity or list movement. An artifact arrangement likewise stays quiet and
@@ -459,18 +553,23 @@ have a revisioned event carrying only the committed cursor.
 Private Agent read-position changes update only Worker metadata. Message, reaction, and artifact tables continue
 to reference the stable Agent ID without a foreign key so authored history survives member removal.
 Routines keep a server-private `next_at`. A 30-second interval from `server/startup.ts` claims due
-follow-ups and routines in one transaction before delivery: a follow-up clears its waiting status,
-and a routine moves past now, so runs missed while stopped collapse into one.
+follow-ups, routines, and task continuations in one transaction before delivery: a follow-up clears
+its waiting status, a continuation clears its `continue_at`, and a routine moves past now, so runs
+missed while stopped collapse into one.
 
 The database is authoritative. Lead metadata updates and attention operations authorize against the
-Team's intrinsic lead ID within their transaction. Task edits and replacements also validate
-owners and shared artifact references in that transaction. Tasks stay in the Team's JSON column;
-granular commands publish the same full-tree `tasks` event as replacement. Outcome-only updates
-stay quiet and unchanged edits allocate no revision. The list query returns metadata and members
+Team's intrinsic lead ID within their transaction. Task edits check each operation's authority and
+validate assignees and shared artifact references in that transaction. Tasks are `team_tasks`
+rows, numbered from `teams.last_task_number`; each changed task publishes one `task` event and
+each removed one a `task_removed` event, subtasks first, which the shared reducer applies to
+`TeamState.tasks`. Changes without a note stay quiet and unchanged edits allocate no revision. A
+task's continuation (`continue_at`, `continues`) and `unreported_turns` live on its row and reset
+with any change of status or assignee. The list query returns metadata and members
 for the sidebar. The fixed lead identity is derived from the Team ID.
-Commits persist the reducer's request and completion cursors alongside their messages; reads select
-those cursors directly. The snapshot retains request content by that sequence, while transcript
-presentation separately distinguishes each historical request's acknowledgement.
+Commits persist the reducer's pending requests and attention and completion cursors alongside their
+messages; reads select them directly. The snapshot retains each pending request's message in
+`TeamState.requests`, even outside the message window, while transcript presentation separately
+distinguishes each historical request's acknowledgement.
 A visible pane observes a `TeamState` through one streamed Query: the first connection supplies
 the snapshot, and later connections resume the cached revision. The server commits canonical rows
 and publishes transitions, reusing metadata and roster reducers without retaining a second aggregate.
@@ -499,7 +598,7 @@ members, matching message senders, reactions, and waiting. These projections exp
 roles, and effective statuses, never separate private Session IDs or another member's read position.
 Artifact shares and reads expose
 `artifactId` alongside the path and title, so the lead can attach the same file identity to a task.
-Task-edit receipts return only the targeted IDs.
+Task-edit receipts return only the tasks they opened, with their new IDs.
 Presence governs working/waiting/idle for clients and tool projections; stored status supplies text
 and message targets only while its state matches that presence.
 
@@ -510,8 +609,8 @@ client team selection, using the same list operation as browser RPC.
 
 `GET /api/v1/teams/:teamId` streams SSE for browser and native clients through `streamTeam`.
 Its snapshot event carries a `TeamState`; snapshots are part of the stream protocol.
-The snapshot includes the latest 100 public messages, roster, artifacts, routines, live presence,
-and the pending request even outside that message window. Its durable facts come from one
+The snapshot includes the latest 100 public messages, roster, tasks, artifacts, routines, live
+presence, and each pending request's message even outside that message window. Its durable facts come from one
 transaction. Reads never acknowledge the Team or expose private Agent context. Artifacts carry
 the `id` that tasks reference as `artifactId` and a Files serving URL, so clients match task
 outcomes without knowing the file identity encoding. Each attachment is either `{ name, url }` for
@@ -530,10 +629,11 @@ The stream establishes state and follows changes:
 - Deletion sends `{ type: "deleted", teamId }` and closes, including when the Team is already
   absent on connection. Workspace deletion also removes closed panes.
 
-`reduceTeamState` applies the complete public protocol: messages derive metadata and attention,
-quiet events replace tasks/model/read state and the artifact arrangement, and presence updates
-merge or replace the presence map.
-The separately retained pending request follows replies and reactions even outside the message window.
+`reduceTeamState` applies the complete public protocol: messages derive metadata, attention, and
+pending requests, `task` and `task_removed` events change one task each, quiet events replace
+model/read state and the artifact arrangement, a `turn` event sets which tasks an agent's running
+turn is on, and presence updates merge or replace the presence map.
+The separately retained pending requests follow replies and reactions even outside the message window.
 Optimistic posts enter the reducer with their client-generated message ID without advancing server
 cursors or clearing attention; the committed echo replaces that message and applies its authoritative
 position and metadata. Older pages merge already-materialized messages without replaying their events.
@@ -559,7 +659,7 @@ replace an overlapping stale list read. This browser metadata does not change th
 `GET /api/v1/teams/:teamId/messages?before=<sequence>` returns up to 100 older messages with
 `{ version: 1, revision, messages }` from one transaction. The browser uses this same public endpoint.
 It retries pages older than its cached revision, merges without advancing the stream cursor, and
-continues through the target sequence when revealing a pending request.
+continues through the target sequence when revealing pending requests, until every one is loaded.
 
 `POST /api/v1/teams/:teamId/messages` accepts `{ id, content, attachments?, threadSequence? }`, uses the normal
 user-message schema and delivery policy, and returns HTTP 201 with `{ version: 1, message }`.
@@ -717,7 +817,7 @@ with a dashed border. Human bubbles and participant icons use a muted dark-blue 
 theme. Agent messages reuse the shared
 [`CopyControl`](../../shared/messages/CopyControl.tsx). `TeamReactions` takes a message and
 shows its recorded and projected reactions, or nothing. Every agent reference, whether an author,
-reactor, task owner, or sharer, resolves through `teamAgentIdentity`, so a removed agent
+reactor, task assignee, or sharer, resolves through `teamAgentIdentity`, so a removed agent
 presents one deleted identity everywhere.
 
 - The transcript's rows come from `transcriptRows`, its pure presentation model: each user message
@@ -737,23 +837,24 @@ presents one deleted identity everywhere.
   receives its kind's typed contents. Its shared row renders the resulting content and tooltip;
   grouping and the durable message model stay separate.
   A pane-local view, chosen beside the transcript's message search, shows
-  all messages, only the user's own and the agent messages that never collapse, or only the lead's
-  questions that still need a reply (Needs your reply), where a question asked in a thread shows as
-  its thread's row. Rows form from
+  all messages, only the user's own and the agent messages that never collapse, or only the
+  questions that still need a reply (Needs your reply), one per thread, where a question asked in a
+  thread shows as its thread's row. Rows form from
   the shown messages, so runs and dividers follow what the reader sees; changing the view lands
   the transcript afresh, and read state stays Team-wide.
   `useTranscriptViewport` owns the virtualizer and where the reader looks: landing on the first
-  unread row or the end, following the reader's own post, revealing the pending request, and
+  unread row or the end, following the reader's own post, revealing pending requests, and
   paging history. Paging continues while the first row, or an empty view, is in view, so a sparse
   view fetches pages it may show nothing of instead of asking the server to filter. It stops once
-  older history can hold nothing the view shows: every pending question follows the latest user
-  message or resolution, so Needs your reply pages only until one is loaded, or not at all with
-  nothing pending.
+  older history can hold nothing the view shows: Needs your reply pages only until every pending
+  question is loaded, or not at all with nothing pending.
   TanStack Virtual's mutable instance stays inside that hook, which the compiler
   skips, and the transcript receives only values current for its render.
   The "New" position comes from the current read position on arrival and holds
-  while it's read, so arrivals during reading are never marked. A flagged question is marked until a
-  later user message acknowledges it. The activity row shows working agents; waiting
+  while it's read, so arrivals during reading are never marked. A flagged question is marked until
+  the user answers it where it was asked or the lead resolves it. The transcript folds a task's
+  server notes into its thread like any reply, naming the agent. The activity row shows working
+  agents; waiting
   shows in the members panel, since a request already marks what the user needs to answer.
 - The composer docks Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx)
   for shared artifacts in the user's arrangement, without archived ones, plus the tasks and
@@ -763,19 +864,26 @@ presents one deleted identity everywhere.
   show a passive live canvas and open/focus a Screen pane without opening a
   private agent Session. Tray, overview and historical preview messages share
   Workspace's preview presentation. Opening never takes input control.
-  While the Team reports a pending request, it asks for a reply.
-  An "Input needed" button beside the composer's audience stays visible
-  until the user replies. Hover previews `state.request`; clicking loads
-  any older pages needed and scrolls to the question. Scrolling never changes the composer height.
+  While the Team has pending requests, the placeholder names who asked the question a post there
+  would answer. An "Input needed" button beside the composer's audience shows how many are waiting
+  and stays visible until the user answers them. Hover previews the newest from `state.requests`;
+  clicking loads any older pages needed and scrolls to the question. Scrolling never changes the composer height.
 - The overview panel shows the purpose, directory, and preview, then summarizes each other panel
   under a View all link that opens it: the roster's avatars and how many are working, task progress
   with up to three tasks in progress, the first three Shared artifacts, and the next routine to run.
   Its header holds the team menu.
 - The tasks panel holds the full task checklist. Its header's pane-local view shows open tasks
-  (the default), tasks in progress, or all of them. A filtered list keeps each shown task's parents
-  as context, opened, and their subtask counts still count every subtask. Choosing a task opens the
-  newest user, agent, or connector message citing its ID highlighted in its thread, as a search
-  result does, or says that none does yet. The routines panel lists routines by title with
+  (the default), tasks in progress, tasks whose thread holds a pending question (Needs your input,
+  `teamTasksNeedingInput`), or all of them. A filtered list keeps each shown task's parents
+  as context, opened, and their subtask counts still count every subtask. Each row shows its ID
+  muted before the title, and hovering it shows `TaskCard`: the ID, status ("Closed as deferred"
+  once closed), priority when not normal, title, description, assignee or Unassigned, artifact,
+  exact diff, subtask progress, when and by whom it last changed, and Working now while its
+  assignee's running turn is on it, which also rings the row's avatar. Choosing a task opens its
+  task view: its thread, headed by its record and titled like "t5 · Tools: land the slice", with a
+  composer that replies there; a task without a thread yet still opens the newest user, agent, or
+  connector message citing its ID, as a search result does, or says that none does yet. The
+  task view shows each of the server's notes as a row, with a failure's error on hover. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
   members panel's header adds an agent through a New agent dialog and edits the Team; clicking an
   agent's name opens its editor (the lead's is the Team's), which copies its URI and removes it after
@@ -790,9 +898,12 @@ presents one deleted identity everywhere.
   Apply does, beside Apply and Dismiss; without open advice it offers to ask the lead to set up an
   auditor.
 - Both checklists share a task projection with stable identity and compact diff totals (exact counts
-  on hover and for assistive technology). Naturally sized counts and owners float beside the first
+  on hover and for assistive technology). Each status has its own mark: pending, in progress,
+  blocked (red), in review (an amber dot), completed, and muted marks for cancelled, deferred, cut,
+  and duplicate. Every closed mark counts as finished, so closed parents collapse, titles mute, and
+  subtask badges read "2 of 3 subtasks finished". Naturally sized counts and assignees float beside the first
   title line, without reserved columns. Pending rows omit diff counts; reported zeros use the same
-  added/removed colors as other counts. Counts and avatars keep their normal colors on done rows.
+  added/removed colors as other counts. Counts and avatars keep their normal colors on closed rows.
   Artifact references stay on their directly attributed tasks and never roll up. Artifact icon actions
   share that detail slot and open ordinary file panes without toggling the parent; their hover
   and accessible labels identify the artifact, while full titles stay in the artifact list.
@@ -805,9 +916,11 @@ presents one deleted identity everywhere.
 
 ## Code map
 
-- `model/` is the isomorphic domain. `index.ts` owns the types, input schemas, audience policy, and
-  public exports. `tasks.ts` owns task identity, outcome schemas, derived diff totals, tree edits,
-  ownership release, and completion. `avatar.ts` owns the shared SVG mark and color contract.
+- `model/` is the isomorphic domain. `index.ts` owns the types, input schemas, audience policy,
+  pending requests and what answers them, what each agent's reading includes, and public exports.
+  `tasks.ts` owns the task statuses and their grouping, the row shape, edits with their authority
+  and stamping, who a change wakes, turn reports and the next task, citation, derived diff totals,
+  the tree, and completion. `avatar.ts` owns the shared SVG mark and color contract.
   `agent.ts` owns agent names, roles, the lead profile, mention
   handles, and the deleted identity an ID resolves to once its agent is removed. `worker.ts` projects Worker metadata into the lead, members, and roster. `reducer.ts`
   reduces the complete public snapshot and owns the metadata and roster transitions shared with
@@ -819,8 +932,8 @@ presents one deleted identity everywhere.
   The versioned SSE route delegates to that owner through `api.ts`.
   `resources.ts` resolves client URLs before publication or snapshot delivery.
   `tools.ts` owns agent-facing projections and the Session, lead, and member tool sets; `agent.ts` composes each agent's
-  execution, and `startup.ts` clears finished working statuses, starts the wake interval, and
-  forwards stalled sessions to Admin.
+  execution, and `startup.ts` clears finished working statuses, settles each turn's end from how its
+  execution ended, starts the wake interval, and forwards stalled sessions to Admin.
   `admin.ts` provisions the built-in team without execution, checks its lead's authority, and
   posts stalled-session notices; `adminTools.ts` exposes its read-only diagnostics and idle-only
   connection refresh.
