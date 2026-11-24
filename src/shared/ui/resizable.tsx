@@ -27,12 +27,10 @@ export const RESIZE_HANDLE_RULE =
 
 const ResizableHandle = ({
   withHandle,
-  gap,
   className,
   ...props
 }: React.ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
   withHandle?: boolean;
-  gap?: boolean;
 }) => (
   <ResizablePrimitive.PanelResizeHandle
     className={cn(
@@ -43,8 +41,6 @@ const ResizableHandle = ({
       "data-[resize-handle-state=drag]:bg-[image:var(--resize-accent-y)]",
       "data-[panel-group-direction=vertical]:data-[resize-handle-state=hover]:bg-[image:var(--resize-accent-x)]",
       "data-[panel-group-direction=vertical]:data-[resize-handle-state=drag]:bg-[image:var(--resize-accent-x)]",
-      // In a gutter between cards the rule shows only while hovered or dragged.
-      gap && "bg-transparent",
       className,
     )}
     {...props}

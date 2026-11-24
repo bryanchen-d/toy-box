@@ -12,6 +12,7 @@ import { useWarmSessionSnapshots } from "@sessions/useWarmSessionSnapshots";
 import { useWorkspaceSync } from "@workspace/hooks/useWorkspaceSync";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { useViewport } from "@/shared/hooks/useViewport";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
 import { NameDialog } from "@/shared/sidebar/NameDialog";
 import type { SidebarProps } from "@workspace/components/sidebar/Sidebar";
 import {
@@ -479,11 +480,15 @@ function WorkspacePage() {
   }, [teams, navigate, referencedTeamId, selectedTeamIds]);
 
   // The browser title names the Team in focus, so tabs and history stay recognizable.
+  // An installed app's window shows only the app's name unless the title starts
+  // with it, so there the name leads, in the window's own "App - detail" form.
   const titledTeamId = focusedTeamId(openPanes, focusedPaneId);
   const titledTeamName = teams?.find(({ id }) => id === titledTeamId)?.name;
+  const isBrowserTab = useMediaQuery("(display-mode: browser)", true);
   useEffect(() => {
-    document.title = [titledTeamName, APP_TITLE].filter(Boolean).join(" · ");
-  }, [titledTeamName]);
+    const parts = isBrowserTab ? [titledTeamName, APP_TITLE] : [APP_TITLE, titledTeamName];
+    document.title = parts.filter(Boolean).join(isBrowserTab ? " · " : " - ");
+  }, [isBrowserTab, titledTeamName]);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SessionFilters>({

@@ -1,7 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/shared/utils";
 import { RESIZE_HANDLE_RULE } from "@/shared/ui/resizable";
-import { CARD_CLASS, CARD_INSET_CLASS } from "@workspace/components/layout/card";
 import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -11,14 +10,8 @@ import {
 /** How far one arrow key nudges the sidebar's edge. */
 const KEYBOARD_STEP = 16;
 
-/** The sidebar floats as a bordered card, and its width includes that border on both sides. */
-export const SIDEBAR_FRAME = 2;
-
-/**
- * The width a collapsed sidebar holds: the rail's single action between two
- * insets, plus that frame. `SidebarRail` lays itself out against this.
- */
-export const SIDEBAR_COLLAPSED_WIDTH = 44 + SIDEBAR_FRAME;
+/** The width a collapsed sidebar holds: the rail's single action between two insets. */
+export const SIDEBAR_COLLAPSED_WIDTH = 44;
 
 type SidebarDrag = { collapsed: true } | { collapsed: false; width: number };
 
@@ -38,7 +31,7 @@ export function resolveSidebarDrag(width: number): SidebarDrag {
  * this or none of it, so it cannot be collapsed without a way back.
  */
 export type SidebarCollapseControl = {
-  /** The width the sidebar returns to, frame included. It is kept while collapsed. */
+  /** The width the sidebar returns to. It is kept while collapsed. */
   expandedWidth: number;
   collapsed: boolean;
   onExpandedWidthChange: (width: number) => void;
@@ -97,28 +90,25 @@ export function SidebarResizer({
   // is still widening the sidebar has no crossfade and must track the edge live.
   const style: CSSProperties & { "--sidebar-width": string } = {
     width: currentWidth,
-    "--sidebar-width": isDragging && !collapsed ? "100%" : `${expandedWidth - SIDEBAR_FRAME}px`,
+    "--sidebar-width": isDragging && !collapsed ? "100%" : `${expandedWidth}px`,
   };
 
   return (
     <>
-      <div className={cn("flex shrink-0", CARD_INSET_CLASS)}>
-        <div
-          data-sidebar
-          style={style}
-          className={cn(
-            CARD_CLASS,
-            "shrink-0",
-            !isDragging && "transition-[width] duration-300 ease-layout",
-          )}
-        >
-          {children}
-        </div>
+      <div
+        data-sidebar
+        style={style}
+        className={cn(
+          "shrink-0 overflow-clip bg-background",
+          !isDragging && "transition-[width] duration-300 ease-layout",
+        )}
+      >
+        {children}
       </div>
 
       <SidebarEdge
         width={currentWidth}
-        hidden={collapsed && !isDragging}
+        locked={collapsed && !isDragging}
         isDragging={isDragging}
         onDragStart={() => setDragWidth(currentWidth)}
         onDrag={applyDrag}
@@ -130,13 +120,13 @@ export function SidebarResizer({
 }
 
 /**
- * The sidebar's trailing edge. Like the pane handles, it is an invisible rule down
- * the middle of the gutter until hovered or dragged, though its desktop-only grab
- * area is slightly wider.
+ * The sidebar's trailing edge: the rule dividing it from the workspace, like the
+ * rules between panes, though its desktop-only grab area is slightly wider. The
+ * collapsed rail keeps the rule but not the grab.
  */
 function SidebarEdge({
   width,
-  hidden,
+  locked,
   isDragging,
   onDragStart,
   onDrag,
@@ -144,7 +134,7 @@ function SidebarEdge({
   onNudge,
 }: {
   width: number;
-  hidden: boolean;
+  locked: boolean;
   isDragging: boolean;
   onDragStart: () => void;
   onDrag: (edge: number) => void;
@@ -192,7 +182,8 @@ function SidebarEdge({
       aria-valuenow={width}
       aria-valuemin={SIDEBAR_MIN_WIDTH}
       aria-valuemax={SIDEBAR_MAX_WIDTH}
-      tabIndex={hidden ? -1 : 0}
+      aria-hidden={locked || undefined}
+      tabIndex={locked ? -1 : 0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -200,10 +191,10 @@ function SidebarEdge({
       onKeyDown={handleKeyDown}
       className={cn(
         RESIZE_HANDLE_RULE,
-        "z-10 shrink-0 cursor-col-resize touch-none select-none after:w-1.5",
+        "z-10 shrink-0 cursor-col-resize touch-none select-none bg-border after:w-1.5",
         "hover:bg-[image:var(--resize-accent-y)]",
         isDragging && accentGradient,
-        hidden && "hidden",
+        locked && "pointer-events-none",
       )}
     />
   );

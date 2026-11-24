@@ -9,7 +9,6 @@ import { WorkspacePaneView } from "../shell/WorkspacePaneView";
 import { PANE_OVERLAY_BUTTON_CLASS, PANE_OVERLAY_ICON_CLASS } from "../shell/paneControls";
 import { SessionOverlay } from "@sessions/components/SessionOverlay";
 import { cn } from "@/shared/utils";
-import { CARD_CLASS, CARD_INSET_CLASS } from "@workspace/components/layout/card";
 import { paneSourceSessionId, type WorkspacePane } from "@workspace/model/panes";
 
 /** Resizable desktop host for up to four workspace panes. Pane count determines
@@ -169,7 +168,6 @@ export function WorkspaceGrid({ panes, resolvePaneClose }: WorkspaceGridProps) {
   function renderResizeHandle(requiredPaneCount: number) {
     return (
       <ResizableHandle
-        gap
         disabled={isResizeLocked}
         onDragging={setIsDragging}
         className={cn((count < requiredPaneCount || isResizeLocked) && "hidden")}
@@ -342,80 +340,73 @@ function WorkspaceGridCell({
   const [statusSlot, setStatusSlot] = useState<HTMLDivElement | null>(null);
 
   return (
-    <div className={cn("size-full", CARD_INSET_CLASS)}>
+    <div
+      className={cn(
+        "relative group size-full overflow-clip bg-background",
+        showWindowControls && "[--agent-teams-pane-actions-inset:5rem]",
+      )}
+    >
+      {pane.kind === "session" && pane.isLinkedOnly && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-10 ring-2 ring-inset ring-accent/80"
+        />
+      )}
+
       <div
         className={cn(
-          CARD_CLASS,
-          "size-full relative group",
-          showWindowControls && "[--agent-teams-pane-actions-inset:5rem]",
+          "absolute top-3 right-3 z-20 flex gap-1 transition-opacity duration-200",
+          isMaximized
+            ? "opacity-100"
+            : "opacity-0 delay-150 focus-within:opacity-100 focus-within:delay-0 group-hover:opacity-100 group-hover:delay-0 has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-0",
         )}
       >
-        {pane.kind === "session" && pane.isLinkedOnly && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-10 rounded-[inherit] ring-2 ring-inset ring-accent/80"
+        {/* The pane declares its own actions here, before any window controls. */}
+        <div ref={setActionsSlot} className="contents" />
+        {showWindowControls &&
+          (isMaximized ? (
+            <button onClick={onRestore} className={PANE_OVERLAY_BUTTON_CLASS} aria-label="Minimize">
+              <Minimize2 className={PANE_OVERLAY_ICON_CLASS} />
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={onMaximize}
+                className={PANE_OVERLAY_BUTTON_CLASS}
+                aria-label="Maximize"
+              >
+                <Maximize2 className={PANE_OVERLAY_ICON_CLASS} />
+              </button>
+              {onClosePane && (
+                <button
+                  onClick={onClosePane}
+                  className={PANE_OVERLAY_BUTTON_CLASS}
+                  aria-label="Close"
+                >
+                  <X className={PANE_OVERLAY_ICON_CLASS} />
+                </button>
+              )}
+            </>
+          ))}
+      </div>
+
+      <WorkspacePaneView
+        pane={pane}
+        isVisible={isVisible}
+        slots={{ actions: actionsSlot, status: statusSlot }}
+      >
+        {sessionOverlayId && (
+          <SessionOverlay
+            key={sessionOverlayId}
+            sessionId={sessionOverlayId}
+            isVisible={isVisible}
           />
         )}
-
-        <div
-          className={cn(
-            "absolute top-3 right-3 z-20 flex gap-1 transition-opacity duration-200",
-            isMaximized
-              ? "opacity-100"
-              : "opacity-0 delay-150 focus-within:opacity-100 focus-within:delay-0 group-hover:opacity-100 group-hover:delay-0 has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-0",
-          )}
-        >
-          {/* The pane declares its own actions here, before any window controls. */}
-          <div ref={setActionsSlot} className="contents" />
-          {showWindowControls &&
-            (isMaximized ? (
-              <button
-                onClick={onRestore}
-                className={PANE_OVERLAY_BUTTON_CLASS}
-                aria-label="Minimize"
-              >
-                <Minimize2 className={PANE_OVERLAY_ICON_CLASS} />
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={onMaximize}
-                  className={PANE_OVERLAY_BUTTON_CLASS}
-                  aria-label="Maximize"
-                >
-                  <Maximize2 className={PANE_OVERLAY_ICON_CLASS} />
-                </button>
-                {onClosePane && (
-                  <button
-                    onClick={onClosePane}
-                    className={PANE_OVERLAY_BUTTON_CLASS}
-                    aria-label="Close"
-                  >
-                    <X className={PANE_OVERLAY_ICON_CLASS} />
-                  </button>
-                )}
-              </>
-            ))}
-        </div>
-
-        <WorkspacePaneView
-          pane={pane}
-          isVisible={isVisible}
-          slots={{ actions: actionsSlot, status: statusSlot }}
-        >
-          {sessionOverlayId && (
-            <SessionOverlay
-              key={sessionOverlayId}
-              sessionId={sessionOverlayId}
-              isVisible={isVisible}
-            />
-          )}
-        </WorkspacePaneView>
-        <div
-          ref={setStatusSlot}
-          className="pointer-events-none absolute right-3 bottom-3 z-20 flex h-[30px] items-center gap-1.5 [&>*]:pointer-events-auto"
-        />
-      </div>
+      </WorkspacePaneView>
+      <div
+        ref={setStatusSlot}
+        className="pointer-events-none absolute right-3 bottom-3 z-20 flex h-[30px] items-center gap-1.5 [&>*]:pointer-events-auto"
+      />
     </div>
   );
 }

@@ -125,24 +125,79 @@ type SidebarCreationActions = {
   onCreateAutomation: () => void;
   onCreateTeam: () => void;
 };
-type SidebarCreationVariant = "header" | "rail";
 
+/** Everything a standalone session can begin as: a conversation, a document, or a whiteboard. */
+function SessionCreationItems({
+  onCreateSession,
+}: Pick<SidebarCreationActions, "onCreateSession">) {
+  function createArtifactDraft(path: string, content = "") {
+    onCreateSession({ artifact: { path, content } });
+  }
+
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={(event) => onCreateSession({ addToWorkspace: event.metaKey || event.ctrlKey })}
+      >
+        <MessageSquarePlus />
+        New session
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => createArtifactDraft("document.md")}>
+        <FileText />
+        New document
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onClick={() =>
+          createArtifactDraft(
+            "diagram.svg",
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"></svg>\n',
+          )
+        }
+      >
+        <Shapes />
+        New whiteboard
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+/** The Sessions section's create action, beside its title like every section's. */
+export function SessionCreationMenu({
+  onCreateSession,
+}: Pick<SidebarCreationActions, "onCreateSession">) {
+  const hasModels = useHasModels();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={!hasModels}
+        render={
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            aria-label="Create session"
+            suppressHydrationWarning
+          />
+        }
+      >
+        <Plus className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <SessionCreationItems onCreateSession={onCreateSession} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The rail's create menu, hanging below its create-team action. */
 function SidebarCreationMenu({
   onCreateSession,
   onCreateAutomation,
   onCreateTeam,
   disabled = false,
-  variant,
-}: SidebarCreationActions & {
-  disabled?: boolean;
-  variant: SidebarCreationVariant;
-}) {
-  const rail = variant === "rail";
-
-  function createArtifactDraft(path: string, content = "") {
-    onCreateSession({ artifact: { path, content } });
-  }
-
+}: SidebarCreationActions & { disabled?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -151,45 +206,20 @@ function SidebarCreationMenu({
           <Button
             size="icon-sm"
             variant="accent"
-            className={
-              rail
-                ? "absolute left-0 top-full h-3 w-6 rounded-t-none border-t border-background pointer-events-none opacity-0 transition-opacity motion-reduce:transition-none group-hover/create:pointer-events-auto group-hover/create:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100 disabled:hidden"
-                : "h-7 w-5 rounded-l-none border-l border-background"
-            }
+            className="absolute left-0 top-full h-3 w-6 rounded-t-none border-t border-background pointer-events-none opacity-0 transition-opacity motion-reduce:transition-none group-hover/create:pointer-events-auto group-hover/create:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100 disabled:hidden"
             aria-label="Create options"
             suppressHydrationWarning
           />
         }
       >
-        <ChevronDown className={rail ? "size-2.5" : "size-3.5"} />
+        <ChevronDown className="size-2.5" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={rail ? "start" : "end"} side={rail ? "right" : "bottom"}>
+      <DropdownMenuContent align="start" side="right">
         <DropdownMenuItem onClick={onCreateTeam}>
           <Hash />
           Create team
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(event) => onCreateSession({ addToWorkspace: event.metaKey || event.ctrlKey })}
-        >
-          <MessageSquarePlus />
-          New session
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => createArtifactDraft("document.md")}>
-          <FileText />
-          New document
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() =>
-            createArtifactDraft(
-              "diagram.svg",
-              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"></svg>\n',
-            )
-          }
-        >
-          <Shapes />
-          New whiteboard
-        </DropdownMenuItem>
+        <SessionCreationItems onCreateSession={onCreateSession} />
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onCreateAutomation}>
           <Clock3 />
@@ -200,26 +230,23 @@ function SidebarCreationMenu({
   );
 }
 
-export function SidebarSplitButton({
-  variant = "header",
-  ...actions
-}: SidebarCreationActions & { variant?: SidebarCreationVariant }) {
+/**
+ * The collapsed rail's create action. The expanded sidebar creates from each
+ * section's own header instead, which the rail hides.
+ */
+export function SidebarSplitButton(actions: SidebarCreationActions) {
   const hasModels = useHasModels();
   const showSessionsAndAutomations = useWorkspaceSelector(
     (workspace) => workspace.settings.showSessionsAndAutomations,
   );
-  const rail = variant === "rail";
 
   return (
-    <div className={cn("flex", rail && "group/create relative shrink-0")}>
+    <div className="group/create relative flex shrink-0">
       <SidebarAction
         label="Create team"
         variant="accent"
         className={cn(
-          !rail && "size-7",
-          !rail && showSessionsAndAutomations && "rounded-r-none",
-          rail &&
-            hasModels &&
+          hasModels &&
             showSessionsAndAutomations &&
             "group-hover/create:rounded-b-none group-has-[[data-slot=dropdown-menu-trigger]:focus-visible]/create:rounded-b-none group-has-data-[popup-open]/create:rounded-b-none",
         )}
@@ -229,9 +256,7 @@ export function SidebarSplitButton({
       >
         <Plus />
       </SidebarAction>
-      {showSessionsAndAutomations && (
-        <SidebarCreationMenu {...actions} disabled={!hasModels} variant={variant} />
-      )}
+      {showSessionsAndAutomations && <SidebarCreationMenu {...actions} disabled={!hasModels} />}
     </div>
   );
 }

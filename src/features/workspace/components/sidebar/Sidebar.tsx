@@ -14,6 +14,7 @@ import { SidebarResizer, type SidebarCollapseControl } from "./SidebarResizer";
 import {
   ActionSpacer,
   CollapseToggle,
+  SessionCreationMenu,
   SettingsButton,
   type SessionCreationOptions,
 } from "./SidebarActions";
@@ -157,10 +158,9 @@ export function Sidebar({
     <div className={cn("relative h-full min-w-0 overflow-clip bg-background", className)}>
       {collapsible && (
         <div
-          // Pinned to the same inset the header and footer rows pad to, and
-          // centered in the same row height the header's controls set, so the
-          // toggle lands on one pixel in both layouts.
-          className="absolute top-3 left-2.5 z-10 flex h-8 items-center"
+          // Pinned to the header row's inset and centered in its height, so
+          // the toggle lands on one pixel in both layouts.
+          className="absolute top-1 left-2.5 z-10 flex h-8 items-center"
         >
           <CollapseToggle
             collapsed={collapsed}
@@ -181,7 +181,6 @@ export function Sidebar({
           leadingSlot={collapsible ? <ActionSpacer /> : undefined}
           onOpenInbox={onOpenInbox}
           isInboxOpen={isInboxOpen}
-          {...creationActions}
         />
 
         <div className="min-h-0 min-w-0 flex flex-col bg-panel">
@@ -200,6 +199,7 @@ export function Sidebar({
               count={sessions.length}
               isExpanded={panels.sessions}
               onExpandedChange={(expanded) => onPanelExpanded("sessions", expanded)}
+              action={<SessionCreationMenu onCreateSession={onCreateSession} />}
               fill
             >
               <div className="px-3 pt-2">

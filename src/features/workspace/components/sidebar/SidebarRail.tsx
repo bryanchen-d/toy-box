@@ -9,7 +9,7 @@ import {
   TerminalToggle,
   type SessionCreationOptions,
 } from "./SidebarActions";
-import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_FRAME } from "./SidebarResizer";
+import { SIDEBAR_COLLAPSED_WIDTH } from "./SidebarResizer";
 import { cn } from "@/shared/utils";
 
 /** The rail's separators are the footer's vertical rule turned on its side. */
@@ -18,7 +18,8 @@ const SEPARATOR = "my-1.5 h-px! w-4! bg-muted-foreground/50!";
 /**
  * The collapsed desktop sidebar: the header and footer rows turned on their side
  * inside a bar one action wide, so the session list gives up its space without
- * taking the sidebar's common actions with it. Between them, `children` holds
+ * taking the sidebar's common actions with it. With the section headers out of
+ * reach, it also carries their create actions. Between them, `children` holds
  * what stays reachable while collapsed, scrolling when it outgrows the bar.
  *
  * `Sidebar` pins the collapse toggle and settings actions outside both layouts,
@@ -61,21 +62,20 @@ export function SidebarRail({
       // The rail holds the collapsed sidebar's width rather than filling it, so
       // its icons sit on their final pixel from the first frame of a collapse
       // instead of sliding inward as the sidebar narrows.
-      style={{ width: SIDEBAR_COLLAPSED_WIDTH - SIDEBAR_FRAME }}
+      style={{ width: SIDEBAR_COLLAPSED_WIDTH }}
       className={cn(
-        "absolute inset-y-0 left-0 flex flex-col items-center gap-3 py-3 bg-background",
+        "absolute inset-y-0 left-0 flex flex-col items-center gap-3 pt-2 pb-3 bg-background",
         className,
       )}
     >
       {/*
-        The pinned collapse toggle centers in the header's row, which leaves it
-        one step below this inset; the stack then measures from the action
-        itself, exactly as the foot does above the settings hole.
+        The pinned collapse toggle centers in the header's row, which puts it
+        this top inset down; the stack then measures from the action itself,
+        exactly as the foot does above the settings hole.
       */}
-      <ActionSpacer className="mt-1" />
+      <ActionSpacer />
       <Separator className={SEPARATOR} />
       <SidebarSplitButton
-        variant="rail"
         onCreateSession={onCreateSession}
         onCreateAutomation={onCreateAutomation}
         onCreateTeam={onCreateTeam}
