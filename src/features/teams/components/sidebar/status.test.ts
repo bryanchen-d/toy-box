@@ -8,6 +8,7 @@ const team: Team = {
   paused: false,
   model: { provider: "copilot", name: "default" },
   latestSequence: 2,
+  attentionSequence: 2,
   seenThrough: 1,
   requestSequence: null,
   completedSequence: null,
@@ -36,4 +37,9 @@ test.each([
 test("a read team needs no status badge", () => {
   const current = { ...team, seenThrough: team.latestSequence };
   expect(teamSidebarStatus(current, teamStatus(current), false)).toBeUndefined();
+});
+
+test("newer messages that don't involve the user leave the team read", () => {
+  const current = { ...team, latestSequence: 9, attentionSequence: 1 };
+  expect(teamStatus(current)).toBeNull();
 });

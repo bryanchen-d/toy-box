@@ -1,6 +1,6 @@
 import { ListTodo } from "lucide-react";
 import type { ReactNode } from "react";
-import { Checklist, type ChecklistItem } from "@/shared/ui/checklist";
+import { Checklist, isChecklistItemFinished, type ChecklistItem } from "@/shared/ui/checklist";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ProgressBar } from "@/shared/ui/progress-bar";
 import { SectionHeading } from "@/shared/ui/section-heading";
@@ -16,7 +16,7 @@ export function ChecklistPopup({
   label: string;
   headerDetail?: ReactNode;
 }) {
-  const completedCount = items.filter((item) => item.status === "done").length;
+  const completedCount = items.filter(isChecklistItemFinished).length;
   if (items.length === 0) {
     return (
       <span className={emptyOutputPillClassName}>

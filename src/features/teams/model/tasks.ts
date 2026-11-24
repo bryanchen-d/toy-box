@@ -83,6 +83,20 @@ export function orderTeamTasks(tasks: readonly TeamTask[]): TeamTask[] {
   return flatten(teamTaskTree(tasks));
 }
 
+/** The task whose thread starts at this sequence, with its subtasks, if a task's does. */
+export function teamTaskByThread(
+  tasks: readonly TeamTask[],
+  threadSequence: number,
+): TeamTaskNode | undefined {
+  const find = (nodes: readonly TeamTaskNode[]): TeamTaskNode | undefined => {
+    for (const node of nodes) {
+      const found = node.threadSequence === threadSequence ? node : find(node.children);
+      if (found) return found;
+    }
+  };
+  return find(teamTaskTree(tasks));
+}
+
 /** The tasks assigned to an agent, in tree order. */
 export function teamTasksForAgent(tasks: readonly TeamTask[], agentId: string): TeamTask[] {
   return orderTeamTasks(tasks).filter(({ assigneeId }) => assigneeId === agentId);

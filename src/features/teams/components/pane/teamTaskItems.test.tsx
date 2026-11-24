@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { teamTaskTree } from "@teams/model";
+import { teamLead, teamTaskTree } from "@teams/model";
 import { teamTask } from "@teams/model/testFixtures";
 import { Checklist } from "@/shared/ui/checklist";
+import { TaskCard, teamTaskStatusLabel } from "./TaskCard";
 import { teamTaskItems } from "./teamTaskItems";
 
 test.each([
@@ -87,4 +88,87 @@ test("artifact icons belong to their task, not its parents, and omit visible tit
   expect(html).toContain('aria-label="Open Project brief"');
   expect(html).toContain('title="Project brief"');
   expect(html).not.toContain(">Project brief<");
+});
+
+test("each status keeps its own mark, and rows show the ID readers cite", () => {
+  const statuses = [
+    "pending",
+    "in_progress",
+    "blocked",
+    "in_review",
+    "completed",
+    "cancelled",
+    "deferred",
+    "cut",
+    "duplicate",
+  ] as const;
+  const items = teamTaskItems({
+    tasks: teamTaskTree(
+      statuses.map((status, position) => teamTask(`t${position + 1}`, { position, status })),
+    ),
+    owners: [],
+    artifacts: [],
+    onArtifactOpen: () => {},
+  });
+  expect(items.map(({ displayId, status }) => [displayId, status])).toEqual([
+    ["t1", "pending"],
+    ["t2", "in_progress"],
+    ["t3", "blocked"],
+    ["t4", "in_review"],
+    ["t5", "done"],
+    ["t6", "cancelled"],
+    ["t7", "deferred"],
+    ["t8", "cut"],
+    ["t9", "duplicate"],
+  ]);
+});
+
+test("a task's card shows its record and says how it closed", () => {
+  const owners = [teamLead("team"), { id: "builder", name: "Builder" }];
+  const [parent] = teamTaskTree([
+    teamTask("t1", {
+      title: "Ship the parser",
+      description: "## Why\nUsers asked for it.",
+      status: "deferred",
+      priority: "high",
+      assigneeId: "builder",
+      artifactId: "machine:/brief.md",
+    }),
+    teamTask("t2", { parentId: "t1", status: "completed", diff: { added: 12_345, removed: 6 } }),
+    teamTask("t3", { parentId: "t1", position: 1 }),
+  ]);
+  const html = renderToStaticMarkup(
+    <TaskCard
+      task={parent!}
+      owners={owners}
+      artifacts={[
+        {
+          id: "machine:/brief.md",
+          file: { kind: "machine", path: "/brief.md" },
+          title: "Parser brief",
+          sharedAt: "2026-11-24T00:00:00Z",
+        },
+      ]}
+    />,
+  );
+  for (const text of [
+    "t1",
+    "Closed as deferred",
+    "High priority",
+    "Ship the parser",
+    "Users asked for it.",
+    "Builder",
+    "Parser brief",
+    "+12345",
+    "\u22126",
+    "1 of 2 closed",
+  ]) {
+    expect(html).toContain(text);
+  }
+  expect(teamTaskStatusLabel("in_review")).toBe("In review");
+  const unassigned = renderToStaticMarkup(
+    <TaskCard task={{ ...teamTask("t4"), children: [] }} owners={owners} artifacts={[]} />,
+  );
+  expect(unassigned).toContain("Unassigned");
+  expect(unassigned).toContain("Pending");
 });

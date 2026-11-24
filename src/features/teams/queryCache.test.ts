@@ -13,6 +13,7 @@ const team: Team = {
   purpose: "Prepare the release plan.",
   model: { provider: "copilot", name: "gpt-5.5" },
   latestSequence: 0,
+  attentionSequence: 0,
   seenThrough: 0,
   completedSequence: null,
   requestSequence: null,

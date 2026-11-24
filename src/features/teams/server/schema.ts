@@ -18,6 +18,10 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       connector_coordinators TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(connector_coordinators)),
       latest_sequence INTEGER NOT NULL DEFAULT 0
         CHECK (typeof(latest_sequence) = 'integer' AND latest_sequence >= 0),
+      -- The newest message that involves the user: top-level, in a thread the user posted in, or a
+      -- question for the user. Only these mark the team unread.
+      attention_sequence INTEGER NOT NULL DEFAULT 0
+        CHECK (typeof(attention_sequence) = 'integer' AND attention_sequence >= 0),
       revision        INTEGER NOT NULL DEFAULT 0
         CHECK (typeof(revision) = 'integer' AND revision >= 0),
       seen_through    INTEGER NOT NULL DEFAULT 0

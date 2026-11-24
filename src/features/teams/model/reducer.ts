@@ -104,6 +104,9 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
       const next = {
         ...team,
         latestSequence: Math.max(team.latestSequence, message.sequence),
+        ...(event.attention
+          ? { attentionSequence: Math.max(team.attentionSequence, message.sequence) }
+          : {}),
         updatedAt: message.timestamp,
       };
       if (acknowledgesTeamRequests(message)) return { ...next, requestSequence: null };

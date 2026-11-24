@@ -14,26 +14,30 @@ import { Button } from "@/shared/ui/button";
 import type { ChecklistItem, ChecklistStatus } from "@/shared/ui/checklist";
 import { PopoverClose } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { TaskCard } from "./TaskCard";
 
 const DIFF_COUNT_FORMATTER = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
 
-/** The checklist's nearest mark for each status; every closed task reads as done. */
+/** Each status's checklist mark; a completed task is the checklist's done. */
 const CHECKLIST_STATUS: Record<TeamTaskStatus, ChecklistStatus> = {
   pending: "pending",
   in_progress: "in_progress",
   blocked: "blocked",
-  in_review: "in_progress",
+  in_review: "in_review",
   completed: "done",
-  cancelled: "done",
-  deferred: "done",
-  cut: "done",
-  duplicate: "done",
+  cancelled: "cancelled",
+  deferred: "deferred",
+  cut: "cut",
+  duplicate: "duplicate",
 };
 
-/** Both Team checklists present the same task identities, assignees, and linked outcomes. */
+/**
+ * Both Team checklists present the same task identities, assignees, and linked outcomes, with each
+ * task's record on hover.
+ */
 export function teamTaskItems({
   tasks,
   owners,
@@ -46,7 +50,7 @@ export function teamTaskItems({
   owners: readonly TeamAgent[];
   artifacts: readonly TeamArtifact[];
   onArtifactOpen: (artifact: TeamArtifact) => void;
-  /** Leads from a task to where it was discussed. */
+  /** Opens a task's view. */
   onTaskSelect?: (task: TeamTaskNode) => void;
   closeOnArtifactOpen?: boolean;
 }): ChecklistItem[] {
@@ -57,8 +61,10 @@ export function teamTaskItems({
       : undefined;
     return {
       id: task.id,
+      displayId: task.id,
       title: task.title,
       status: CHECKLIST_STATUS[task.status],
+      card: <TaskCard task={task} owners={owners} artifacts={artifacts} />,
       detail:
         diff || task.assigneeId || task.artifactId ? (
           <span className="inline-flex items-center gap-[9px]">
@@ -75,7 +81,7 @@ export function teamTaskItems({
         ) : undefined,
       ...(onTaskSelect && {
         select: {
-          label: `Show the latest message about ${task.id}: ${task.title}`,
+          label: `Open ${task.id}: ${task.title}`,
           onSelect: () => onTaskSelect(task),
         },
       }),

@@ -58,6 +58,12 @@ export type Team = {
    */
   connectorCoordinators?: Record<string, string>;
   latestSequence: number;
+  /**
+   * The newest message that involves the user, which is what marks the team unread: a top-level
+   * message, a reply in a thread the user posted in, or a question for the user. Agents working in
+   * task threads don't.
+   */
+  attentionSequence: number;
   seenThrough: number;
   /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
   completedSequence: number | null;
@@ -596,6 +602,8 @@ export type TeamEvent<A = TeamAttachment> = (
   | {
       type: "message";
       message: TeamMessage<A>;
+      /** The message involves the user, so it marks the team unread; see `Team.attentionSequence`. */
+      attention?: true;
     }
   | {
       type: "reaction";
@@ -722,10 +730,11 @@ export type EditTeamInput = z.output<typeof editTeamInputSchema>;
 export type PostTeamMessageInput = z.output<typeof postTeamMessageInputSchema>;
 export type UpdateTeamInput = z.output<typeof updateTeamInputSchema>;
 
-type TeamReadPosition = Pick<Team, "latestSequence" | "seenThrough">;
+type TeamReadPosition = Pick<Team, "attentionSequence" | "seenThrough">;
 
+/** Whether the user has unread messages that involve them; see `Team.attentionSequence`. */
 export function teamHasUnread(team: TeamReadPosition): boolean {
-  return team.latestSequence > team.seenThrough;
+  return team.attentionSequence > team.seenThrough;
 }
 
 /** The read position that unread messages follow, or null when everything has been read. */

@@ -215,6 +215,44 @@ describe("team attention", () => {
     expect(await completions([{ type: "remove", taskId: "t2" }])).toEqual([]);
   });
 
+  test("only messages that involve the user mark the team unread", async () => {
+    const { teams, team, edit } = await setup();
+    const lead = { type: "agent", agentId: team.id } as const;
+    const send = async (
+      content: string,
+      options: { thread?: number; user?: true; request?: true } = {},
+    ) => {
+      const { events, team: after } = await teams.appendMessage({
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        sender: options.user ? { type: "user" } : lead,
+        content,
+        ...(options.thread ? { threadSequence: options.thread } : {}),
+        ...(options.request ? { request: true } : {}),
+      });
+      return { sequence: events[0]!.message.sequence, attention: after.attentionSequence };
+    };
+    const topLevel = await send("Kickoff");
+    expect(topLevel.attention).toBe(topLevel.sequence);
+    // Agents talking in their own thread, or working in a task's, leave it read.
+    expect((await send("Working on it", { thread: topLevel.sequence })).attention).toBe(
+      topLevel.sequence,
+    );
+    const { opened } = await edit([{ type: "add", title: "Parser" }]);
+    const opening = opened[0]!.threadSequence!;
+    expect((await teams.getTeam(team.id))?.attentionSequence).toBe(opening);
+    await edit([{ type: "update", taskId: "t1", patch: { title: "Lexer" }, note: "Renamed." }]);
+    expect((await teams.getTeam(team.id))?.attentionSequence).toBe(opening);
+    // A question, the user's own reply, and replies in a thread the user posted in involve them.
+    const question = await send("Which grammar?", { thread: opening, request: true });
+    expect(question.attention).toBe(question.sequence);
+    const answer = await send("PEG.", { thread: opening, user: true });
+    expect(answer.attention).toBe(answer.sequence);
+    const followUp = await send("On it.", { thread: opening });
+    expect(followUp.attention).toBe(followUp.sequence);
+    expect((await teams.getTeam(team.id))?.attentionSequence).toBe(followUp.sequence);
+  });
+
   test("a request persists on the lead message without an extra transcript entry", async () => {
     const { teams, team, ask } = await setup();
     const question = await ask("Choose a name.");

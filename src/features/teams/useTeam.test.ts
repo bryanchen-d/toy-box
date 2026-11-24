@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Team } from "./model";
 import { nextTeamVisit, type TeamVisit } from "./useTeam";
 
-const team = { seenThrough: 4, latestSequence: 7 } as Team;
+const team = { seenThrough: 4, latestSequence: 7, attentionSequence: 7 } as Team;
 const away: TeamVisit = { status: "away" };
 
 describe("team visits", () => {

@@ -1345,11 +1345,33 @@ async function appendMessage<Message extends TeamMessage>(
   await db`
     INSERT INTO team_messages ${db({ team_id: teamId, ...messageColumns(message) })}
   `;
+  const attention = await involvesUser(db, teamId, message);
+  if (attention) {
+    await db`UPDATE teams SET attention_sequence = ${message.sequence} WHERE id = ${teamId}`;
+  }
   return {
     type: "message" as const,
     message,
     revision: team.revision,
+    ...(attention ? { attention: true as const } : {}),
   };
+}
+
+/**
+ * Whether a message involves the user, marking the team unread: a top-level message, a question
+ * for the user, the user's own message, or a reply in a thread the user posted in.
+ */
+async function involvesUser(db: Bun.SQL, teamId: string, message: TeamMessage) {
+  if (message.threadSequence === undefined || message.request || message.sender.type === "user") {
+    return true;
+  }
+  const [posted] = await db<{ sequence: number }[]>`
+    SELECT sequence FROM team_messages
+    WHERE team_id = ${teamId} AND sender_type = 'user'
+      AND (sequence = ${message.threadSequence} OR thread_sequence = ${message.threadSequence})
+    LIMIT 1
+  `;
+  return posted !== undefined;
 }
 
 function messageColumns(message: TeamMessage) {
@@ -1636,6 +1658,7 @@ type TeamRow = {
   canvas_artifact_id: string | null;
   connector_coordinators: string;
   latest_sequence: number;
+  attention_sequence: number;
   revision: number;
   seen_through: number;
   request_sequence: number | null;
@@ -1697,6 +1720,7 @@ function teamFromRow(row: TeamRow): Team {
     ...(row.canvas_artifact_id ? { canvasArtifactId: row.canvas_artifact_id } : {}),
     ...(Object.keys(coordinators).length ? { connectorCoordinators: coordinators } : {}),
     latestSequence: row.latest_sequence,
+    attentionSequence: row.attention_sequence,
     seenThrough: row.seen_through,
     completedSequence: row.completed_sequence,
     requestSequence: row.request_sequence,

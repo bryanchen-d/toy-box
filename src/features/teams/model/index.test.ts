@@ -214,13 +214,14 @@ describe("team addressing", () => {
 });
 
 describe("team unread position", () => {
-  test("unread messages follow the read position while anything does", () => {
-    expect(teamUnreadAfter({ seenThrough: 4, latestSequence: 7 })).toBe(4);
-    expect(teamUnreadAfter({ seenThrough: 0, latestSequence: 2 })).toBe(0);
+  test("unread messages follow the read position while anything involving the user does", () => {
+    expect(teamUnreadAfter({ seenThrough: 4, attentionSequence: 7 })).toBe(4);
+    expect(teamUnreadAfter({ seenThrough: 0, attentionSequence: 2 })).toBe(0);
   });
 
-  test("a fully read team has no unread position", () => {
-    expect(teamUnreadAfter({ seenThrough: 7, latestSequence: 7 })).toBeNull();
+  test("a team whose newer messages don't involve the user has no unread position", () => {
+    expect(teamUnreadAfter({ seenThrough: 7, attentionSequence: 7 })).toBeNull();
+    expect(teamUnreadAfter({ seenThrough: 7, attentionSequence: 5 })).toBeNull();
   });
 });
 

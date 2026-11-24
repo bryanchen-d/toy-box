@@ -10,12 +10,57 @@ test("labels every status for assistive tech", () => {
     { id: "a", title: "Plan", status: "pending" },
     { id: "b", title: "Build", status: "in_progress" },
     { id: "c", title: "Ship", status: "blocked" },
-    { id: "d", title: "Scope", status: "done" },
+    { id: "d", title: "Review", status: "in_review" },
+    { id: "e", title: "Scope", status: "done" },
+    { id: "f", title: "Port", status: "cancelled" },
+    { id: "g", title: "Polish", status: "deferred" },
+    { id: "h", title: "Theme", status: "cut" },
+    { id: "i", title: "Docs", status: "duplicate" },
   ]);
 
-  for (const label of ["Pending", "In progress", "Blocked", "Done"]) {
+  for (const label of [
+    "Pending",
+    "In progress",
+    "Blocked",
+    "In review",
+    "Done",
+    "Cancelled",
+    "Deferred",
+    "Cut",
+    "Duplicate",
+  ]) {
     expect(html).toContain(`aria-label="${label}"`);
   }
+});
+
+test("items set aside count as finished, start collapsed, and read muted like done ones", () => {
+  const html = render([
+    {
+      id: "release",
+      title: "Release",
+      status: "in_progress",
+      children: [
+        { id: "ship", title: "Ship", status: "done" },
+        { id: "port", title: "Port", status: "cancelled" },
+        { id: "docs", title: "Docs", status: "pending" },
+      ],
+    },
+    {
+      id: "polish",
+      title: "Polish",
+      status: "deferred",
+      children: [{ id: "hidden", title: "Tweak the theme", status: "pending" }],
+    },
+  ]);
+
+  expect(html).toContain('aria-label="2 of 3 subtasks finished"');
+  expect(html).not.toContain("Tweak the theme");
+});
+
+test("a cited ID precedes the title", () => {
+  const html = render([{ id: "t12", displayId: "t12", title: "Parser", status: "pending" }]);
+  expect(html.indexOf(">t12<")).toBeGreaterThan(-1);
+  expect(html.indexOf(">t12<")).toBeLessThan(html.indexOf("Parser"));
 });
 
 test("starts done parents collapsed without hiding their supporting actions", () => {
@@ -49,7 +94,7 @@ test("starts done parents collapsed without hiding their supporting actions", ()
   expect(html).toContain("Write the parser");
   expect(html).toContain("Open report");
   expect(html).toContain('aria-label="Subtasks of Research"');
-  expect(html).toContain('aria-label="1 of 2 subtasks complete"');
+  expect(html).toContain('aria-label="1 of 2 subtasks finished"');
 });
 
 const open: ChecklistFilter = ({ status }) => status !== "done";
@@ -74,7 +119,7 @@ test("a filter hides items while their parents keep counting every subtask", () 
   expect(html).not.toContain("Ship");
   expect(html).not.toContain("Design");
   expect(html).toContain("Write the parser");
-  expect(html).toContain('aria-label="1 of 2 subtasks complete"');
+  expect(html).toContain('aria-label="1 of 2 subtasks finished"');
 });
 
 test("a done parent stays open as context for a subtask the filter shows", () => {
@@ -108,7 +153,7 @@ test("a parent offers no disclosure when the filter hides every subtask", () => 
     open,
   );
 
-  expect(html).toContain('aria-label="1 of 1 subtasks complete"');
+  expect(html).toContain('aria-label="1 of 1 subtasks finished"');
   expect(html).not.toContain("aria-expanded");
 });
 

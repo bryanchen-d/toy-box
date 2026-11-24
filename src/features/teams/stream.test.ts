@@ -20,6 +20,7 @@ const snapshot: TeamState = {
     paused: false,
     model: { provider: "codex", name: "gpt-5.5" },
     latestSequence: 101,
+    attentionSequence: 101,
     seenThrough: 0,
     completedSequence: null,
     requestSequence: null,

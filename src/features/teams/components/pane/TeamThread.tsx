@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { MessageSquareReply } from "lucide-react";
-import type { TeamState, PostTeamMessageInput } from "@teams/model";
+import { teamTaskByThread, type TeamState, type PostTeamMessageInput } from "@teams/model";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { Button } from "@/shared/ui/button";
 import { PaneMessage } from "@/shared/ui/pane-message";
@@ -9,6 +9,7 @@ import { TeamComposer, type TeamComposerHandle } from "./TeamComposer";
 import { TeamPaneProvider, useTeamPane } from "./TeamPaneContext";
 import { TeamMessageSearch } from "./TeamMessageSearch";
 import { TeamPanelHeader } from "./TeamPanelHeader";
+import { TaskCard } from "./TaskCard";
 import type { TeamMessageMatch } from "@teams/model/search";
 import { TranscriptRowContent } from "./transcript/TeamTranscript";
 import { threadRows } from "./transcript/transcriptRows";
@@ -59,6 +60,8 @@ export function TeamThread({
     coordinators,
     tasks: state.tasks,
   });
+  // A task's thread is its view: the task's record heads its history.
+  const task = teamTaskByThread(state.tasks, sequence);
   const replyCount = state.messages.filter(
     ({ threadSequence }) => threadSequence === sequence,
   ).length;
@@ -98,7 +101,7 @@ export function TeamThread({
       <section
         ref={paneRef}
         tabIndex={-1}
-        aria-label="Thread"
+        aria-label={task ? `Task ${task.id}` : "Thread"}
         className="flex h-full min-h-0 min-w-0 flex-col bg-panel outline-none"
       >
         <TeamPanelHeader
@@ -108,14 +111,14 @@ export function TeamThread({
               variant="ghost"
               size="icon-sm"
               className="-m-2 text-muted-foreground"
-              aria-label="Close thread"
-              title="Close thread"
+              aria-label={task ? "Close task" : "Close thread"}
+              title={task ? "Close task" : "Close thread"}
               onClick={onClose}
             >
               <MessageSquareReply aria-hidden />
             </Button>
           }
-          title="Thread"
+          title={task ? `${task.id} · ${task.title}` : "Thread"}
         />
         <TeamMessageSearch
           teamId={teamId}
@@ -146,6 +149,11 @@ export function TeamThread({
               }}
             >
               <div className="@container space-y-5 px-4 py-5">
+                {task && (
+                  <div className="rounded-lg border bg-background p-3">
+                    <TaskCard task={task} owners={pane.agents} artifacts={state.artifacts} />
+                  </div>
+                )}
                 {rows.map((row, index) => (
                   <div key={row.key}>
                     <TranscriptRowContent row={row} />

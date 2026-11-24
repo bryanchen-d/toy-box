@@ -9,7 +9,7 @@ import {
 } from "@teams/model";
 import { findTeamTaskMessage } from "@teams/server/functions";
 import { Badge } from "@/shared/ui/badge";
-import { Checklist, type ChecklistFilter } from "@/shared/ui/checklist";
+import { Checklist, isChecklistItemFinished, type ChecklistFilter } from "@/shared/ui/checklist";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { teamTaskItems, TaskDiff } from "./teamTaskItems";
@@ -23,7 +23,7 @@ const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })
     value: "open",
     label: "Open tasks",
     Icon: ListTodo,
-    show: ({ status }) => status !== "done",
+    show: (item) => !isChecklistItemFinished(item),
     empty: "No open tasks.",
   },
   {
@@ -37,7 +37,8 @@ const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })
 ];
 
 /**
- * The lead's public task list, with each task's owner, artifact, and reported diff. Choosing a task
+ * The team's task list, with each task's assignee, artifact, and reported diff, and its record on
+ * hover. Choosing a task opens its view, its thread under its record; a task without a thread yet
  * opens the newest message that cites its ID.
  */
 export function TeamTasks({
@@ -51,13 +52,15 @@ export function TeamTasks({
   view: TaskView;
   onViewChange: (view: TaskView) => void;
 }) {
-  const { teamId, agents, openArtifact, openMessage } = useTeamPane();
+  const { teamId, agents, openArtifact, openMessage, openThread } = useTeamPane();
   const lookup = useMutation({
     mutationFn: ({ id }: TeamTask) => findTeamTaskMessage({ data: { teamId, taskId: id } }),
     onSuccess: (location) => {
       if (location) openMessage(location);
     },
   });
+  const openTask = (task: TeamTask) =>
+    task.threadSequence ? openThread(task.threadSequence) : lookup.mutate(task);
   const tree = teamTaskTree(tasks);
   const closedCount = tree.filter((task) => !isTeamTaskOpen(task)).length;
   const diff = teamTasksDiff(tasks);
@@ -92,7 +95,7 @@ export function TeamTasks({
               owners: agents,
               artifacts,
               onArtifactOpen: (artifact) => openArtifact(artifact.file),
-              onTaskSelect: lookup.mutate,
+              onTaskSelect: openTask,
             })}
             show={show}
             empty={empty && <p className="text-sm text-muted-foreground italic">{empty}</p>}
