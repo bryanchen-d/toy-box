@@ -3,13 +3,14 @@ import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import {
   isTeamSystemMessage,
   messageAuthorId,
-  type TeamConversationMessage,
+  type TeamAgentIdentity,
   type TeamMessage,
 } from "@teams/model";
 import { ClockTime } from "@/shared/ui/clock-time";
 import { cn } from "@/shared/utils";
 import { useTeamPane } from "../TeamPaneContext";
 import { RequestTag } from "./RequestTag";
+import { taskTurnEndedText } from "./SystemMessageGroup";
 import { threadParticipants, type TranscriptThread } from "./transcriptRows";
 
 // A few participants show by face; the count says the rest.
@@ -54,9 +55,9 @@ export function ThreadSummary({
 export function ThreadActivity({ thread, root }: { thread: TranscriptThread; root?: TeamMessage }) {
   const { agent, openThread } = useTeamPane();
   const latest = thread.replies.at(-1)!;
-  const authorId = messageAuthorId(latest.sender);
-  const isUser = authorId === undefined;
-  const author = authorId ? agent(authorId).name : "You";
+  const isUser = latest.sender.type === "user";
+  const authorId = isTeamSystemMessage(latest) ? undefined : messageAuthorId(latest.sender);
+  const author = isUser ? "You" : authorId ? agent(authorId).name : undefined;
 
   return (
     <button
@@ -87,7 +88,7 @@ export function ThreadActivity({ thread, root }: { thread: TranscriptThread; roo
           </span>
           {root && (
             <span className="min-w-0 truncate text-muted-foreground">
-              on “{messageExcerpt(root)}”
+              on “{messageExcerpt(root, agent)}”
             </span>
           )}
           <ClockTime
@@ -97,14 +98,14 @@ export function ThreadActivity({ thread, root }: { thread: TranscriptThread; roo
           {thread.request && <RequestTag state={thread.request} />}
         </span>
         <span className="block truncate text-sm">
-          <span className="font-medium">{author}:</span> {messageExcerpt(latest)}
+          {author && <span className="font-medium">{author}:</span>} {messageExcerpt(latest, agent)}
         </span>
       </span>
     </button>
   );
 }
 
-function ThreadParticipants({ replies }: { replies: readonly TeamConversationMessage[] }) {
+function ThreadParticipants({ replies }: { replies: readonly TeamMessage[] }) {
   const { agent } = useTeamPane();
   const participants = threadParticipants(replies);
 
@@ -137,12 +138,15 @@ function replyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
 
-/** One line of a message's text, what it shared when it has none, or the task a note opened. */
-function messageExcerpt(message: TeamMessage): string {
+/** One line of a message's text, what it shared when it has none, or what a task note says. */
+function messageExcerpt(message: TeamMessage, agent: (id: string) => TeamAgentIdentity): string {
   if (isTeamSystemMessage(message)) {
-    return message.content.type === "task_opened"
-      ? `${message.content.taskId}: ${message.content.title}`
-      : "";
+    const { content } = message;
+    if (content.type === "task_opened") return `${content.taskId}: ${content.title}`;
+    if (content.type === "task_turn_ended") {
+      return taskTurnEndedText(content, agent(content.agentId).name);
+    }
+    return "";
   }
   const text = message.content.replace(/\s+/g, " ").trim();
   if (text) return text;

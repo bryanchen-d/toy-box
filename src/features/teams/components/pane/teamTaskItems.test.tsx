@@ -172,3 +172,23 @@ test("a task's card shows its record and says how it closed", () => {
   expect(unassigned).toContain("Unassigned");
   expect(unassigned).toContain("Pending");
 });
+
+test("an assignee running a turn woken for its task shows as working on it now", () => {
+  const owners = [teamLead("team"), { id: "builder", name: "Builder" }];
+  const tasks = teamTaskTree([
+    teamTask("t1", { title: "Parser", status: "in_progress", assigneeId: "builder" }),
+    teamTask("t2", { position: 1, title: "Docs", status: "in_progress", assigneeId: "builder" }),
+  ]);
+  const items = teamTaskItems({
+    tasks,
+    owners,
+    artifacts: [],
+    presence: { builder: { state: "working", tasks: ["t1"] } },
+    onArtifactOpen: () => {},
+  });
+  const html = renderToStaticMarkup(<Checklist items={items} />);
+  expect(html).toContain('aria-label="Builder · Working now"');
+  expect(html.match(/Working now/g)).toHaveLength(1);
+  expect(renderToStaticMarkup(<>{items[0]!.card}</>)).toContain("Working now");
+  expect(renderToStaticMarkup(<>{items[1]!.card}</>)).not.toContain("Working now");
+});

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { teamAgentPresence } from "./presence";
+import { isTeamTaskWorkingNow, teamAgentPresence } from "./presence";
 
 const working = { status: { state: "working", text: "Re-running perf gates" } } as const;
 const waiting = {
@@ -30,5 +30,17 @@ describe("team agent presence", () => {
 
   test("running takes precedence over a waiting status", () => {
     expect(teamAgentPresence(waiting, true)).toEqual({ state: "working" });
+  });
+
+  test("a running turn works on the tasks it was woken for, which its assignee is working on now", () => {
+    const presence = { builder: teamAgentPresence({ turnTasks: ["t1"] }, true) };
+    expect(presence.builder).toEqual({ state: "working", tasks: ["t1"] });
+    expect(teamAgentPresence({ turnTasks: ["t1"] }, false)).toEqual({ state: "idle" });
+    expect(isTeamTaskWorkingNow({ id: "t1", assigneeId: "builder" }, presence)).toBe(true);
+    expect(isTeamTaskWorkingNow({ id: "t2", assigneeId: "builder" }, presence)).toBe(false);
+    expect(isTeamTaskWorkingNow({ id: "t1" }, presence)).toBe(false);
+    expect(
+      isTeamTaskWorkingNow({ id: "t1", assigneeId: "builder" }, { builder: { state: "idle" } }),
+    ).toBe(false);
   });
 });

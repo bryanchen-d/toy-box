@@ -17,6 +17,7 @@ import type {
   SetTeamAgentStatusInput,
   SetTeamRoutineInput,
   TeamMemberChanges,
+  TeamTaskReport,
   UpdateTeamInput,
 } from "@teams/model";
 import {
@@ -24,6 +25,7 @@ import {
   teamMemberIdentity,
   resolveTeamAudience,
   teamTaskNotifications,
+  nextTeamTask,
   isTeamSystemMessage,
   messageAuthorId,
 } from "@teams/model";
@@ -194,6 +196,7 @@ async function wakeForTaskChange(
           })),
         },
         { author: editorId },
+        { tasks: [...tasks.keys()] },
       ).catch((error) => console.error(`Failed to wake Team agent ${agentId}:`, error)),
     ),
   );
@@ -541,22 +544,100 @@ export async function setTeamAgentStatus(
   return status;
 }
 
-/** Ends a turn. A lead waiting on a member or external work can ask to wake after a delay. */
+/**
+ * Ends a turn. Its reports update the tasks it was woken for, each note posting into the task's
+ * thread, and wake whoever that change notifies. Handing a task off for review takes up the
+ * agent's next pending task once this turn ends. A lead waiting on a member or external work can
+ * ask to wake after a delay.
+ */
 export async function finishTeamAgentTurn(
   sessionId: string,
-  waitingFor?: string,
-  wakeAfterMinutes?: number,
+  {
+    reports = [],
+    waitingFor,
+    wakeAfterMinutes,
+  }: { reports?: readonly TeamTaskReport[]; waitingFor?: string; wakeAfterMinutes?: number } = {},
 ): Promise<void> {
   const database = new TeamDatabase(await getStateDatabase());
   const wakeAt = wakeAfterMinutes
     ? new Date(Date.now() + wakeAfterMinutes * 60_000).toISOString()
     : undefined;
-  const change = await database.setAgentStatus(
+  const change = await database.finishTurn(
     sessionId,
+    reports,
     waitingFor ? { state: "waiting", text: waitingFor, ...(wakeAt ? { wakeAt } : {}) } : undefined,
-    false,
   );
-  if (change) publishTeamChange(change);
+  if (!change) return;
+  publishTeamChange(change);
+  await wakeForTaskChange(change, sessionId, await database.listMembers(change.teamId));
+  const handedOff = reports
+    .filter(({ status }) => status === "in_review")
+    .map(({ taskId }) => taskId);
+  const next = handedOff.length > 0 ? nextTeamTask(change.after, sessionId) : undefined;
+  if (!next) return;
+  await wakeTeamAgent(
+    sessionId,
+    {
+      type: "team_task",
+      tasks: [
+        {
+          taskId: next.id,
+          title: next.title,
+          changes: [
+            `your highest-priority pending task, now that you handed off ${handedOff.join(", ")}`,
+          ],
+        },
+      ],
+    },
+    { author: sessionId },
+    { tasks: [next.id], afterTurn: true },
+  ).catch((error) => console.error(`Failed to wake Team agent ${sessionId}:`, error));
+}
+
+/**
+ * Settles a turn that ended without finishing: a note in the thread of each task it was woken for
+ * says so. One that ended on its own wakes the agent once more for those tasks; one that failed or
+ * was stopped tells the lead. Takes the caller's database so turn ends keep their order.
+ */
+export async function endTeamAgentTurn(
+  database: TeamDatabase,
+  agentId: string,
+  outcome: "unreported" | "failed" | "stopped",
+  error?: string,
+): Promise<void> {
+  const change = await database.endTurn(agentId, outcome, error);
+  if (!change) return;
+  publishTeamChange(change);
+  if (change.rewake.length > 0) {
+    await wakeTeamAgent(
+      agentId,
+      {
+        type: "team_task",
+        tasks: change.rewake.map(({ id, title }) => ({
+          taskId: id,
+          title,
+          changes: ["your last turn on it ended without reporting on it"],
+        })),
+      },
+      { author: agentId },
+      { tasks: change.rewake.map(({ id }) => id) },
+    ).catch((error) => console.error(`Failed to wake Team agent ${agentId}:`, error));
+  }
+  // The lead hears about its members' turns; its own failure waking it again could loop.
+  if (outcome === "unreported" || change.isLead || change.tasks.length === 0) return;
+  const name = (await database.getMember(agentId))?.name ?? "An agent";
+  await wakeTeamAgent(
+    change.teamId,
+    {
+      type: "team_task",
+      tasks: change.tasks.map(({ id, title }) => ({
+        taskId: id,
+        title,
+        changes: [`${name}'s turn on it ${outcome === "failed" ? "failed" : "was stopped"}`],
+      })),
+    },
+    { author: agentId },
+  ).catch((error) => console.error(`Failed to wake the lead of Team ${change.teamId}:`, error));
 }
 
 export async function setTeamRoutineFromLead(
@@ -576,19 +657,43 @@ export async function deleteTeamRoutine(teamId: string, routineId: string): Prom
   return true;
 }
 
-/** Privately wake each agent whose follow-up or routine is due. Claims commit before delivery. */
+/** Privately wake each agent whose follow-up, routine, or task continuation is due. Claims commit before delivery. */
 export async function wakeDueTeamAgents(now = new Date()): Promise<void> {
   try {
     const database = await getStateDatabase({ createIfMissing: false });
     if (!database) return;
-    const { followUps, routines } = await new TeamDatabase(database).claimDueWakes(now);
+    const { followUps, routines, continuations } = await new TeamDatabase(database).claimDueWakes(
+      now,
+    );
     for (const { change } of followUps) publishTeamChange(change);
+    const continuing = new Map<string, typeof continuations>();
+    for (const continuation of continuations) {
+      continuing.set(continuation.agentId, [
+        ...(continuing.get(continuation.agentId) ?? []),
+        continuation,
+      ]);
+    }
     await Promise.all([
       ...followUps.map(({ agentId, waitingFor }) =>
         wakeAgent(agentId, { type: "team_follow_up", waitingFor }),
       ),
       ...routines.map(({ agentId, title, prompt }) =>
         wakeAgent(agentId, { type: "team_routine", title, prompt }),
+      ),
+      ...[...continuing].map(([agentId, tasks]) =>
+        wakeTeamAgent(
+          agentId,
+          {
+            type: "team_task",
+            tasks: tasks.map(({ taskId, title }) => ({
+              taskId,
+              title,
+              changes: ["time to continue it, as your last report asked"],
+            })),
+          },
+          { author: agentId },
+          { tasks: tasks.map(({ taskId }) => taskId) },
+        ).catch((error) => console.error(`Failed to wake Team agent ${agentId}:`, error)),
       ),
     ]);
   } catch (error) {
@@ -697,6 +802,7 @@ export async function postMessage(
         member.id,
         { type: "team_message", senderName, ...(interrupt ? { interrupt: true } : {}) },
         { author, sequence: change.message.sequence },
+        { tasks: change.task ? [change.task.id] : [] },
       ).catch((error) => {
         console.error(`Failed to wake Team Agent ${member.id}:`, error);
       }),
@@ -798,24 +904,31 @@ export function publishTeamChange({ teamId, events, team }: TeamChange): void {
 
 /**
  * Delivers a wake into the agent's turn at once, then records how it landed, so the team can see
- * how often new input reaches its agents mid-turn. An urgent team message stops that turn instead.
- * `cause` names who caused it, and the message that woke it when one did.
+ * how often new input reaches its agents mid-turn. An urgent team message stops that turn instead,
+ * and one for after the turn waits for it to end. `cause` names who caused it, and the message that
+ * woke it when one did. Of the `tasks` it's about, the agent's own open ones join its turn first,
+ * so the turn that takes the wake reports on them.
  */
 export async function wakeTeamAgent(
   agentId: string,
   systemMessage: SessionSystemMessage,
   cause?: { author: string; sequence?: number },
+  { tasks = [], afterTurn = false }: { tasks?: readonly string[]; afterTurn?: boolean } = {},
 ): Promise<void> {
   const database = new TeamDatabase(await getStateDatabase());
   const agent = await requireTeamAgent(database, agentId);
   const team = await database.getTeam(agent.teamId);
   if (!team) throw new Error("Team not found.");
   if (team.paused) return;
+  const turn = await database.addTurnTasks(agentId, tasks);
+  if (turn) publishTeamChange(turn);
   const at = new Date().toISOString();
   const message =
     systemMessage.type === "team_message" && systemMessage.interrupt
       ? { systemMessage, interrupt: true as const }
-      : { systemMessage, immediate: true as const };
+      : afterTurn
+        ? { systemMessage }
+        : { systemMessage, immediate: true as const };
   const { disposition } =
     agentId === ADMIN_TEAM_ID && !(await readSession(agentId))?.provider
       ? await createSession(agentId, message, {

@@ -10,6 +10,9 @@ import {
   teamTasksComplete,
   teamTaskPrioritySchema,
   teamTaskStatusSchema,
+  teamTurnReportsDue,
+  assertTeamTurnReports,
+  TEAM_TASK_CONTINUE_LIMIT,
   mentionsTeamTask,
   teamSystemMessageContentSchema,
   connectorCoordinatorsSchema,
@@ -32,6 +35,7 @@ import {
   type TeamMessageSender,
   type TeamSystemMessageContent,
   type TeamTask,
+  type TeamTaskReport,
   type TeamRoutine,
   type CreateTeamInput,
   type EditTeamInput,
@@ -335,76 +339,141 @@ export class TeamDatabase {
   }
 
   /**
-   * Applies an ordered task batch with the editing agent's authority. Opened tasks take the team's
-   * next numbers, and each starts its thread with a typed opening note. Each note posts into its
-   * task's thread, first starting one for a task that has none, and each changed or removed task
-   * publishes its own event. The lead's close that completes the list appends `tasks_completed`.
+   * Applies an ordered task batch with the editing agent's authority, as `editTasks` describes.
    * Returns the tasks before and after, and the notes, for deciding whom the change wakes.
    */
   async editTasks(agentId: string, { operations }: EditTeamTasksInput) {
     return inStateTransaction(this.db, async (db) => {
       const worker = await requireTeamWorker(db, agentId);
       const team = await requireTeam(db, worker.teamId);
-      const before = await listTasks(db, team.id);
-      const [counter] = await db<Pick<TeamRow, "last_task_number">[]>`
-        SELECT last_task_number FROM teams WHERE id = ${team.id}
-      `;
-      const { tasks, opened, notes, lastTaskNumber } = applyTeamTaskEdits(before, operations, {
-        editor: { agentId, isLead: isTeamLead(worker) },
-        now: new Date().toISOString(),
-        lastTaskNumber: counter!.last_task_number,
-      });
-      await assertTaskReferences(db, team.id, tasks, before);
-      const events: TeamEvent[] = [];
-      const threaded = new Map(tasks.map((task) => [task.id, task]));
-      const threadOf = async (taskId: string) => {
-        const task = threaded.get(taskId)!;
-        if (task.threadSequence) return task.threadSequence;
-        const root = await appendSystemMessage(db, team.id, {
-          type: "task_opened",
+      const { events, ...edit } = await editTasks(db, team.id, worker, operations);
+      return { ...(await recordTeamChange(db, team, events)), ...edit };
+    });
+  }
+
+  /** Adds the agent's own open tasks among these to its turn, which its finish reports on. */
+  async addTurnTasks(agentId: string, taskIds: readonly string[]) {
+    if (taskIds.length === 0) return null;
+    return inStateTransaction(this.db, async (db) => {
+      const worker = await new WorkerDatabase(db).get(agentId, "team");
+      if (!worker) return null;
+      const team = await requireTeam(db, worker.teamId);
+      const { turnTasks = [] } = teamAgentMetadataSchema.parse(worker.metadata);
+      const added = teamTurnReportsDue(await listTasks(db, team.id), agentId, taskIds)
+        .map(({ id }) => id)
+        .filter((id) => !turnTasks.includes(id));
+      if (added.length === 0) return null;
+      const events = await changeAgentActivity(db, worker, { turnTasks: [...turnTasks, ...added] });
+      return recordTeamChange(db, team, events);
+    });
+  }
+
+  /**
+   * Finishes an agent's turn. Its reports apply as one task edit with its authority, each note
+   * posting into its task's thread, and each schedules its task's continuation or clears it. The
+   * finish reports on every task its turn is due to, and continues a task only so many times in a
+   * row. Clears the turn's tasks and leaves the waiting status, or none.
+   */
+  async finishTurn(
+    agentId: string,
+    reports: readonly TeamTaskReport[],
+    waiting?: Extract<TeamAgentStatus, { state: "waiting" }>,
+  ) {
+    return inStateTransaction(this.db, async (db) => {
+      const worker = await new WorkerDatabase(db).get(agentId, "team");
+      if (!worker) {
+        if (reports.length) throw new Error("Team agent not found.");
+        return null;
+      }
+      const team = await requireTeam(db, worker.teamId);
+      const { turnTasks } = teamAgentMetadataSchema.parse(worker.metadata);
+      const tasks = await listTasks(db, team.id);
+      assertTeamTurnReports(teamTurnReportsDue(tasks, agentId, turnTasks), reports);
+      await assertContinuations(db, team.id, tasks, reports);
+      const { events, ...edit } = await editTasks(
+        db,
+        team.id,
+        worker,
+        reports.map(({ taskId, status, note }) => ({
+          type: "update" as const,
           taskId,
-          title: task.title,
-          actor: task.openedBy,
-        });
-        events.push(root);
-        threaded.set(taskId, { ...task, threadSequence: root.message.sequence });
-        return root.message.sequence;
-      };
-      const posted: TeamConversationMessage[] = [];
-      const postNote = async ({ taskId, note }: (typeof notes)[number]) => {
-        const threadSequence = await threadOf(taskId);
-        const change = await appendMessage(db, team.id, (position) => ({
-          ...position,
-          id: crypto.randomUUID(),
-          sender: { type: "agent" as const, agentId },
-          content: note,
-          threadSequence,
-        }));
-        events.push(change);
-        posted.push(change.message);
-      };
-      // An opened task's notes follow its opening note, so they read as its first replies.
-      for (const { id } of opened) {
-        await threadOf(id);
-        for (const note of notes.filter(({ taskId }) => taskId === id)) await postNote(note);
+          patch: { status },
+          note,
+        })),
+      );
+      for (const { taskId, continueAfterMinutes } of reports) {
+        const continueAt = continueAfterMinutes
+          ? new Date(Date.now() + continueAfterMinutes * 60_000).toISOString()
+          : null;
+        await db`
+          UPDATE team_tasks
+          SET continue_at = ${continueAt},
+            continues = CASE WHEN ${continueAt} IS NULL THEN 0 ELSE continues + 1 END,
+            unreported_turns = 0
+          WHERE team_id = ${team.id} AND id = ${taskId}
+        `;
       }
-      for (const note of notes.filter(({ taskId }) => !opened.some(({ id }) => id === taskId))) {
-        await postNote(note);
+      events.push(
+        ...(await changeAgentActivity(db, worker, { status: waiting ?? null, turnTasks: null })),
+      );
+      return { ...(await recordTeamChange(db, team, events)), ...edit };
+    });
+  }
+
+  /**
+   * Ends an agent's turn that finished without its reports: clears the turn's tasks, and posts a
+   * note in the thread of each it was due to report on, saying the turn ended without a report,
+   * failed, or was stopped. Returns those tasks, and, when it ended without a report, those for
+   * which this is the first such turn in a row, whose assignee wakes once more.
+   */
+  async endTurn(
+    agentId: string,
+    outcome: Extract<TeamSystemMessageContent, { type: "task_turn_ended" }>["outcome"],
+    error?: string,
+  ) {
+    return inStateTransaction(this.db, async (db) => {
+      const worker = await new WorkerDatabase(db).get(agentId, "team");
+      const turnTasks = worker && teamAgentMetadataSchema.parse(worker.metadata).turnTasks;
+      if (!worker || !turnTasks) return null;
+      const team = await requireTeam(db, worker.teamId);
+      const before = await listTasks(db, team.id);
+      const events: TeamEvent[] = [];
+      const due: TeamTask[] = [];
+      const rewake: TeamTask[] = [];
+      for (const task of teamTurnReportsDue(before, agentId, turnTasks)) {
+        const thread = await openTaskThread(db, team.id, task);
+        events.push(...thread.events);
+        due.push(thread.task);
+        events.push(
+          await appendSystemMessage(
+            db,
+            team.id,
+            {
+              type: "task_turn_ended",
+              taskId: task.id,
+              agentId,
+              outcome,
+              ...(error ? { error: error.slice(0, 1_000) } : {}),
+            },
+            { threadSequence: thread.task.threadSequence },
+          ),
+        );
+        if (outcome !== "unreported") continue;
+        const [row] = await db<Pick<TeamTaskRow, "unreported_turns">[]>`
+          UPDATE team_tasks SET unreported_turns = unreported_turns + 1
+          WHERE team_id = ${team.id} AND id = ${task.id}
+          RETURNING unreported_turns
+        `;
+        if (row!.unreported_turns === 1) rewake.push(thread.task);
       }
-      const after = [...threaded.values()];
+      const after = before.map((task) => due.find(({ id }) => id === task.id) ?? task);
       events.push(...(await saveTasks(db, team.id, before, after)));
-      if (lastTaskNumber !== counter!.last_task_number) {
-        await db`UPDATE teams SET last_task_number = ${lastTaskNumber} WHERE id = ${team.id}`;
-      }
-      if (!teamTasksComplete(before) && teamTasksComplete(after)) {
-        events.push(await appendSystemMessage(db, team.id, { type: "tasks_completed" }));
-      }
+      events.push(...(await changeAgentActivity(db, worker, { turnTasks: null })));
       return {
         ...(await recordTeamChange(db, team, events)),
-        opened: opened.map(({ id }) => threaded.get(id)!),
-        before,
-        after,
-        notes: posted,
+        isLead: isTeamLead(worker),
+        tasks: due,
+        rewake,
       };
     });
   }
@@ -858,7 +927,7 @@ export class TeamDatabase {
       return recordTeamChange(
         db,
         team,
-        existing ? [] : [await appendSystemMessage(db, teamId, content, id)],
+        existing ? [] : [await appendSystemMessage(db, teamId, content, { id })],
       );
     });
   }
@@ -875,7 +944,7 @@ export class TeamDatabase {
       return recordTeamChange(
         db,
         team,
-        existing ? [] : [await appendSystemMessage(db, teamId, content, id)],
+        existing ? [] : [await appendSystemMessage(db, teamId, content, { id })],
       );
     });
   }
@@ -1129,8 +1198,9 @@ export class TeamDatabase {
   }
 
   /**
-   * Claims every due follow-up and routine, so each wakes its agent once. A follow-up clears its
-   * waiting status. A routine moves past `now`, so runs missed while stopped collapse into one.
+   * Claims every due follow-up, routine, and task continuation, so each wakes its agent once. A
+   * follow-up clears its waiting status, and a continuation its time. A routine moves past `now`,
+   * so runs missed while stopped collapse into one.
    */
   async claimDueWakes(now: Date) {
     return inStateTransaction(this.db, async (db) => {
@@ -1170,6 +1240,13 @@ export class TeamDatabase {
           WHERE id = ${id}
         `;
       }
+      // A continuation's task kept its status and assignee, since changing either clears it.
+      const continuations = await db<Pick<TeamTaskRow, "id" | "title" | "assignee_id">[]>`
+        UPDATE team_tasks SET continue_at = NULL
+        WHERE continue_at <= ${now.toISOString()}
+          AND team_id IN (SELECT id FROM teams WHERE paused = 0)
+        RETURNING id, title, assignee_id
+      `;
       return {
         followUps,
         routines: routines.map(({ team_id, agent_id, title, prompt }) => ({
@@ -1178,6 +1255,9 @@ export class TeamDatabase {
           title,
           prompt,
         })),
+        continuations: continuations.flatMap(({ id, title, assignee_id }) =>
+          assignee_id ? [{ agentId: assignee_id, taskId: id, title }] : [],
+        ),
       };
     });
   }
@@ -1312,13 +1392,14 @@ function appendSystemMessage(
   db: Bun.SQL,
   teamId: string,
   content: TeamSystemMessageContent,
-  id: string = crypto.randomUUID(),
+  { id = crypto.randomUUID(), threadSequence }: { id?: string; threadSequence?: number } = {},
 ) {
   return appendMessage(db, teamId, (position) => ({
     ...position,
     id,
     sender: { type: "system" },
     content,
+    ...(threadSequence ? { threadSequence } : {}),
   }));
 }
 
@@ -1400,7 +1481,7 @@ function messageColumns(message: TeamMessage) {
 
 /**
  * Replying within a thread joins it, so threads stay one level deep. A thread starts at a user or
- * agent message, or at a task's opening note.
+ * agent message, or at a task's opening note; replying to the server's note in one joins it.
  */
 async function resolveThreadSequence(
   db: Bun.SQL,
@@ -1411,6 +1492,7 @@ async function resolveThreadSequence(
     SELECT sender_type, thread_sequence, content FROM team_messages
     WHERE team_id = ${teamId} AND sequence = ${sequence}
   `;
+  if (row?.thread_sequence) return row.thread_sequence;
   if (
     !row ||
     (row.sender_type === "system" &&
@@ -1418,7 +1500,7 @@ async function resolveThreadSequence(
   ) {
     throw new Error("Reply to a user or agent message, or a task's thread, in this team.");
   }
-  return row.thread_sequence ?? sequence;
+  return sequence;
 }
 
 /** The task whose thread starts at this sequence, if a task's does. */
@@ -1815,6 +1897,7 @@ function messageFromRow(row: TeamMessageRow, reactions: TeamReaction[]): TeamMes
       ...common,
       sender: { type: "system" },
       content: teamSystemMessageContentSchema.parse(JSON.parse(row.content)),
+      ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     };
   }
 
@@ -1908,6 +1991,135 @@ async function listTasks(db: Bun.SQL, teamId: string): Promise<TeamTask[]> {
   return orderTeamTasks(rows.map(taskFromRow));
 }
 
+/**
+ * Applies an ordered task batch with the editor's authority. Opened tasks take the team's next
+ * numbers, and each starts its thread with a typed opening note. Each note posts into its task's
+ * thread, first starting one for a task that has none, and each changed or removed task publishes
+ * its own event. The lead's close that completes the list appends `tasks_completed`.
+ */
+async function editTasks(
+  db: Bun.SQL,
+  teamId: string,
+  worker: Extract<Worker, { type: "team" }>,
+  operations: EditTeamTasksInput["operations"],
+) {
+  const agentId = worker.sessionId;
+  const before = await listTasks(db, teamId);
+  const [counter] = await db<Pick<TeamRow, "last_task_number">[]>`
+    SELECT last_task_number FROM teams WHERE id = ${teamId}
+  `;
+  const { tasks, opened, notes, lastTaskNumber } = applyTeamTaskEdits(before, operations, {
+    editor: { agentId, isLead: isTeamLead(worker) },
+    now: new Date().toISOString(),
+    lastTaskNumber: counter!.last_task_number,
+  });
+  await assertTaskReferences(db, teamId, tasks, before);
+  const events: TeamEvent[] = [];
+  const threaded = new Map(tasks.map((task) => [task.id, task]));
+  const threadOf = async (taskId: string) => {
+    const thread = await openTaskThread(db, teamId, threaded.get(taskId)!);
+    events.push(...thread.events);
+    threaded.set(taskId, thread.task);
+    return thread.task.threadSequence;
+  };
+  const posted: TeamConversationMessage[] = [];
+  const postNote = async ({ taskId, note }: (typeof notes)[number]) => {
+    const threadSequence = await threadOf(taskId);
+    const change = await appendMessage(db, teamId, (position) => ({
+      ...position,
+      id: crypto.randomUUID(),
+      sender: { type: "agent" as const, agentId },
+      content: note,
+      threadSequence,
+    }));
+    events.push(change);
+    posted.push(change.message);
+  };
+  // An opened task's notes follow its opening note, so they read as its first replies.
+  for (const { id } of opened) {
+    await threadOf(id);
+    for (const note of notes.filter(({ taskId }) => taskId === id)) await postNote(note);
+  }
+  for (const note of notes.filter(({ taskId }) => !opened.some(({ id }) => id === taskId))) {
+    await postNote(note);
+  }
+  const after = [...threaded.values()];
+  events.push(...(await saveTasks(db, teamId, before, after)));
+  if (lastTaskNumber !== counter!.last_task_number) {
+    await db`UPDATE teams SET last_task_number = ${lastTaskNumber} WHERE id = ${teamId}`;
+  }
+  if (!teamTasksComplete(before) && teamTasksComplete(after)) {
+    events.push(await appendSystemMessage(db, teamId, { type: "tasks_completed" }));
+  }
+  return {
+    events,
+    opened: opened.map(({ id }) => threaded.get(id)!),
+    before,
+    after,
+    notes: posted,
+  };
+}
+
+/** Starts a task's thread with its opening note when it has none yet; the caller saves the task. */
+async function openTaskThread(db: Bun.SQL, teamId: string, task: TeamTask) {
+  if (task.threadSequence) {
+    return { task: { ...task, threadSequence: task.threadSequence }, events: [] };
+  }
+  const root = await appendSystemMessage(db, teamId, {
+    type: "task_opened",
+    taskId: task.id,
+    title: task.title,
+    actor: task.openedBy,
+  });
+  return { task: { ...task, threadSequence: root.message.sequence }, events: [root] };
+}
+
+/**
+ * A report continues its task only while fewer than the limit of reports in a row already have.
+ * A report that changes the task's status starts a new run.
+ */
+async function assertContinuations(
+  db: Bun.SQL,
+  teamId: string,
+  tasks: readonly TeamTask[],
+  reports: readonly TeamTaskReport[],
+) {
+  for (const { taskId, status, continueAfterMinutes } of reports) {
+    if (continueAfterMinutes === undefined) continue;
+    if (tasks.find(({ id }) => id === taskId)?.status !== status) continue;
+    const [row] = await db<Pick<TeamTaskRow, "continues">[]>`
+      SELECT continues FROM team_tasks WHERE team_id = ${teamId} AND id = ${taskId}
+    `;
+    if (row && row.continues >= TEAM_TASK_CONTINUE_LIMIT) {
+      throw new Error(
+        `${taskId} has continued ${row.continues} times in a row. Report it blocked with what it waits for, or in_review if your part is done, and mention the lead in its thread if it needs a decision.`,
+      );
+    }
+  }
+}
+
+/** Changes an agent's status or turn tasks, publishing an event for each that changed. */
+async function changeAgentActivity(
+  db: Bun.SQL,
+  worker: Extract<Worker, { type: "team" }>,
+  changes: { status?: TeamAgentStatus | null; turnTasks?: string[] | null },
+): Promise<TeamEvent[]> {
+  const agentId = worker.sessionId;
+  const metadata = teamAgentMetadataSchema.parse(worker.metadata);
+  const next = applyPatch(metadata, changes);
+  const events: TeamEvent[] = [];
+  if (!Bun.deepEquals(metadata.status, next.status)) {
+    const revision = await advanceRevision(db, worker.teamId);
+    events.push({ type: "status", agentId, status: next.status, revision });
+  }
+  if (!Bun.deepEquals(metadata.turnTasks, next.turnTasks)) {
+    const revision = await advanceRevision(db, worker.teamId);
+    events.push({ type: "turn", agentId, turnTasks: next.turnTasks, revision });
+  }
+  if (events.length) await new WorkerDatabase(db).update(agentId, { metadata: next });
+  return events;
+}
+
 /** Persists the difference between two task lists, publishing one event per task it changes. */
 async function saveTasks(
   db: Bun.SQL,
@@ -1923,8 +2135,11 @@ async function saveTasks(
     const current = previous.get(task.id);
     if (Bun.deepEquals(current, task)) continue;
     if (current) {
+      // A new status or assignee is a new situation: any continuation and its counts start over.
+      const restarts = current.status !== task.status || current.assigneeId !== task.assigneeId;
       await db`
-        UPDATE team_tasks SET ${db(taskColumns(task))}
+        UPDATE team_tasks
+        SET ${db({ ...taskColumns(task), ...(restarts ? RESTARTED_TURNS : {}) })}
         WHERE team_id = ${teamId} AND id = ${task.id}
       `;
     } else {
@@ -1953,7 +2168,9 @@ async function releaseTasks(
   const events: TeamEvent[] = [];
   for (const agentId of agentIds) {
     const rows = await db<TeamTaskRow[]>`
-      UPDATE team_tasks SET assignee_id = NULL, updated_at = ${updatedAt}
+      UPDATE team_tasks
+      SET assignee_id = NULL, updated_at = ${updatedAt},
+        continue_at = NULL, continues = 0, unreported_turns = 0
       WHERE team_id = ${teamId} AND assignee_id = ${agentId}
       RETURNING *
     `;
@@ -1963,6 +2180,9 @@ async function releaseTasks(
   }
   return events;
 }
+
+/** A task's turn bookkeeping, reset when its status or assignee changes. */
+const RESTARTED_TURNS = { continue_at: null, continues: 0, unreported_turns: 0 };
 
 function taskColumns(task: TeamTask) {
   return {
@@ -2019,4 +2239,7 @@ type TeamTaskRow = {
   opened_at: string;
   updated_at: string;
   closed_at: string | null;
+  continue_at: string | null;
+  continues: number;
+  unreported_turns: number;
 };

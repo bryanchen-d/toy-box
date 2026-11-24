@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/shared/ui/badge";
 import { Markdown } from "@/shared/ui/markdown";
 import { RelativeTime } from "@/shared/ui/relative-time";
+import { RunningIndicator } from "@/shared/ui/running-indicator";
 
 const STATUS_LABELS: Record<TeamTaskStatus, string> = {
   pending: "Pending",
@@ -31,15 +32,21 @@ export function teamTaskStatusLabel(status: TeamTaskStatus): string {
     : `Closed as ${STATUS_LABELS[status].toLowerCase()}`;
 }
 
-/** A task's record: where it stands, what it asks for, who has it, and what it produced. */
+/**
+ * A task's record: where it stands, what it asks for, who has it, whether they're working on it
+ * now, and what it produced.
+ */
 export function TaskCard({
   task,
   owners,
   artifacts,
+  workingNow = false,
 }: {
   task: TeamTaskNode;
   owners: readonly TeamAgent[];
   artifacts: readonly TeamArtifact[];
+  /** Its assignee is running a turn woken for it. */
+  workingNow?: boolean;
 }) {
   const assignee = task.assigneeId ? teamAgentIdentity(owners, task.assigneeId) : undefined;
   const artifact = task.artifactId ? artifacts.find(({ id }) => id === task.artifactId) : undefined;
@@ -72,6 +79,12 @@ export function TaskCard({
             <>
               <AgentAvatar agent={assignee} className="size-4" />
               <span className="truncate">{assignee.name}</span>
+              {workingNow && (
+                <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                  <RunningIndicator aria-hidden className="size-3.5" />
+                  Working now
+                </span>
+              )}
             </>
           ) : (
             <span className="text-muted-foreground">Unassigned</span>

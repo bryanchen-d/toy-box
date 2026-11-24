@@ -488,6 +488,32 @@ describe("threads", () => {
       });
       expect(unassigned[1]).toMatchObject({ type: "agent", entries: [{ addressee: "Lead" }] });
     });
+
+    test("the server's notes stay in their thread, unauthored, and stand alone in its view", () => {
+      const ended = {
+        ...event(4, {
+          type: "task_turn_ended",
+          taskId: "t1",
+          agentId: "engine",
+          outcome: "failed",
+        }),
+        threadSequence: 1,
+      };
+      const messages = [opened(1, "t1"), reply(2, 1, "engine"), userPost(3), ended];
+      const rows = transcriptRows(messages, { lead, members, tasks });
+      expect(rowIds(rows)).toEqual([["1"], ["3"], ["4"]]);
+      expect(rows[0]!.type === "system" && rows[0].thread?.replies.map(({ id }) => id)).toEqual([
+        "2",
+        "4",
+      ]);
+      expect(rows[2]).toMatchObject({ type: "thread", root: { id: "1" } });
+      expect(threadParticipants([reply(2, 1, "engine"), ended])).toEqual([
+        { type: "agent", agentId: "engine" },
+      ]);
+      const own = threadRows(messages, 1, { lead, members, tasks });
+      expect(rowIds(own)).toEqual([["1"], ["2"], ["4"]]);
+      expect(own[2]).toMatchObject({ type: "system", messages: [{ id: "4" }] });
+    });
   });
 });
 

@@ -11,6 +11,7 @@ import { createTestDatabase } from "@/server/database";
 import { detachManagedSession } from "@/server/managedSessions";
 import * as sessions from "@sessions/server/providers";
 import * as sessionRuntime from "@sessions/server/runtime";
+import { publishSessionCompletion } from "@sessions/server/runtime/completions";
 import { normalizeToolResult, type Tool } from "@sessions/server/tools/definition";
 import * as workspaceEvents from "@workspace/server/events";
 import { setSessionStatus } from "@workspace/server/state";
@@ -37,6 +38,7 @@ const {
   createTeamMembersFromLead,
   editTeam,
   editTeamTasksFromAgent,
+  endTeamAgentTurn,
   finishTeamAgentTurn,
   markTeamRead,
   postTeamMessage,
@@ -168,7 +170,7 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
   });
   expect(deliver).not.toHaveBeenCalled();
   expect((await teams.getAgent(team.id))?.status?.state).toBe("working");
-  await finishTeamAgentTurn(team.id, "Your color choice");
+  await finishTeamAgentTurn(team.id, { waitingFor: "Your color choice" });
   await postTeamMessageFromSession("user-session", {
     id: "decision",
     teamId: team.id,
@@ -608,6 +610,344 @@ test("a saved task change wakes each agent once, with every task and what change
     operations: [{ type: "assign", taskId: opened[0]!.id, assigneeId: critic.id }],
   });
   expect(delivered()).toEqual({});
+});
+
+/** A team whose lead assigns Builder tasks, with every delivery captured. */
+async function reportingTeam() {
+  const teams = await openTeams();
+  const team = await createStoredTeam(teams, { name: "Reports", ...TEAM_DEFAULTS });
+  const { member: builder } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  const deliver = spyOn(sessionRuntime, "deliverSessionMessage").mockResolvedValue({
+    disposition: "started",
+    waitForCompletion: async () => ({ status: "completed" }),
+  });
+  onTestFinished(() => {
+    releaseTeamEvents(team.id);
+    deliver.mockRestore();
+  });
+  const delivered = () => {
+    const calls = Object.fromEntries(deliver.mock.calls.map(([id, message]) => [id, message]));
+    deliver.mockClear();
+    return calls;
+  };
+  const assign = async (...tasks: { title: string; priority?: "high" | "low" }[]) => {
+    await editTeamTasksFromAgent(team.id, {
+      operations: tasks.map((task) => ({ type: "add", ...task, assigneeId: builder.id })),
+    });
+    delivered();
+  };
+  const thread = async (taskId: string) => {
+    const task = (await teams.listTasks(team.id)).find(({ id }) => id === taskId)!;
+    return (await teams.listThread(team.id, task.threadSequence!)).map(({ content }) => content);
+  };
+  return { teams, team, builder, delivered, assign, thread };
+}
+
+test("a finish reports on every task its turn was woken for, each note posting into its thread", async () => {
+  const { teams, team, builder, delivered, assign, thread } = await reportingTeam();
+  await assign({ title: "Parser" }, { title: "Docs" });
+  expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t1", "t2"]);
+
+  await expect(
+    finishTeamAgentTurn(builder.id, {
+      reports: [{ taskId: "t1", status: "in_progress", note: "Parsing." }],
+    }),
+  ).rejects.toThrow("This turn was woken for t2.");
+  expect((await teams.listTasks(team.id)).map(({ status }) => status)).toEqual([
+    "pending",
+    "pending",
+  ]);
+
+  await finishTeamAgentTurn(builder.id, {
+    reports: [
+      { taskId: "t1", status: "in_progress", note: "Parsing." },
+      { taskId: "t2", status: "blocked", note: "Docs wait for the parser." },
+    ],
+  });
+  expect((await teams.listTasks(team.id)).map(({ status }) => status)).toEqual([
+    "in_progress",
+    "blocked",
+  ]);
+  expect((await thread("t1")).slice(1)).toEqual(["Parsing."]);
+  expect((await thread("t2")).slice(1)).toEqual(["Docs wait for the parser."]);
+  expect((await teams.getMember(builder.id))?.turnTasks).toBeUndefined();
+  expect(delivered()).toEqual({});
+
+  // A task the lead takes away mid-turn no longer needs a report.
+  await postTeamMessage({
+    id: "nudge",
+    teamId: team.id,
+    content: "How is it going?",
+    threadSequence: (await teams.listTasks(team.id))[0]!.threadSequence!,
+  });
+  expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t1"]);
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "assign", taskId: "t1", assigneeId: null }],
+  });
+  await finishTeamAgentTurn(builder.id);
+});
+
+test("a turn that ends without its report notes it in the task's thread and wakes the assignee once", async () => {
+  const { teams, team, builder, delivered, assign, thread } = await reportingTeam();
+  await assign({ title: "Parser" });
+  const unreported = {
+    type: "task_turn_ended",
+    taskId: "t1",
+    agentId: builder.id,
+    outcome: "unreported",
+  } as const;
+
+  await endTeamAgentTurn(teams, builder.id, "unreported");
+  expect((await thread("t1")).slice(1)).toEqual([unreported]);
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: "t1",
+            title: "Parser",
+            changes: ["your last turn on it ended without reporting on it"],
+          },
+        ],
+      },
+      immediate: true,
+    },
+  });
+  expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t1"]);
+
+  await endTeamAgentTurn(teams, builder.id, "unreported");
+  expect((await thread("t1")).slice(1)).toEqual([unreported, unreported]);
+  expect(delivered()).toEqual({});
+  expect((await teams.getMember(builder.id))?.turnTasks).toBeUndefined();
+
+  // Replying to the note joins the task's thread, and a report starts the count over.
+  const [note] = (
+    await teams.listThread(team.id, (await teams.listTasks(team.id))[0]!.threadSequence!)
+  ).slice(-1);
+  const reply = await postTeamMessage({
+    id: "reply",
+    teamId: team.id,
+    content: "Please pick this up.",
+    threadSequence: note!.sequence,
+  });
+  expect(reply.threadSequence).toBe((await teams.listTasks(team.id))[0]!.threadSequence);
+  await finishTeamAgentTurn(builder.id, {
+    reports: [{ taskId: "t1", status: "in_progress", note: "On it." }],
+  });
+  delivered();
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: "t1", patch: { priority: "high" } }],
+  });
+  delivered();
+  await endTeamAgentTurn(teams, builder.id, "unreported");
+  expect(Object.keys(delivered())).toEqual([builder.id]);
+});
+
+test("a failed or stopped task turn notes it in the thread and wakes the lead once", async () => {
+  const { teams, team, builder, delivered, assign, thread } = await reportingTeam();
+  await assign({ title: "Parser" }, { title: "Docs" });
+
+  await endTeamAgentTurn(teams, builder.id, "failed", "Usage limit reached.");
+  expect((await thread("t1")).slice(1)).toEqual([
+    {
+      type: "task_turn_ended",
+      taskId: "t1",
+      agentId: builder.id,
+      outcome: "failed",
+      error: "Usage limit reached.",
+    },
+  ]);
+  expect(delivered()).toEqual({
+    [team.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          { taskId: "t1", title: "Parser", changes: ["Builder's turn on it failed"] },
+          { taskId: "t2", title: "Docs", changes: ["Builder's turn on it failed"] },
+        ],
+      },
+      immediate: true,
+    },
+  });
+
+  await postTeamMessage({
+    id: "retry",
+    teamId: team.id,
+    content: "Try again.",
+    threadSequence: (await teams.listTasks(team.id))[0]!.threadSequence!,
+  });
+  delivered();
+  await endTeamAgentTurn(teams, builder.id, "stopped");
+  expect((await thread("t1")).at(-1)).toMatchObject({ outcome: "stopped" });
+  expect(delivered()).toEqual({
+    [team.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [{ taskId: "t1", title: "Parser", changes: ["Builder's turn on it was stopped"] }],
+      },
+      immediate: true,
+    },
+  });
+
+  // The lead's own failed turn isn't sent back to it.
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "add", title: "Release", assigneeId: team.id }],
+  });
+  await postTeamMessageFromSession("user-session", {
+    id: "release",
+    teamId: team.id,
+    content: "Ship it.",
+    threadSequence: (await teams.listTasks(team.id))[2]!.threadSequence!,
+  });
+  delivered();
+  await endTeamAgentTurn(teams, team.id, "failed");
+  expect((await thread("t3")).at(-1)).toMatchObject({ outcome: "failed" });
+  expect(delivered()).toEqual({});
+});
+
+test("a report can continue its task later, at most three reports in a row", async () => {
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
+  setSystemTime(new Date("2026-11-24T15:00:00.000Z"));
+  onTestFinished(() => setSystemTime());
+  await assign({ title: "Build" });
+  const continueLater = {
+    taskId: "t1",
+    status: "in_progress",
+    note: "Waiting on CI.",
+    continueAfterMinutes: 30,
+  } as const;
+
+  await finishTeamAgentTurn(builder.id, { reports: [continueLater] });
+  await wakeDueTeamAgents(new Date("2026-11-24T15:29:00.000Z"));
+  expect(delivered()).toEqual({});
+  await wakeDueTeamAgents(new Date("2026-11-24T15:30:00.000Z"));
+  await wakeDueTeamAgents(new Date("2026-11-24T15:31:00.000Z"));
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: "t1",
+            title: "Build",
+            changes: ["time to continue it, as your last report asked"],
+          },
+        ],
+      },
+      immediate: true,
+    },
+  });
+  expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t1"]);
+
+  await finishTeamAgentTurn(builder.id, { reports: [continueLater] });
+  await finishTeamAgentTurn(builder.id, { reports: [continueLater] });
+  await expect(finishTeamAgentTurn(builder.id, { reports: [continueLater] })).rejects.toThrow(
+    "t1 has continued 3 times in a row.",
+  );
+  await finishTeamAgentTurn(builder.id, {
+    reports: [{ taskId: "t1", status: "in_progress", note: "Still on it." }],
+  });
+  await finishTeamAgentTurn(builder.id, { reports: [continueLater] });
+
+  // A new status or assignee cancels the continuation.
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: "t1", patch: { status: "blocked" } }],
+  });
+  delivered();
+  await wakeDueTeamAgents(new Date("2026-11-24T18:00:00.000Z"));
+  expect(delivered()).toEqual({});
+});
+
+test("handing a task off wakes its assignee for its highest-priority pending task after the turn", async () => {
+  const { teams, builder, delivered, assign } = await reportingTeam();
+  await assign(
+    { title: "Parser" },
+    { title: "Docs", priority: "low" },
+    { title: "Fix", priority: "high" },
+  );
+
+  await finishTeamAgentTurn(builder.id, {
+    reports: [
+      { taskId: "t1", status: "in_review", note: "Parsed. Close as completed." },
+      { taskId: "t2", status: "pending", note: "Not started." },
+      { taskId: "t3", status: "pending", note: "Not started." },
+    ],
+  });
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: {
+        type: "team_task",
+        tasks: [
+          {
+            taskId: "t3",
+            title: "Fix",
+            changes: ["your highest-priority pending task, now that you handed off t1"],
+          },
+        ],
+      },
+    },
+  });
+  expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t3"]);
+
+  // A report that hands nothing off leaves the queue alone.
+  await finishTeamAgentTurn(builder.id, {
+    reports: [{ taskId: "t3", status: "in_progress", note: "Fixing." }],
+  });
+  expect(delivered()).toEqual({});
+});
+
+test("a turn's end is settled from how its execution ended, and after a restart", async () => {
+  const models = spyOn(providerCatalog, "listModels").mockResolvedValue([]);
+  onTestFinished(() => models.mockRestore());
+  const { teams, team, builder, delivered, assign, thread } = await reportingTeam();
+  onTestFinished(() => deleteSessionState(builder.id));
+  await assign({ title: "Parser" });
+  setSessionStatus(builder.id, "running");
+  onTestFinished(await startTeams());
+  const outcomes = async () =>
+    (await thread("t1")).flatMap((content) =>
+      typeof content === "object" && content.type === "task_turn_ended" ? [content.outcome] : [],
+    );
+  const settled = async (count: number) => {
+    for (let attempt = 0; attempt < 200 && (await outcomes()).length < count; attempt++) {
+      await Bun.sleep(5);
+    }
+    return (await outcomes()).at(-1);
+  };
+  const nudge = async (id: string) => {
+    await postTeamMessage({
+      id,
+      teamId: team.id,
+      content: "How is it going?",
+      threadSequence: (await teams.listTasks(team.id))[0]!.threadSequence!,
+    });
+    delivered();
+  };
+
+  setSessionStatus(builder.id, "idle");
+  publishSessionCompletion(builder.id, { status: "completed" });
+  expect(await settled(1)).toBe("unreported");
+  expect(Object.keys(delivered())).toEqual([builder.id]);
+
+  setSessionStatus(builder.id, "running");
+  setSessionStatus(builder.id, "unread");
+  publishSessionCompletion(builder.id, { status: "failed", error: "Boom." });
+  expect(await settled(2)).toBe("failed");
+  expect(Object.keys(delivered())).toEqual([team.id]);
+
+  await nudge("stop");
+  setSessionStatus(builder.id, "running");
+  setSessionStatus(builder.id, "idle");
+  expect(await settled(3)).toBe("stopped");
+  expect(Object.keys(delivered())).toEqual([team.id]);
+
+  // A turn the server's stop interrupted is settled when it starts again.
+  await nudge("restart");
+  onTestFinished(await startTeams());
+  expect(await outcomes()).toEqual(["unreported", "failed", "stopped", "stopped"]);
+  expect((await teams.getMember(builder.id))?.turnTasks).toBeUndefined();
+  expect(Object.keys(delivered())).toEqual([team.id]);
 });
 
 test("joining starts onboarding before any mention; later assignments use normal delivery", async () => {
@@ -1196,7 +1536,7 @@ test("a Team Agent publishes focus and settles temporary turn state", async () =
     sequence: first.message.sequence,
     reaction: "love",
   });
-  await finishTeamAgentTurn(member.id, "implementation feedback");
+  await finishTeamAgentTurn(member.id, { waitingFor: "implementation feedback" });
 
   expect(await teams.getMember(member.id)).toMatchObject({
     status: { state: "waiting", text: "implementation feedback" },
@@ -1219,7 +1559,7 @@ test("session completion and startup clear working status, preserving waits and 
   const { member: waiting } = await teams.createMember(teamAgent(team.id, "waiting", "Waiting"));
   await setTeamAgentStatus(team.id, { status: "Left over from shutdown" });
   await setTeamAgentStatus(member.id, { status: "Still running" });
-  await finishTeamAgentTurn(waiting.id, "CI", 20);
+  await finishTeamAgentTurn(waiting.id, { waitingFor: "CI", wakeAfterMinutes: 20 });
   const wait = (await teams.getAgent(waiting.id))!.status;
   setSessionStatus(member.id, "running");
   onTestFinished(() => {
@@ -1279,7 +1619,7 @@ test("a lead follow-up privately wakes it once when due", async () => {
   setSystemTime(new Date("2026-09-29T15:00:00.000Z"));
   onTestFinished(() => setSystemTime());
 
-  await finishTeamAgentTurn(team.id, "CI to finish", 20);
+  await finishTeamAgentTurn(team.id, { waitingFor: "CI to finish", wakeAfterMinutes: 20 });
   expect((await teams.getAgent(team.id))?.status).toEqual({
     state: "waiting",
     text: "CI to finish",
@@ -1307,7 +1647,7 @@ test("a message that wakes the lead first cancels its follow-up", async () => {
   const team = await createStoredTeam(teams, { name: "Deploy", ...TEAM_DEFAULTS });
   const deliver = spyOnDelivery();
 
-  await finishTeamAgentTurn(team.id, "CI to finish", 20);
+  await finishTeamAgentTurn(team.id, { waitingFor: "CI to finish", wakeAfterMinutes: 20 });
   await postTeamMessageFromSession("user-session", {
     id: "update",
     teamId: team.id,

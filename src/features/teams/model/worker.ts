@@ -10,7 +10,7 @@ export function teamAgentFromWorker(worker: Extract<Worker, { type: "team" }>) {
   const metadata = teamAgentMetadataSchema.parse(worker.metadata);
   const context = { teamId: worker.teamId, seenThrough: metadata.seenThrough };
   return isTeamLead(worker)
-    ? { ...teamLead(worker.sessionId, metadata.status), ...context, isLead: true as const }
+    ? { ...teamLead(worker.sessionId, metadata), ...context, isLead: true as const }
     : { ...teamMemberFromWorker(worker, metadata), ...context, isLead: false as const };
 }
 
@@ -20,7 +20,7 @@ export function teamRoster(workers: Extract<Worker, { type: "team" }>[]) {
   const lead = workers.find(isTeamLead);
   if (!lead) throw new Error("Team lead is incomplete.");
   return {
-    lead: teamLead(lead.sessionId, teamAgentMetadataSchema.parse(lead.metadata).status),
+    lead: teamLead(lead.sessionId, teamAgentMetadataSchema.parse(lead.metadata)),
     members: teamMembersFromWorkers(workers),
   };
 }

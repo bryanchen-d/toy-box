@@ -11,6 +11,7 @@ import { TeamMessageSearch } from "./TeamMessageSearch";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { TaskCard } from "./TaskCard";
 import type { TeamMessageMatch } from "@teams/model/search";
+import { isTeamTaskWorkingNow } from "@teams/model/presence";
 import { TranscriptRowContent } from "./transcript/TeamTranscript";
 import { threadRows } from "./transcript/transcriptRows";
 
@@ -151,7 +152,12 @@ export function TeamThread({
               <div className="@container space-y-5 px-4 py-5">
                 {task && (
                   <div className="rounded-lg border bg-background p-3">
-                    <TaskCard task={task} owners={pane.agents} artifacts={state.artifacts} />
+                    <TaskCard
+                      task={task}
+                      owners={pane.agents}
+                      artifacts={state.artifacts}
+                      workingNow={isTeamTaskWorkingNow(task, pane.presence)}
+                    />
                   </div>
                 )}
                 {rows.map((row, index) => (

@@ -52,7 +52,7 @@ export function TeamTasks({
   view: TaskView;
   onViewChange: (view: TaskView) => void;
 }) {
-  const { teamId, agents, openArtifact, openMessage, openThread } = useTeamPane();
+  const { teamId, agents, presence, openArtifact, openMessage, openThread } = useTeamPane();
   const lookup = useMutation({
     mutationFn: ({ id }: TeamTask) => findTeamTaskMessage({ data: { teamId, taskId: id } }),
     onSuccess: (location) => {
@@ -94,6 +94,7 @@ export function TeamTasks({
               tasks: tree,
               owners: agents,
               artifacts,
+              presence,
               onArtifactOpen: (artifact) => openArtifact(artifact.file),
               onTaskSelect: openTask,
             })}

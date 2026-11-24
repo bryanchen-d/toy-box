@@ -5,6 +5,7 @@ import {
   systemMessageCoalesceKey,
   systemMessageLabel,
   systemMessagePrompt,
+  type SessionSystemMessage,
 } from "./systemMessages";
 
 describe("Session system messages", () => {
@@ -44,6 +45,23 @@ describe("Session system messages", () => {
     expect(systemMessageLabel(teamMessage)).toBe("Message from Research Scout");
     expect(systemMessageCoalesceKey(teamMessage)).toBe("team_message");
     expect(systemMessagePrompt(teamMessage)).toContain("Call `read_team`");
+  });
+
+  test("a task wake names who changed the tasks, or none when the team itself wakes the agent", () => {
+    const tasks = [{ taskId: "t1", title: "Parser", changes: ["assigned to you"] }];
+    const changed: SessionSystemMessage = { type: "team_task", senderName: "the lead", tasks };
+    expect(systemMessageLabel(changed)).toBe("Tasks from the lead: t1");
+    expect(systemMessagePrompt(changed)).toStartWith(
+      'The lead changed tasks you\'re involved in: t1 ("Parser"): assigned to you.',
+    );
+    const continuing: SessionSystemMessage = {
+      type: "team_task",
+      tasks: [{ ...tasks[0]!, changes: ["time to continue it, as your last report asked"] }],
+    };
+    expect(systemMessageLabel(continuing)).toBe("Tasks: t1");
+    expect(systemMessagePrompt(continuing)).toStartWith(
+      'Tasks you\'re involved in need you: t1 ("Parser"): time to continue it, as your last report asked.',
+    );
   });
 
   test("a security warning quotes what the flagged content says as data", () => {

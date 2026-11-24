@@ -48,11 +48,12 @@ export type TranscriptRow = TranscriptRowContent & {
 /**
  * A thread's replies, identified by the sequence of its top-level message, and the state of the
  * latest question among them. Loaded history always reaches the newest message, so a loaded
- * top-level message has every reply loaded too.
+ * top-level message has every reply loaded too. Replies include the server's notes in a task's
+ * thread.
  */
 export type TranscriptThread = {
   sequence: number;
-  replies: TeamConversationMessage[];
+  replies: TeamMessage[];
   request?: TeamRequestState;
 };
 
@@ -93,7 +94,7 @@ type RowContext = {
   threads?: ReadonlyMap<number, LoadedThread>;
 };
 
-type LoadedThread = { root?: TeamMessage; replies: TeamConversationMessage[] };
+type LoadedThread = { root?: TeamMessage; replies: TeamMessage[] };
 
 /**
  * The transcript's rows. A user message stands alone, one agent's consecutive messages form a run,
@@ -167,14 +168,15 @@ export function threadRows(
   return rowsOf(thread, context, { view: "all" });
 }
 
-/** Who replied in a thread, each once, most recent first. */
+/** Who replied in a thread, each once, most recent first; the server's notes have no author. */
 export function threadParticipants(
-  replies: readonly TeamConversationMessage[],
+  replies: readonly TeamMessage[],
 ): TeamConversationMessage["sender"][] {
   const participants = new Map<string, TeamConversationMessage["sender"]>();
-  for (const { sender } of [...replies].reverse()) {
-    const key = messageAuthorId(sender) ?? "user";
-    if (!participants.has(key)) participants.set(key, sender);
+  for (const reply of [...replies].reverse()) {
+    if (isTeamSystemMessage(reply)) continue;
+    const key = messageAuthorId(reply.sender) ?? "user";
+    if (!participants.has(key)) participants.set(key, reply.sender);
   }
   return [...participants.values()];
 }
@@ -254,6 +256,14 @@ function dividerBetween(
 }
 
 function startRow(message: TeamMessage, context: RowContext): TranscriptRowContent {
+  const thread = threadOf(message, context);
+  if (thread) {
+    return {
+      type: "thread",
+      thread: transcriptThread(thread.sequence, [message], context),
+      ...(thread.root ? { root: thread.root } : {}),
+    };
+  }
   if (isTeamSystemMessage(message)) {
     // A task's opening note starts its thread, and summarizes its replies like any other.
     const replies = context.threads?.get(message.sequence)?.replies;
@@ -264,14 +274,6 @@ function startRow(message: TeamMessage, context: RowContext): TranscriptRowConte
           thread: transcriptThread(message.sequence, replies, context),
         }
       : { type: "system", messages: [message] };
-  }
-  const thread = threadOf(message, context);
-  if (thread) {
-    return {
-      type: "thread",
-      thread: transcriptThread(thread.sequence, [message], context),
-      ...(thread.root ? { root: thread.root } : {}),
-    };
   }
   const { sender } = message;
   const authorId = messageAuthorId(sender);
@@ -289,15 +291,6 @@ function startRow(message: TeamMessage, context: RowContext): TranscriptRowConte
  * message to its own run, or a system message to matching ones.
  */
 function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext): boolean {
-  if (row.type === "system" && isTeamSystemMessage(message)) {
-    const group = systemMessageGroup(message);
-    if (group === undefined || group !== systemMessageGroup(row.messages[0]!)) return false;
-    // A task's opening note with replies keeps a row of its own, where it summarizes them.
-    if (row.thread || context.threads?.has(message.sequence)) return false;
-    row.messages.push(message);
-    return true;
-  }
-  if (isTeamSystemMessage(message)) return false;
   const thread = threadOf(message, context);
   if (thread) {
     if (row.type === "thread" && row.thread.sequence === thread.sequence) {
@@ -312,6 +305,15 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
         row.entries.some((entry) => entry.message.sequence === thread.sequence))
     );
   }
+  if (row.type === "system" && isTeamSystemMessage(message)) {
+    const group = systemMessageGroup(message);
+    if (group === undefined || group !== systemMessageGroup(row.messages[0]!)) return false;
+    // A task's opening note with replies keeps a row of its own, where it summarizes them.
+    if (row.thread || context.threads?.has(message.sequence)) return false;
+    row.messages.push(message);
+    return true;
+  }
+  if (isTeamSystemMessage(message)) return false;
   if (row.type !== "agent") return false;
   if (messageAuthorId(message.sender) !== row.agentId) return false;
   const last = row.entries.at(-1)!;
@@ -323,7 +325,7 @@ function extendRow(row: TranscriptRow, message: TeamMessage, context: RowContext
 
 /** The thread a reply belongs to, when the rows group replies into threads. */
 function threadOf(
-  { threadSequence: sequence }: TeamConversationMessage,
+  { threadSequence: sequence }: TeamMessage,
   { threads }: RowContext,
 ): { sequence: number; root?: TeamMessage } | undefined {
   if (sequence === undefined || !threads) return undefined;
@@ -332,10 +334,13 @@ function threadOf(
 
 function transcriptThread(
   sequence: number,
-  replies: TeamConversationMessage[],
+  replies: TeamMessage[],
   context: RowContext,
 ): TranscriptThread {
-  const question = replies.filter(({ request }) => request).at(-1);
+  const question = replies
+    .filter((reply): reply is TeamConversationMessage => !isTeamSystemMessage(reply))
+    .filter(({ request }) => request)
+    .at(-1);
   return {
     sequence,
     replies,
@@ -347,7 +352,7 @@ function transcriptThread(
 function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThread> {
   const threads = new Map<number, LoadedThread>();
   for (const message of messages) {
-    if (message.threadSequence === undefined || isTeamSystemMessage(message)) continue;
+    if (message.threadSequence === undefined) continue;
     const thread = threads.get(message.threadSequence);
     if (thread) thread.replies.push(message);
     else threads.set(message.threadSequence, { replies: [message] });

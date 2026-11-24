@@ -55,12 +55,22 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       opened_at        TEXT NOT NULL,
       updated_at       TEXT NOT NULL,
       closed_at        TEXT,
+      -- When the assignee's last report asked to continue it; a change of status or assignee clears it.
+      continue_at      TEXT,
+      -- Reports in a row that asked to continue it, which a limit caps.
+      continues        INTEGER NOT NULL DEFAULT 0 CHECK (typeof(continues) = 'integer' AND continues >= 0),
+      -- Turns in a row woken for it that ended without reporting on it; only the first wakes again.
+      unreported_turns INTEGER NOT NULL DEFAULT 0
+        CHECK (typeof(unreported_turns) = 'integer' AND unreported_turns >= 0),
       PRIMARY KEY(team_id, id),
       FOREIGN KEY(team_id, parent_id) REFERENCES team_tasks(team_id, id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_team_tasks_parent
       ON team_tasks(team_id, parent_id, position);
+
+    CREATE INDEX IF NOT EXISTS idx_team_tasks_continue_at
+      ON team_tasks(continue_at) WHERE continue_at IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS team_messages (
       id                   TEXT PRIMARY KEY,
@@ -84,10 +94,9 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       ),
       -- The agent whose message a connector's reply answers.
       asked_by             TEXT CHECK (asked_by IS NULL OR sender_type = 'connector'),
-      -- A reply names the earlier top-level message that starts its thread.
-      thread_sequence      INTEGER CHECK (
-        thread_sequence IS NULL OR (sender_type <> 'system' AND thread_sequence < sequence)
-      ),
+      -- A reply names the earlier top-level message that starts its thread. The server's notes
+      -- reply in task threads too.
+      thread_sequence      INTEGER CHECK (thread_sequence IS NULL OR thread_sequence < sequence),
       timestamp            TEXT NOT NULL,
       CHECK (request = 0 OR (sender_type = 'agent' AND sender_agent_id = team_id)),
       CHECK (

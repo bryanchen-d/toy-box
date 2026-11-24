@@ -136,6 +136,7 @@ export function TeamComposer({
               tasks: teamTaskTree(state?.tasks ?? []),
               owners: agents,
               artifacts: state?.artifacts ?? [],
+              presence: state?.presence,
               onArtifactOpen: ({ file }) => openArtifact(file),
               closeOnArtifactOpen: true,
             })}

@@ -10,6 +10,7 @@ import {
   createTeamMemberInputSchema,
   createTeamInputSchema,
   editTeamTasksInputSchema,
+  teamTaskReportSchema,
   isTeamSystemMessage,
   isTeamTaskOpen,
   teamHandle,
@@ -389,13 +390,20 @@ const editOwnTasksTool = {
 
 const finishTeamAgentTurnParameters = z
   .object({
+    tasks: z
+      .array(teamTaskReportSchema)
+      .max(50)
+      .optional()
+      .describe(
+        "A report on each of your tasks this turn was woken for: its status and a note, which posts into its thread. Required for every one of them that's still open.",
+      ),
     waitingFor: z
       .string()
       .trim()
       .min(1)
       .max(100)
       .optional()
-      .describe("What this agent is waiting for after the turn ends."),
+      .describe("What this agent is waiting for after the turn ends, for work that isn't a task."),
   })
   .strict();
 
@@ -423,15 +431,19 @@ const finishLeadTurnParameters = finishTeamAgentTurnParameters
 const finishTeamAgentTurnTool = defineTool("finish_agent_turn", {
   alwaysAvailable: true,
   description:
-    "Ends this private agent turn and clears its active team status. waitingFor leaves a brief waiting status.",
+    "Ends this private agent turn and clears its active team status. Report in tasks on each of your tasks this turn was woken for; the finish is rejected until every one that's still open has a report. A report can continue an in_progress task later. Handing a task off as in_review takes up your next pending task after this turn. waitingFor leaves a brief waiting status.",
   parameters: finishTeamAgentTurnParameters,
   isTerminal: true,
   handler: async (
-    { waitingFor, wakeAfterMinutes }: z.output<typeof finishLeadTurnParameters>,
+    { tasks, waitingFor, wakeAfterMinutes }: z.output<typeof finishLeadTurnParameters>,
     invocation,
   ) => {
     const { finishTeamAgentTurn } = await import("@teams/server");
-    await finishTeamAgentTurn(invocation.sessionId, waitingFor, wakeAfterMinutes);
+    await finishTeamAgentTurn(invocation.sessionId, {
+      reports: tasks,
+      waitingFor,
+      wakeAfterMinutes,
+    });
     return "Done.";
   },
 });

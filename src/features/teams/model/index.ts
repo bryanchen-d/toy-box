@@ -155,6 +155,11 @@ export const teamAgentMetadataSchema = z
     avatar: avatarSchema.optional(),
     seenThrough: z.number().int().nonnegative(),
     status: teamAgentStatusSchema.optional(),
+    /**
+     * The agent's own open tasks that woke its current turn, which it is working on now; finishing
+     * the turn reports on each, and the turn's end clears them.
+     */
+    turnTasks: z.array(durableIdSchema).min(1).optional(),
   })
   .strict();
 
@@ -173,7 +178,10 @@ const teamMemberSchema = teamAgentMetadataSchema
   .strict();
 export type TeamMember = z.output<typeof teamMemberSchema>;
 
-export type TeamAgent = Pick<TeamMember, "id" | "name" | "role" | "avatar" | "status">;
+export type TeamAgent = Pick<
+  TeamMember,
+  "id" | "name" | "role" | "avatar" | "status" | "turnTasks"
+>;
 export type TeamLead = TeamAgent & {
   role: string;
   avatar: NonNullable<TeamAgent["avatar"]>;
@@ -186,11 +194,15 @@ export function compareTeamAgents(
   return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
 }
 
-export function teamLead(id: string, status?: TeamAgentStatus): TeamLead {
+export function teamLead(
+  id: string,
+  { status, turnTasks }: Pick<TeamAgent, "status" | "turnTasks"> = {},
+): TeamLead {
   return {
     id,
     ...TEAM_LEAD_PROFILE,
     ...(status ? { status } : {}),
+    ...(turnTasks ? { turnTasks } : {}),
   };
 }
 
@@ -431,6 +443,19 @@ export const teamSystemMessageContentSchema = z.discriminatedUnion("type", [
       actor: teamMessageActorSchema,
     })
     .strict(),
+  /**
+   * Posted in a task's thread when a turn woken for it ends without its report: the turn finished
+   * without one, failed, or was stopped.
+   */
+  z
+    .object({
+      type: z.literal("task_turn_ended"),
+      taskId: durableIdSchema,
+      agentId: durableIdSchema,
+      outcome: z.enum(["unreported", "failed", "stopped"]),
+      error: z.string().optional(),
+    })
+    .strict(),
   /** The lead got what every pending request asked for another way, so none waits on the user. */
   z.object({ type: z.literal("requests_resolved") }).strict(),
   z.object({ type: z.literal("member_joined"), member: teamMemberSchema }).strict(),
@@ -559,10 +584,11 @@ export type TeamSystemMessage = TeamMessageBase & {
   reactions?: never;
   askedBy?: never;
   request?: never;
-  threadSequence?: never;
+  /** A note the server posts in a task's thread, such as a turn that ended without its report. */
+  threadSequence?: number;
 };
 
-/** Replying to any message in a thread replies to that thread; system messages start none. */
+/** Replying to any message in a thread replies to that thread; only task notes start one. */
 export const teamThreadSequenceSchema = z
   .number()
   .int()
@@ -620,6 +646,7 @@ export type TeamEvent<A = TeamAttachment> = (
   | { type: "read"; seenThrough: number }
   | { type: "member"; member: TeamMember }
   | { type: "status"; agentId: string; status?: TeamAgent["status"] }
+  | { type: "turn"; agentId: string; turnTasks?: TeamAgent["turnTasks"] }
 ) & { revision: number };
 
 /** Cached clients replay ordered details; only a new client or expired cursor needs a snapshot. */

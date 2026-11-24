@@ -9,10 +9,12 @@ import {
   type TeamTaskNode,
   type TeamTaskStatus,
 } from "@teams/model";
+import { isTeamTaskWorkingNow, type TeamAgentPresence } from "@teams/model/presence";
 import type { DiffStats } from "@/shared/diffStats";
 import { Button } from "@/shared/ui/button";
 import type { ChecklistItem, ChecklistStatus } from "@/shared/ui/checklist";
 import { PopoverClose } from "@/shared/ui/popover";
+import { RunningIndicator } from "@/shared/ui/running-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { TaskCard } from "./TaskCard";
 
@@ -36,12 +38,13 @@ const CHECKLIST_STATUS: Record<TeamTaskStatus, ChecklistStatus> = {
 
 /**
  * Both Team checklists present the same task identities, assignees, and linked outcomes, with each
- * task's record on hover.
+ * task's record on hover. An assignee running a turn woken for its task shows as working on it.
  */
 export function teamTaskItems({
   tasks,
   owners,
   artifacts,
+  presence = {},
   onArtifactOpen,
   onTaskSelect,
   closeOnArtifactOpen = false,
@@ -49,6 +52,7 @@ export function teamTaskItems({
   tasks: readonly TeamTaskNode[];
   owners: readonly TeamAgent[];
   artifacts: readonly TeamArtifact[];
+  presence?: Readonly<Record<string, TeamAgentPresence>>;
   onArtifactOpen: (artifact: TeamArtifact) => void;
   /** Opens a task's view. */
   onTaskSelect?: (task: TeamTaskNode) => void;
@@ -59,12 +63,13 @@ export function teamTaskItems({
     const artifact = task.artifactId
       ? artifacts.find(({ id }) => id === task.artifactId)
       : undefined;
+    const workingNow = isTeamTaskWorkingNow(task, presence);
     return {
       id: task.id,
       displayId: task.id,
       title: task.title,
       status: CHECKLIST_STATUS[task.status],
-      card: <TaskCard task={task} owners={owners} artifacts={artifacts} />,
+      card: <TaskCard task={task} owners={owners} artifacts={artifacts} workingNow={workingNow} />,
       detail:
         diff || task.assigneeId || task.artifactId ? (
           <span className="inline-flex items-center gap-[9px]">
@@ -76,7 +81,9 @@ export function teamTaskItems({
                 closeOnOpen={closeOnArtifactOpen}
               />
             )}
-            {task.assigneeId && <TaskOwner owner={teamAgentIdentity(owners, task.assigneeId)} />}
+            {task.assigneeId && (
+              <TaskOwner owner={teamAgentIdentity(owners, task.assigneeId)} working={workingNow} />
+            )}
           </span>
         ) : undefined,
       ...(onTaskSelect && {
@@ -91,6 +98,7 @@ export function teamTaskItems({
               tasks: task.children,
               owners,
               artifacts,
+              presence,
               onArtifactOpen,
               onTaskSelect,
               closeOnArtifactOpen,
@@ -146,13 +154,22 @@ function TaskArtifact({
   return closeOnOpen ? <PopoverClose render={button} /> : button;
 }
 
-function TaskOwner({ owner }: { owner: TeamAgentIdentity }) {
+function TaskOwner({ owner, working }: { owner: TeamAgentIdentity; working: boolean }) {
+  const label = working ? `${owner.name} · Working now` : owner.name;
   return (
     <Tooltip>
-      <TooltipTrigger render={<span role="img" aria-label={owner.name} className="inline-flex" />}>
+      <TooltipTrigger
+        render={<span role="img" aria-label={label} className="relative inline-flex" />}
+      >
         <AgentAvatar agent={owner} className="size-4 in-data-[slot=checklist-popup]:size-3.5" />
+        {working && (
+          <RunningIndicator
+            strokeWidth={1.5}
+            className="pointer-events-none absolute -top-1 -left-1 size-6 text-muted-foreground in-data-[slot=checklist-popup]:size-5.5"
+          />
+        )}
       </TooltipTrigger>
-      <TooltipContent sideOffset={4}>{owner.name}</TooltipContent>
+      <TooltipContent sideOffset={4}>{label}</TooltipContent>
     </Tooltip>
   );
 }

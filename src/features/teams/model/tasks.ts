@@ -318,6 +318,76 @@ export const editTeamTasksInputSchema = z
 export type EditTeamTasksInput = z.output<typeof editTeamTasksInputSchema>;
 type TeamTaskEdit = EditTeamTasksInput["operations"][number];
 
+/**
+ * How many reports in a row can continue a task later. A report that doesn't continue resets the
+ * count, so a task can't keep waking its assignee on its own.
+ */
+export const TEAM_TASK_CONTINUE_LIMIT = 3;
+
+/** A turn's report on one task: its status afterward and a note, and when to continue it. */
+export const teamTaskReportSchema = z
+  .object({
+    taskId: teamTaskIdSchema,
+    status: teamTaskStatusSchema.describe(
+      "The task's status after this turn: in_progress while work remains, blocked when it can't continue, or in_review to hand it off when your part is done.",
+    ),
+    note: taskNoteSchema.describe(
+      "What this turn did and what comes next: what blocks it, or for in_review how it should close. Posts into the task's thread. At most 3,000 characters.",
+    ),
+    continueAfterMinutes: z
+      .number()
+      .int()
+      .min(5)
+      .max(120)
+      .optional()
+      .describe(
+        `With in_progress: wake after this many minutes to keep working on it, unless something wakes you first. At most ${TEAM_TASK_CONTINUE_LIMIT} reports in a row can continue a task.`,
+      ),
+  })
+  .strict()
+  .refine(
+    ({ status, continueAfterMinutes }) =>
+      continueAfterMinutes === undefined || status === "in_progress",
+    { message: "Only an in_progress report continues later." },
+  );
+export type TeamTaskReport = z.output<typeof teamTaskReportSchema>;
+
+/** The tasks a turn reports on: the agent's own that woke it, while they're still open. */
+export function teamTurnReportsDue(
+  tasks: readonly TeamTask[],
+  agentId: string,
+  turnTasks: readonly string[] = [],
+): TeamTask[] {
+  return tasks.filter(
+    (task) => turnTasks.includes(task.id) && task.assigneeId === agentId && isTeamTaskOpen(task),
+  );
+}
+
+/** A finish reports on every task its turn is due to, each once. */
+export function assertTeamTurnReports(
+  due: readonly TeamTask[],
+  reports: readonly Pick<TeamTaskReport, "taskId">[],
+): void {
+  const reported = new Set<string>();
+  for (const { taskId } of reports) {
+    if (reported.has(taskId)) throw new Error(`Report on ${taskId} once.`);
+    reported.add(taskId);
+  }
+  const missing = due.filter(({ id }) => !reported.has(id)).map(({ id }) => id);
+  if (missing.length) {
+    throw new Error(
+      `This turn was woken for ${missing.join(", ")}. Report on each in tasks with its status and a note before you finish.`,
+    );
+  }
+}
+
+/** The pending task an agent takes up next: its highest-priority one. */
+export function nextTeamTask(tasks: readonly TeamTask[], agentId: string): TeamTask | undefined {
+  return teamTasksByPriority(tasks).find(
+    (task) => task.assigneeId === agentId && task.status === "pending",
+  );
+}
+
 /** The agent editing tasks: the lead edits any task, and an assignee only its own. */
 export type TeamTaskEditor = { agentId: string; isLead: boolean };
 

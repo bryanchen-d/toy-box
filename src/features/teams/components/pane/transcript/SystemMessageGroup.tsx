@@ -11,6 +11,7 @@ import {
   Pause,
   Pencil,
   Plug,
+  TriangleAlert,
   Unplug,
   UserMinus,
   UserPlus,
@@ -134,6 +135,13 @@ const SYSTEM_MESSAGES: {
     present: () => ({
       content: "Questions for you resolved",
       tooltip: "The lead got what it asked you for another way, so nothing waits on your reply.",
+    }),
+  },
+  task_turn_ended: {
+    icon: <TriangleAlert className="size-3.5 shrink-0" />,
+    present: ([content], { agent }) => ({
+      content: taskTurnEndedText(content, agent(content.agentId).name),
+      tooltip: content.error,
     }),
   },
   team_renamed: {
@@ -300,6 +308,20 @@ const SYSTEM_MESSAGES: {
 };
 
 const MAX_VALUE_LENGTH = 120;
+
+/** How a task's thread tells that a turn on it ended without its report. */
+export function taskTurnEndedText(
+  { taskId, outcome }: ContentByKind["task_turn_ended"],
+  agentName: string,
+): string {
+  const ended =
+    outcome === "unreported"
+      ? "ended without an update"
+      : outcome === "failed"
+        ? "failed"
+        : "was stopped";
+  return `${agentName}'s turn on ${taskId} ${ended}`;
+}
 
 /** What comes before the item at `index` in an English list: ", ", " and ", or ", and ". */
 function listSeparator(index: number, length: number): string {

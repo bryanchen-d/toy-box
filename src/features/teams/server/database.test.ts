@@ -1652,6 +1652,7 @@ describe("team routines", () => {
     expect(await teams.claimDueWakes(localTime(14, 10))).toEqual({
       followUps: [],
       routines: [],
+      continuations: [],
     });
   });
 });

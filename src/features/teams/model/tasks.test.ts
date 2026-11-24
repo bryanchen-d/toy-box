@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   applyTeamTaskEdits,
+  assertTeamTurnReports,
   editTeamTasksInputSchema,
   mentionsTeamTask,
+  nextTeamTask,
   orderTeamTasks,
+  teamTaskReportSchema,
   teamTaskState,
   teamTasksByPriority,
   teamTasksComplete,
@@ -11,6 +14,7 @@ import {
   teamTasksDiff,
   teamTasksForAgent,
   teamTaskTree,
+  teamTurnReportsDue,
   TEAM_TASK_STATUSES,
   type EditTeamTasksInput,
   type TeamTask,
@@ -372,6 +376,61 @@ test("an agent's queue lists high priority first, then tree order", () => {
     task("t4", { position: 2, priority: "high" }),
   ];
   expect(teamTasksByPriority(tasks).map(({ id }) => id)).toEqual(["t3", "t4", "t2", "t1"]);
+});
+
+describe("turn reports", () => {
+  const tasks = [
+    task("t1", { assigneeId: "builder", status: "in_progress" }),
+    task("t2", { position: 1, assigneeId: "builder", status: "completed" }),
+    task("t3", { position: 2, assigneeId: "critic" }),
+    task("t4", { position: 3, assigneeId: "builder", priority: "low" }),
+    task("t5", { position: 4, assigneeId: "builder", priority: "high", status: "blocked" }),
+  ];
+
+  test("a turn reports on the tasks that woke it while they're still the agent's and open", () => {
+    const due = teamTurnReportsDue(tasks, "builder", ["t1", "t2", "t3", "t4"]);
+    expect(due.map(({ id }) => id)).toEqual(["t1", "t4"]);
+    expect(teamTurnReportsDue(tasks, "builder")).toEqual([]);
+  });
+
+  test("a finish names each task it owes a report and reports each once", () => {
+    const due = teamTurnReportsDue(tasks, "builder", ["t1", "t4"]);
+    expect(() => assertTeamTurnReports(due, [{ taskId: "t1" }])).toThrow(
+      "This turn was woken for t4.",
+    );
+    expect(() =>
+      assertTeamTurnReports(due, [{ taskId: "t1" }, { taskId: "t4" }, { taskId: "t1" }]),
+    ).toThrow("Report on t1 once.");
+    expect(() =>
+      assertTeamTurnReports(due, [{ taskId: "t4" }, { taskId: "t1" }, { taskId: "t5" }]),
+    ).not.toThrow();
+  });
+
+  test("only an in_progress report continues later, within two hours", () => {
+    const report = { taskId: "t1", status: "in_progress", note: "CI is running." };
+    expect(teamTaskReportSchema.safeParse({ ...report, continueAfterMinutes: 30 }).success).toBe(
+      true,
+    );
+    expect(
+      teamTaskReportSchema.safeParse({ ...report, status: "blocked", continueAfterMinutes: 30 })
+        .success,
+    ).toBe(false);
+    expect(teamTaskReportSchema.safeParse({ ...report, continueAfterMinutes: 121 }).success).toBe(
+      false,
+    );
+  });
+
+  test("the next task is the agent's highest-priority pending one", () => {
+    expect(nextTeamTask(tasks, "builder")?.id).toBe("t4");
+    expect(
+      nextTeamTask(
+        [...tasks, task("t6", { position: 5, assigneeId: "builder", priority: "high" })],
+        "builder",
+      )?.id,
+    ).toBe("t6");
+    expect(nextTeamTask(tasks, "critic")?.id).toBe("t3");
+    expect(nextTeamTask(tasks, "lead")).toBeUndefined();
+  });
 });
 
 test("the tree orders siblings by position and lists parents before their subtasks", () => {

@@ -434,6 +434,28 @@ test.each(["team", "reviewer"])(
   },
 );
 
+test.each(["team", "reviewer"])(
+  "a turn's tasks update %s and leave its status alone",
+  (agentId) => {
+    const previous = snapshot();
+    previous.members = [{ teamId: "team", id: "reviewer", name: "Reviewer" }];
+    const status = { state: "working" as const, text: "Reviewing" };
+    const working = reduceTeamState(previous, { type: "status", revision: 102, agentId, status });
+    const agent = (state: TeamState) =>
+      [state.lead, ...state.members].find(({ id }) => id === agentId);
+    const started = reduceTeamState(working, {
+      type: "turn",
+      revision: 103,
+      agentId,
+      turnTasks: ["t1", "t2"],
+    });
+    expect(agent(started)).toMatchObject({ status, turnTasks: ["t1", "t2"] });
+    const ended = reduceTeamState(started, { type: "turn", revision: 104, agentId });
+    expect(agent(ended)?.turnTasks).toBeUndefined();
+    expect(agent(ended)?.status).toEqual(status);
+  },
+);
+
 test("sharing an artifact preserves its public URL and original share time when retitled", () => {
   const artifact = {
     file: machineFile("/workspace/plan.md"),

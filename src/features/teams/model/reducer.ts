@@ -1,6 +1,7 @@
 import { acknowledgesTeamRequests, compareTeamAgents, isTeamSystemMessage } from ".";
 import type {
   Team,
+  TeamAgent,
   TeamArtifact,
   TeamConversationMessage,
   TeamEvent,
@@ -153,13 +154,17 @@ export function reduceTeamRoster<Roster extends Pick<TeamState, "lead" | "member
   roster: Roster,
   event: TeamEvent,
 ): Roster {
-  if (event.type === "status") {
+  if (event.type === "status" || event.type === "turn") {
+    const apply = <Agent extends TeamAgent>(agent: Agent): Agent =>
+      event.type === "status"
+        ? { ...agent, status: event.status }
+        : { ...agent, turnTasks: event.turnTasks };
     return roster.lead.id === event.agentId
-      ? { ...roster, lead: { ...roster.lead, status: event.status } }
+      ? { ...roster, lead: apply(roster.lead) }
       : {
           ...roster,
           members: roster.members.map((member) =>
-            member.id === event.agentId ? { ...member, status: event.status } : member,
+            member.id === event.agentId ? apply(member) : member,
           ),
         };
   }
