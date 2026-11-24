@@ -674,12 +674,26 @@ the current one, and choosing it again returns to chat. Escape within the focuse
 closes its aside just like the top button and focuses the chat editor once chat is visible.
 If closing a thread leaves chat hidden behind another panel, focus stays on the panel toggle. Dialogs, menus,
 and inputs that consume Escape keep priority; one key press closes only one layer.
+An installed app (any display mode but a browser tab) also toggles a Team pane's panels with
+Ctrl+Shift on Windows/Linux or Cmd+Shift on macOS: O for overview, C for canvas, M for members,
+T for tasks, A for artifacts, R for routines, P for performance, and S for security. App
+windows reserve no browser keys, so the pane claims these; browser tabs keep their commands.
+The panel tooltips and `aria-keyshortcuts` expose these bindings only in an installed app
+and only while the pane is visible; canvas has no binding until it is available.
+A shortcut addresses the Team pane holding focus, including its composer, or else the visible
+Team pane that last held it; the pane root is focusable so clicks anywhere inside keep focus
+there. The window hears the key last, so a control that handles it keeps it, and inputs,
+editable content, menus, and dialogs outside Team panes keep their keys. Focus stays in a chat
+that remains visible; otherwise it moves to the panel bar, so Escape and the next shortcut
+still reach the pane.
 A thread, a
 message search result, or a members or agent reference opens over the panel, and closing it returns
 to the panel. The icon left of the thread's header title closes its thread; the title itself is plain
 text. A normal pane opens
 the panel the Workspace surface remembers in the layout cookie,
-so it persists across reloads and Teams; a compact pane keeps its own and opens on chat.
+so its default persists across reloads and Teams. Each mounted pane keeps its own selection;
+choosing a panel updates that default without changing other open panes. A compact pane
+keeps its own and opens on chat.
 
 In a wide pane, chat and the aside form one resizable panel group divided by the shared
 `ResizableHandle`; a narrow pane hides chat and the divider, so the aside fills it. Each aside

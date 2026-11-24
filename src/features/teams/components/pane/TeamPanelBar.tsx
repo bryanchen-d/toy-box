@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { detectPlatform, formatForDisplay } from "@tanstack/react-hotkeys";
 import {
   Clock3,
   Files,
@@ -16,7 +17,7 @@ import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePan
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/utils";
-import { TEAM_PANELS, type TeamPanel } from "./panels";
+import { TEAM_PANELS, TEAM_PANEL_SHORTCUTS, type TeamPanel } from "./panels";
 
 const PANEL_BUTTONS: Record<TeamPanel, { icon: LucideIcon; label: string }> = {
   overview: { icon: Hash, label: "Overview" },
@@ -37,6 +38,7 @@ export function TeamPanelBar({
   hasCanvas,
   alerts,
   variant,
+  shortcutsEnabled = false,
   onToggle,
   onToggleAside,
 }: {
@@ -47,6 +49,7 @@ export function TeamPanelBar({
   /** Panels holding something that needs the user, such as an unreviewed security finding. */
   alerts: ReadonlySet<TeamPanel>;
   variant: PaneVariant;
+  shortcutsEnabled?: boolean;
   onToggle: (panel: TeamPanel) => void;
   onToggleAside: () => void;
 }) {
@@ -89,6 +92,7 @@ export function TeamPanelBar({
         const unavailable = kind === "canvas" && !hasCanvas;
         const alert = alerts.has(kind);
         const tooltip = unavailable ? "No canvas yet" : alert ? `${label}: needs review` : label;
+        const shortcut = shortcutsEnabled && !unavailable ? TEAM_PANEL_SHORTCUTS[kind] : undefined;
 
         return (
           <Tooltip key={kind}>
@@ -101,6 +105,10 @@ export function TeamPanelBar({
                   aria-label={alert ? `${label}, needs review` : label}
                   aria-pressed={isOpen}
                   aria-disabled={unavailable || undefined}
+                  aria-keyshortcuts={shortcut?.replace(
+                    "Mod",
+                    detectPlatform() === "mac" ? "Meta" : "Control",
+                  )}
                   className={cn(
                     "relative",
                     isOpen ? "bg-muted text-foreground" : "text-muted-foreground",
@@ -122,6 +130,7 @@ export function TeamPanelBar({
             />
             <TooltipContent side="left" sideOffset={6}>
               {tooltip}
+              {shortcut && ` (${formatForDisplay(shortcut)})`}
             </TooltipContent>
           </Tooltip>
         );

@@ -31,6 +31,7 @@ test.each(["normal", "compact"] as const)(
     expect(buttons[2]).toContain('aria-label="Canvas"');
     expect(buttons[2]).toContain('aria-disabled="true"');
     expect(html).not.toContain('aria-pressed="true"');
+    expect(html).not.toContain("aria-keyshortcuts");
   },
 );
 
@@ -61,6 +62,52 @@ test.each([...TEAM_PANELS, "thread"] as const)(
     }
   },
 );
+
+test("installed-app panel shortcuts are exposed only for available panels", () => {
+  const html = renderToStaticMarkup(
+    <TeamPanelBar
+      panel={undefined}
+      asideOpen={false}
+      hasCanvas={false}
+      alerts={new Set()}
+      variant="normal"
+      shortcutsEnabled
+      onToggle={noop}
+      onToggleAside={noop}
+    />,
+  );
+  const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)!;
+
+  expect(buttons[0]).not.toContain("aria-keyshortcuts");
+  expect(buttons[TEAM_PANELS.indexOf("canvas") + 1]).not.toContain("aria-keyshortcuts");
+  expect(buttons[TEAM_PANELS.indexOf("tasks") + 1]).toMatch(
+    /aria-keyshortcuts="(?:Control|Meta)\+Shift\+T"/,
+  );
+  expect(buttons[TEAM_PANELS.indexOf("security") + 1]).toMatch(
+    /aria-keyshortcuts="(?:Control|Meta)\+Shift\+S"/,
+  );
+});
+
+test("an available canvas exposes its installed-app shortcut without losing its selected state", () => {
+  const html = renderToStaticMarkup(
+    <TeamPanelBar
+      panel="canvas"
+      asideOpen
+      hasCanvas
+      alerts={new Set()}
+      variant="compact"
+      shortcutsEnabled
+      onToggle={noop}
+      onToggleAside={noop}
+    />,
+  );
+  const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)!;
+  const canvas = buttons[TEAM_PANELS.indexOf("canvas") + 1]!;
+
+  expect(canvas).toMatch(/aria-keyshortcuts="(?:Control|Meta)\+Shift\+C"/);
+  expect(canvas).toContain('aria-pressed="true"');
+  expect(canvas).not.toContain("aria-disabled");
+});
 
 test("a panel that needs review is marked on its toggle", () => {
   const html = renderToStaticMarkup(
