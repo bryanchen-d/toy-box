@@ -540,17 +540,70 @@ describe("team task edits", () => {
       { type: "assign", taskId: "t1", assigneeId: member.id },
       { type: "add", title: "Verify", assigneeId: team.id },
     ]);
-    await expect(
-      teams.editTasks(member.id, {
-        operations: [{ type: "update", taskId: "t1", patch: { status: "completed" } }],
-      }),
-    ).rejects.toThrow("Only the team lead");
     const { events } = (await teams.deleteMember(member.id))!;
     const [released, verify] = await teams.listTasks(team.id);
     expect(released).not.toHaveProperty("assigneeId");
     expect(verify).toMatchObject({ assigneeId: team.id });
     expect(events[0]).toMatchObject({ type: "task", task: released });
     expect(events.slice(1).map((event) => event.type)).toEqual(["message"]);
+  });
+
+  test("a note posts into its task's thread in the same change, starting the thread once", async () => {
+    const { teams, team, task, edit } = await setup();
+    const first = await edit([
+      { type: "update", taskId: task.id, patch: { status: "in_progress" }, note: "Starting." },
+    ]);
+    const [note, changed] = first.events;
+    expect(note).toMatchObject({
+      type: "message",
+      message: { sender: { type: "agent", agentId: team.id }, content: "Starting." },
+    });
+    const root = note!.type === "message" ? note.message.sequence : 0;
+    expect(note!.type === "message" && note.message.threadSequence).toBeUndefined();
+    expect(changed).toMatchObject({
+      type: "task",
+      task: { id: task.id, status: "in_progress", threadSequence: root },
+    });
+    const { events, opened } = await edit([
+      { type: "update", taskId: task.id, patch: { title: "Review the API" }, note: "Narrowed." },
+      { type: "add", parentId: task.id, title: "Draft", note: "Split out." },
+    ]);
+    expect(events.filter((event) => event.type === "message")).toMatchObject([
+      { message: { content: "Narrowed.", threadSequence: root } },
+      { message: { content: "Split out." } },
+    ]);
+    expect(opened[0]?.threadSequence).toBe(root + 2);
+    expect((await teams.listThread(team.id, root)).map(({ content }) => content)).toEqual([
+      "Starting.",
+      "Narrowed.",
+    ]);
+  });
+
+  test("an assignee edits its own tasks, and only the lead's close completes the list", async () => {
+    const { teams, team, task, edit } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "builder-session", "Builder"));
+    await edit([{ type: "assign", taskId: task.id, assigneeId: member.id }]);
+    const asMember = (operations: EditTeamTasksInput["operations"]) =>
+      teams.editTasks(member.id, { operations });
+    const { opened } = await asMember([
+      { type: "add", parentId: task.id, title: "Draft", note: "Splitting out the draft." },
+      { type: "update", taskId: task.id, patch: { status: "in_review" }, note: "Ready." },
+    ]);
+    expect(opened).toMatchObject([{ id: "t2", assigneeId: member.id }]);
+    await expect(
+      asMember([{ type: "update", taskId: "t2", patch: { status: "completed" } }]),
+    ).rejects.toThrow("Only the lead closes");
+    await expect(asMember([{ type: "remove", taskId: "t2" }])).rejects.toThrow(
+      "Only the lead can remove",
+    );
+    const { events } = await edit([
+      { type: "update", taskId: "t2", patch: { status: "cut" } },
+      { type: "update", taskId: task.id, patch: { status: "completed" }, note: "Shipped." },
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "message",
+      message: { content: { type: "tasks_completed" } },
+    });
   });
 });
 

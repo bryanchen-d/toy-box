@@ -140,8 +140,8 @@ export async function updateTeamFromLead(sessionId: string, input: UpdateTeamInp
   return change.team;
 }
 
-/** Applies a task batch and returns the tasks it opened, numbered by the server. */
-export async function editTeamTasksFromLead(sessionId: string, input: EditTeamTasksInput) {
+/** Applies a task batch with the agent's authority and returns the tasks it opened. */
+export async function editTeamTasksFromAgent(sessionId: string, input: EditTeamTasksInput) {
   const change = await new TeamDatabase(await getStateDatabase()).editTasks(sessionId, input);
   publishTeamChange(change);
   return change.opened;
@@ -370,6 +370,22 @@ export async function readTeamThread(teamId: string, threadSequence: number) {
 export async function readTeamThreadForAgent(sessionId: string, threadSequence: number) {
   const agent = await requireTeamAgent(new TeamDatabase(await getStateDatabase()), sessionId);
   return readTeamThread(agent.teamId, threadSequence);
+}
+
+/** One task's record and its whole thread, read without changing anyone's read position. */
+export async function readTeamTask(teamId: string, taskId: string) {
+  const database = new TeamDatabase(await getStateDatabase());
+  const team = await database.getTeam(teamId);
+  if (!team) throw new Error("Team not found.");
+  const task = (await database.listTasks(team.id)).find(({ id }) => id === taskId);
+  if (!task) throw new Error(`Task "${taskId}" was not found in this team.`);
+  const thread = task.threadSequence ? await database.listThread(team.id, task.threadSequence) : [];
+  return { ...(await readTeam(database, team, thread, false)), task };
+}
+
+export async function readTeamTaskForAgent(sessionId: string, taskId: string) {
+  const agent = await requireTeamAgent(new TeamDatabase(await getStateDatabase()), sessionId);
+  return readTeamTask(agent.teamId, taskId);
 }
 
 async function readTeam(

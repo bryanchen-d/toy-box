@@ -335,31 +335,52 @@ export class TeamDatabase {
   }
 
   /**
-   * Applies an ordered task batch. Opened tasks take the team's next numbers, and each changed or
-   * removed task publishes its own event. The lead's close that completes the list appends
-   * `tasks_completed`.
+   * Applies an ordered task batch with the editing agent's authority. Opened tasks take the team's
+   * next numbers, each note posts into its task's thread (a task without one starts it), and each
+   * changed or removed task publishes its own event. The lead's close that completes the list
+   * appends `tasks_completed`.
    */
-  async editTasks(leadId: string, { operations }: EditTeamTasksInput) {
+  async editTasks(agentId: string, { operations }: EditTeamTasksInput) {
     return inStateTransaction(this.db, async (db) => {
-      const team = await requireLeadTeam(db, leadId);
+      const worker = await requireTeamWorker(db, agentId);
+      const team = await requireTeam(db, worker.teamId);
       const before = await listTasks(db, team.id);
       const [counter] = await db<Pick<TeamRow, "last_task_number">[]>`
         SELECT last_task_number FROM teams WHERE id = ${team.id}
       `;
-      const { tasks, opened, lastTaskNumber } = applyTeamTaskEdits(before, operations, {
-        actor: { type: "agent", agentId: leadId },
+      const { tasks, opened, notes, lastTaskNumber } = applyTeamTaskEdits(before, operations, {
+        editor: { agentId, isLead: isTeamLead(worker) },
         now: new Date().toISOString(),
         lastTaskNumber: counter!.last_task_number,
       });
       await assertTaskReferences(db, team.id, tasks, before);
-      const events: TeamEvent[] = await saveTasks(db, team.id, before, tasks);
+      const events: TeamEvent[] = [];
+      const threaded = new Map(tasks.map((task) => [task.id, task]));
+      for (const { taskId, note } of notes) {
+        const task = threaded.get(taskId)!;
+        const change = await appendMessage(db, team.id, (position) => ({
+          ...position,
+          id: crypto.randomUUID(),
+          sender: { type: "agent" as const, agentId },
+          content: note,
+          ...(task.threadSequence ? { threadSequence: task.threadSequence } : {}),
+        }));
+        events.push(change);
+        if (!task.threadSequence) {
+          threaded.set(taskId, { ...task, threadSequence: change.message.sequence });
+        }
+      }
+      events.push(...(await saveTasks(db, team.id, before, [...threaded.values()])));
       if (lastTaskNumber !== counter!.last_task_number) {
         await db`UPDATE teams SET last_task_number = ${lastTaskNumber} WHERE id = ${team.id}`;
       }
       if (!teamTasksComplete(before) && teamTasksComplete(tasks)) {
         events.push(await appendSystemMessage(db, team.id, { type: "tasks_completed" }));
       }
-      return { ...(await recordTeamChange(db, team, events)), opened };
+      return {
+        ...(await recordTeamChange(db, team, events)),
+        opened: opened.map(({ id }) => threaded.get(id)!),
+      };
     });
   }
 

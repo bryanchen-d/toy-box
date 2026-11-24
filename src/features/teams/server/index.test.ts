@@ -36,7 +36,7 @@ const {
   createTeamMember,
   createTeamMembersFromLead,
   editTeam,
-  editTeamTasksFromLead,
+  editTeamTasksFromAgent,
   finishTeamAgentTurn,
   markTeamRead,
   postTeamMessageFromSession,
@@ -81,10 +81,18 @@ async function openTeams() {
   return new TeamDatabase(database);
 }
 
-async function invokeTool(name: string, input = {}, sessionId = "coordinator") {
-  const tool = [...teamTools, createTeamMembersTool, ...teamMemberTools, ...teamLeadTools].find(
-    (tool) => tool.name === name,
-  ) as Tool | undefined;
+async function invokeTool(
+  name: string,
+  input = {},
+  sessionId = "coordinator",
+  tools: readonly unknown[] = [
+    ...teamTools,
+    createTeamMembersTool,
+    ...teamMemberTools,
+    ...teamLeadTools,
+  ],
+) {
+  const tool = (tools as Tool[]).find((tool) => tool.name === name);
   if (!tool) throw new Error(`Tool not found: ${name}`);
   const result = normalizeToolResult(
     await tool.handler(tool.parameters?.parse(input) ?? input, {
@@ -144,7 +152,7 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
   const { opened } = await teams.editTasks(team.id, {
     operations: [{ type: "add", title: "Ship" }],
   });
-  await editTeamTasksFromLead(team.id, {
+  await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "update", taskId: opened[0]!.id, patch: { status: "completed" } }],
   });
   expect(
@@ -413,6 +421,59 @@ test("agents reply within a thread and read it whole without moving their read p
     ],
     hasMore: false,
   });
+});
+
+test("agents read their queue, open tasks in full, closed ones compactly, and one task's thread", async () => {
+  const teams = await openTeams();
+  const team = await createStoredTeam(teams, { name: "Queue", ...TEAM_DEFAULTS });
+  const { member } = await teams.createMember(teamAgent(team.id, "builder", "Builder"));
+  onTestFinished(() => releaseTeamEvents(team.id));
+  await editTeamTasksFromAgent(team.id, {
+    operations: [
+      { type: "add", title: "Polish", priority: "low", assigneeId: member.id },
+      { type: "add", title: "Build", assigneeId: member.id, note: "Start with the parser." },
+      { type: "add", title: "Fix the crash", priority: "high", assigneeId: member.id },
+      { type: "add", title: "Ship", assigneeId: member.id },
+      { type: "add", title: "Plan", assigneeId: team.id },
+    ],
+  });
+  await editTeamTasksFromAgent(team.id, {
+    operations: [{ type: "update", taskId: "t4", patch: { status: "completed" } }],
+  });
+
+  const read = await invokeTool("read_team", {}, member.id, teamMemberTools);
+  expect(read.yourTasks.map(({ taskId }: { taskId: string }) => taskId)).toEqual([
+    "t3",
+    "t2",
+    "t1",
+  ]);
+  expect(read.tasks[1]).toEqual({
+    taskId: "t2",
+    title: "Build",
+    status: "pending",
+    priority: "normal",
+    assigneeId: member.id,
+    openedBy: team.id,
+    threadSequence: expect.any(Number),
+    openedAt: expect.any(String),
+    updatedAt: expect.any(String),
+  });
+  expect(read.tasks[3]).toEqual({ taskId: "t4", title: "Ship", status: "completed" });
+  expect((await invokeTool("read_team", {}, team.id, teamLeadTools)).yourTasks).toMatchObject([
+    { taskId: "t5" },
+  ]);
+
+  const seenThrough = (await teams.getAgent(member.id))?.seenThrough;
+  expect(await invokeTool("read_team", { taskId: "t2" }, member.id, teamMemberTools)).toMatchObject(
+    { task: { taskId: "t2", title: "Build" }, messages: [{ content: "Start with the parser." }] },
+  );
+  expect((await teams.getAgent(member.id))?.seenThrough).toBe(seenThrough);
+  const session = await invokeTool("read_team", { teamId: team.id, taskId: "t1" });
+  expect(session).toMatchObject({ task: { taskId: "t1" }, messages: [] });
+  expect(session).not.toHaveProperty("yourTasks");
+  await expect(
+    invokeTool("read_team", { taskId: "t9" }, member.id, teamMemberTools),
+  ).rejects.toThrow('Task "t9" was not found');
 });
 
 test("joining starts onboarding before any mention; later assignments use normal delivery", async () => {
@@ -727,7 +788,7 @@ test("a Session can seed and passively read Team context", async () => {
       purpose: "Turn the evidence into a useful recommendation.",
       preview: { kind: "url", url: "http://127.0.0.1:3000" },
     },
-    tasks: [{ id: "t1", title: "Synthesize the evidence", status: "in_progress", ...outcome }],
+    tasks: [{ taskId: "t1", title: "Synthesize the evidence", status: "in_progress", ...outcome }],
     members: [],
     messages: expect.arrayContaining([
       expect.objectContaining({
@@ -869,7 +930,7 @@ test("committed edits and reads replay to the durable view and only a new purpos
   expect(workspaceUpdates).toEqual(["Shipping", "Shipped"]);
 
   const beforeTasks = (await teams.getTeam(team.id))!;
-  await editTeamTasksFromLead(team.id, {
+  await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "add", title: "Verify" }],
   });
   expect(await teams.getTeam(team.id)).toMatchObject({
@@ -886,7 +947,7 @@ test("committed edits and reads replay to the durable view and only a new purpos
   await updateTeamFromLead(team.id, {
     preview: { kind: "url", url: "http://localhost:3000" },
   });
-  await editTeamTasksFromLead(team.id, {
+  await editTeamTasksFromAgent(team.id, {
     operations: [{ type: "update", taskId: "t1", patch: { diff: { added: 3, removed: 1 } } }],
   });
   await editTeam({ teamId: team.id, model });

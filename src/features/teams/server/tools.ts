@@ -11,8 +11,11 @@ import {
   createTeamInputSchema,
   editTeamTasksInputSchema,
   isTeamSystemMessage,
+  isTeamTaskOpen,
   teamHandle,
   teamRoutineIdentitySchema,
+  teamTaskIdSchema,
+  teamTasksByPriority,
   selfUpdateTeamMemberInputSchema,
   setTeamAgentStatusInputSchema,
   setTeamRoutineInputSchema,
@@ -21,6 +24,7 @@ import {
   type TeamAgent,
   type TeamArtifact,
   type TeamMessageAuthor,
+  type TeamTask,
 } from "@teams/model";
 import { workspaceFileId } from "@files/model";
 import { resolveWorkspaceFile } from "@files/server/paths";
@@ -123,25 +127,43 @@ const readThreadParameter = {
     ),
 };
 
+const readTaskParameter = {
+  taskId: teamTaskIdSchema
+    .optional()
+    .describe(
+      "Reads only this task's record and its whole thread, without changing read state. Use it to answer a question about the task.",
+    ),
+};
+
+/** At most one of paging, a thread, or a task narrows a read. */
+const oneReadTarget = ({
+  beforeSequence,
+  threadSequence,
+  taskId,
+}: {
+  beforeSequence?: number;
+  threadSequence?: number;
+  taskId?: string;
+}) => [beforeSequence, threadSequence, taskId].filter((value) => value !== undefined).length <= 1;
+
 const readTeamForSessionTool = defineTool("read_team", {
   description:
-    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. A reply's threadSequence names its thread. Pass threadSequence instead to read one whole thread. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the team ID, purpose, tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and newest 100 messages before an optional sequence without changing read state. Omit beforeSequence for the latest messages. While hasMore is true, continue with the first returned message's sequence. A reply's threadSequence names its thread. Pass threadSequence instead to read one whole thread, or taskId to read one task's record and thread. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: teamIdentitySchema
     .extend({
       beforeSequence: z.number().int().positive().optional(),
       ...readThreadParameter,
+      ...readTaskParameter,
     })
-    .refine(
-      ({ beforeSequence, threadSequence }) =>
-        beforeSequence === undefined || threadSequence === undefined,
-      "Pass either beforeSequence or threadSequence.",
-    ),
-  handler: async ({ teamId, beforeSequence, threadSequence }, invocation) => {
-    const { readTeamForSession, readTeamThread } = await import("@teams/server");
+    .refine(oneReadTarget, "Pass at most one of beforeSequence, threadSequence, or taskId."),
+  handler: async ({ teamId, beforeSequence, threadSequence, taskId }, invocation) => {
+    const { readTeamForSession, readTeamThread, readTeamTask } = await import("@teams/server");
     return toTeamReadToolResult(
-      threadSequence === undefined
-        ? await readTeamForSession(teamId, beforeSequence)
-        : await readTeamThread(teamId, threadSequence),
+      taskId !== undefined
+        ? await readTeamTask(teamId, taskId)
+        : threadSequence !== undefined
+          ? await readTeamThread(teamId, threadSequence)
+          : await readTeamForSession(teamId, beforeSequence),
       invocation.sessionId,
     );
   },
@@ -211,14 +233,19 @@ const waitForTeamAgentsTool = defineTool("wait_for_team_agents", {
 const readTeamForAgentTool = defineTool("read_team", {
   alwaysAvailable: true,
   description:
-    "Reads the team ID, purpose, tasks, URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead. File attachments are absolute paths. Inline uploads are attached images.",
-  parameters: z.object(readThreadParameter),
-  handler: async ({ threadSequence }, invocation) => {
-    const { readTeamForAgent, readTeamThreadForAgent } = await import("@teams/server");
+    "Reads the team ID, purpose, yourTasks (your open tasks, highest priority first), the team's tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead, or taskId to read one task's record and its whole thread; neither changes your read position. File attachments are absolute paths. Inline uploads are attached images.",
+  parameters: z
+    .object({ ...readThreadParameter, ...readTaskParameter })
+    .refine(oneReadTarget, "Pass threadSequence or taskId, not both."),
+  handler: async ({ threadSequence, taskId }, invocation) => {
+    const { readTeamForAgent, readTeamThreadForAgent, readTeamTaskForAgent } =
+      await import("@teams/server");
     return toTeamReadToolResult(
-      threadSequence === undefined
-        ? await readTeamForAgent(invocation.sessionId)
-        : await readTeamThreadForAgent(invocation.sessionId, threadSequence),
+      taskId !== undefined
+        ? await readTeamTaskForAgent(invocation.sessionId, taskId)
+        : threadSequence !== undefined
+          ? await readTeamThreadForAgent(invocation.sessionId, threadSequence)
+          : await readTeamForAgent(invocation.sessionId),
       invocation.sessionId,
     );
   },
@@ -338,11 +365,11 @@ const updateTeamTool = defineTool("update_team", {
 
 const editTeamTasksTool = defineTool("edit_team_tasks", {
   description:
-    "Opens, updates, assigns, moves, closes, or removes this team's tasks in one atomic batch. The server numbers each opened task, such as t12, and returns the new IDs.",
+    "Opens, updates, assigns, moves, closes, or removes any of this team's tasks in one atomic batch. The server numbers each opened task, such as t12, and returns the new IDs. A note posts into the task's thread in the same change. Close a task by setting a closed status: completed, cancelled, deferred, cut, or duplicate (cite the task that covers it in the note). Send a hand-off back with status in_progress and a note. Remove only a task opened by mistake.",
   parameters: editTeamTasksInputSchema,
   handler: async (input, invocation) => {
-    const { editTeamTasksFromLead } = await import("@teams/server");
-    const opened = await editTeamTasksFromLead(invocation.sessionId, input);
+    const { editTeamTasksFromAgent } = await import("@teams/server");
+    const opened = await editTeamTasksFromAgent(invocation.sessionId, input);
     return {
       opened: opened.map(({ id, title, parentId }) => ({
         taskId: id,
@@ -352,6 +379,13 @@ const editTeamTasksTool = defineTool("edit_team_tasks", {
     };
   },
 });
+
+/** The same tool, within the authority an assignee has over its own tasks. */
+const editOwnTasksTool = {
+  ...editTeamTasksTool,
+  description:
+    "Adds subtasks under your own open tasks, assigned to you, and updates your own open tasks, in one atomic batch. The server numbers each new subtask and returns its ID. A note posts into the task's thread in the same change. Set status in_progress while you advance a task, blocked when it can't continue, and in_review to hand it off when your part is done, with a note saying how it should close: completed, or cancelled, deferred, cut, or duplicate and why. Only the lead assigns, moves, closes, or removes tasks: mention the lead in the task's thread to propose new work for another agent, a reassignment, or anything else.",
+};
 
 const finishTeamAgentTurnParameters = z
   .object({
@@ -463,7 +497,7 @@ const shareTeamArtifactFromAgentTool = defineTool("share_team_artifact", {
 });
 
 async function toTeamReadToolResult(
-  result: Awaited<ReturnType<typeof import(".").readTeamForSession>>,
+  result: Awaited<ReturnType<typeof import(".").readTeamForSession>> & { task?: TeamTask },
   readerSessionId: string,
 ) {
   const { listConnectors } = await import("@connectors/server");
@@ -539,6 +573,7 @@ async function toTeamReadToolResult(
       };
     }),
   );
+  const isTeamAgent = [result.lead, ...result.members].some(({ id }) => id === readerSessionId);
   return {
     content: [
       {
@@ -549,7 +584,19 @@ async function toTeamReadToolResult(
           members: result.members.map((member) =>
             agentForTool(member, result.team.id, member.model),
           ),
-          tasks: result.tasks.map(({ position: _position, ...task }) => task),
+          ...(result.task ? { task: taskForTool(result.task) } : {}),
+          ...(isTeamAgent
+            ? {
+                yourTasks: teamTasksByPriority(result.tasks)
+                  .filter((task) => task.assigneeId === readerSessionId && isTeamTaskOpen(task))
+                  .map(taskForTool),
+              }
+            : {}),
+          tasks: result.tasks.map((task) =>
+            isTeamTaskOpen(task)
+              ? taskForTool(task)
+              : { taskId: task.id, title: task.title, status: task.status },
+          ),
           artifacts: result.artifacts.map(artifactForTool),
           routines: result.routines.map(({ id, ...routine }) => ({ routineId: id, ...routine })),
           connectors,
@@ -591,6 +638,15 @@ function teamContextForTool({
     preview,
     canvasArtifactId,
     connectorCoordinators,
+  };
+}
+
+/** A task as agents read it: every field, with the opener as an agentId or "user". */
+function taskForTool({ id, position: _position, openedBy, ...task }: TeamTask) {
+  return {
+    taskId: id,
+    ...task,
+    openedBy: openedBy.type === "agent" ? openedBy.agentId : "user",
   };
 }
 
@@ -675,6 +731,7 @@ export const teamLeadTools = [
 export const teamMemberTools = [
   ...commonTeamAgentTools,
   sendTeamMessageTool,
+  editOwnTasksTool,
   updateMemberTool,
   finishTeamAgentTurnTool,
 ];

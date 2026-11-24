@@ -88,6 +88,18 @@ export function teamTasksForAgent(tasks: readonly TeamTask[], agentId: string): 
   return orderTeamTasks(tasks).filter(({ assigneeId }) => assigneeId === agentId);
 }
 
+const PRIORITY_ORDER: Record<TeamTaskPriority, number> = { high: 0, normal: 1, low: 2 };
+
+/**
+ * A team's tasks in queue order: high priority first, then tree order within each priority.
+ * Pass the whole list, since the tree places subtasks through their parents, then filter it.
+ */
+export function teamTasksByPriority(tasks: readonly TeamTask[]): TeamTask[] {
+  return orderTeamTasks(tasks).sort(
+    (left, right) => PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority],
+  );
+}
+
 /**
  * Sum reported work without storing derived totals: every task in a flat list, or a node with its
  * subtasks when given tree nodes.
@@ -168,6 +180,15 @@ const newTeamTaskSchema = z
   .strict();
 type NewTeamTask = z.output<typeof newTeamTaskSchema>;
 
+const taskNoteSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(3_000)
+  .describe(
+    "Posts into the task's thread in this same change, saying what changed and why. At most 3,000 characters.",
+  );
+
 const taskPatchSchema = z
   .object({
     title: taskTitleSchema.optional(),
@@ -189,6 +210,7 @@ export const editTeamTasksInputSchema = z
             .extend({
               type: z.literal("add"),
               parentId: teamTaskIdSchema.optional().describe("Omit to open a top-level task."),
+              note: taskNoteSchema.optional(),
             })
             .strict()
             .describe("Opens a pending task, numbered by the server, with optional subtasks."),
@@ -199,6 +221,7 @@ export const editTeamTasksInputSchema = z
               patch: taskPatchSchema.describe(
                 "Omitted fields stay unchanged. Null clears an optional field.",
               ),
+              note: taskNoteSchema.optional(),
             })
             .strict(),
           z
@@ -206,6 +229,7 @@ export const editTeamTasksInputSchema = z
               type: z.literal("assign"),
               taskId: teamTaskIdSchema,
               assigneeId: agentIdSchema.nullable().describe("Null leaves the task unassigned."),
+              note: taskNoteSchema.optional(),
             })
             .strict(),
           z
@@ -232,18 +256,28 @@ export const editTeamTasksInputSchema = z
 export type EditTeamTasksInput = z.output<typeof editTeamTasksInputSchema>;
 type TeamTaskEdit = EditTeamTasksInput["operations"][number];
 
+/** The agent editing tasks: the lead edits any task, and an assignee only its own. */
+export type TeamTaskEditor = { agentId: string; isLead: boolean };
+
 /**
- * Applies an ordered batch to a team's tasks and returns the result, the tasks it opened, and the
- * counter after numbering them. Each operation leaves a valid tree; the caller commits only the end.
+ * Applies an ordered batch to a team's tasks and returns the result, the tasks it opened, each
+ * note with the task whose thread it posts into, and the counter after numbering. Each operation
+ * leaves a valid tree; the caller commits only the end.
  */
 export function applyTeamTaskEdits(
   tasks: readonly TeamTask[],
   operations: readonly TeamTaskEdit[],
-  context: { actor: TeamMessageActor; now: string; lastTaskNumber: number },
-): { tasks: TeamTask[]; opened: TeamTask[]; lastTaskNumber: number } {
-  const { actor, now } = context;
+  context: { editor: TeamTaskEditor; now: string; lastTaskNumber: number },
+): {
+  tasks: TeamTask[];
+  opened: TeamTask[];
+  notes: { taskId: string; note: string }[];
+  lastTaskNumber: number;
+} {
+  const { editor, now } = context;
   let lastTaskNumber = context.lastTaskNumber;
   const opened: TeamTask[] = [];
+  const notes: { taskId: string; note: string }[] = [];
   const open = (
     current: TeamTask[],
     parentId: string | undefined,
@@ -256,9 +290,11 @@ export function applyTeamTaskEdits(
       ...(parentId ? { parentId } : {}),
       position: nextPosition(current, parentId),
       ...fields,
+      // An assignee's subtasks are its own.
+      ...(editor.isLead ? {} : { assigneeId: editor.agentId }),
       status: "pending",
       priority,
-      openedBy: actor,
+      openedBy: { type: "agent", agentId: editor.agentId },
       openedAt: now,
       updatedAt: now,
     };
@@ -268,9 +304,16 @@ export function applyTeamTaskEdits(
 
   const result = operations.reduce<TeamTask[]>(
     (current, operation) => {
+      assertAuthority(current, operation, editor);
+      if ("note" in operation && operation.note) {
+        notes.push({
+          taskId: operation.type === "add" ? `t${lastTaskNumber + 1}` : operation.taskId,
+          note: operation.note,
+        });
+      }
       switch (operation.type) {
         case "add": {
-          const { type: _type, parentId, ...task } = operation;
+          const { type: _type, parentId, note: _note, ...task } = operation;
           if (parentId) requireTask(current, parentId);
           return withRoom(open(current, parentId, task), parentId);
         }
@@ -310,14 +353,64 @@ export function applyTeamTaskEdits(
   );
   // Only the end of the batch counts, so a change and its undo leave a task untouched.
   const before = new Map(tasks.map((task) => [task.id, task]));
+  const missing = notes.find(({ taskId }) => !result.some(({ id }) => id === taskId));
+  if (missing) throw new Error(`Task "${missing.taskId}" was removed, so it can't take a note.`);
   return {
     tasks: result.map((task) => {
       const previous = before.get(task.id);
       return previous ? stamp(previous, task, now) : task;
     }),
     opened,
+    notes,
     lastTaskNumber,
   };
+}
+
+/**
+ * The lead edits any task. An assignee adds subtasks, assigned to itself, under its own open tasks
+ * and updates its own open tasks up to handing them off for review; it proposes everything else.
+ */
+function assertAuthority(
+  tasks: readonly TeamTask[],
+  operation: TeamTaskEdit,
+  editor: TeamTaskEditor,
+): void {
+  if (editor.isLead) return;
+  const own = (taskId: string | undefined) => {
+    const task = taskId === undefined ? undefined : requireTask(tasks, taskId);
+    return task?.assigneeId === editor.agentId && isTeamTaskOpen(task);
+  };
+  switch (operation.type) {
+    case "add": {
+      if (!own(operation.parentId)) {
+        throw new Error(
+          "Add subtasks only under your own open tasks. Mention the lead in the task's thread to propose other work.",
+        );
+      }
+      const assignees = (task: NewTeamTask): (string | undefined)[] => [
+        task.assigneeId,
+        ...(task.children ?? []).flatMap(assignees),
+      ];
+      if (assignees(operation).some((id) => id !== undefined && id !== editor.agentId)) {
+        throw new Error(
+          "Your subtasks are assigned to you. Mention the lead in the task's thread to propose work for someone else.",
+        );
+      }
+      return;
+    }
+    case "update":
+      if (!own(operation.taskId)) throw new Error("Update only your own open tasks.");
+      if (operation.patch.status && teamTaskState(operation.patch.status) === "closed") {
+        throw new Error(
+          "Only the lead closes a task. Hand it off with status in_review and say in your note how it should close.",
+        );
+      }
+      return;
+    default:
+      throw new Error(
+        `Only the lead can ${operation.type} tasks. Mention the lead in the task's thread to propose it.`,
+      );
+  }
 }
 
 /** Records when a task changed, and when it closed; reopening clears that. */

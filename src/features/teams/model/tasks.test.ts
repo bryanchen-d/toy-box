@@ -1,10 +1,11 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   applyTeamTaskEdits,
   editTeamTasksInputSchema,
   mentionsTeamTask,
   orderTeamTasks,
   teamTaskState,
+  teamTasksByPriority,
   teamTasksComplete,
   teamTasksDiff,
   teamTasksForAgent,
@@ -12,6 +13,7 @@ import {
   TEAM_TASK_STATUSES,
   type EditTeamTasksInput,
   type TeamTask,
+  type TeamTaskEditor,
   type TeamTaskStatus,
 } from "./tasks";
 import { teamTask as task } from "./testFixtures";
@@ -24,9 +26,10 @@ function edit(
   tasks: readonly TeamTask[],
   operations: EditTeamTasksInput["operations"],
   lastTaskNumber = 0,
+  editor: TeamTaskEditor = { agentId: "team", isLead: true },
 ) {
   return applyTeamTaskEdits(tasks, editTeamTasksInputSchema.parse({ operations }).operations, {
-    actor: lead,
+    editor,
     now: NOW,
     lastTaskNumber,
   });
@@ -196,6 +199,130 @@ test.each([{ id: "t3" }, { assigneeId: "builder" }, { parentId: "t2" }])(
     ).toBe(false);
   },
 );
+
+describe("an assignee's authority", () => {
+  const builder = { agentId: "builder", isLead: false };
+  const tasks = [
+    task("t1", { assigneeId: "builder", status: "in_progress" }),
+    task("t2", { position: 1, assigneeId: "critic" }),
+    task("t3", { position: 2, assigneeId: "builder", status: "completed" }),
+  ];
+  const asBuilder = (operations: EditTeamTasksInput["operations"]) =>
+    edit(tasks, operations, 3, builder);
+
+  test("adds subtasks under its own open tasks, assigned to itself and opened by it", () => {
+    const { opened } = asBuilder([
+      { type: "add", parentId: "t1", title: "Parser", children: [{ title: "Lexer" }] },
+    ]);
+    expect(opened.map(({ id, assigneeId, openedBy }) => [id, assigneeId, openedBy])).toEqual([
+      ["t4", "builder", { type: "agent", agentId: "builder" }],
+      ["t5", "builder", { type: "agent", agentId: "builder" }],
+    ]);
+  });
+
+  test("updates its own open tasks up to handing them off for review", () => {
+    const { tasks: updated } = asBuilder([
+      {
+        type: "update",
+        taskId: "t1",
+        patch: { status: "in_review", diff: { added: 4, removed: 1 } },
+      },
+    ]);
+    expect(byId(updated, "t1")).toMatchObject({
+      status: "in_review",
+      diff: { added: 4, removed: 1 },
+    });
+  });
+
+  test.each<[string, EditTeamTasksInput["operations"][number], string]>([
+    ["open top-level work", { type: "add", title: "Side quest" }, "own open tasks"],
+    ["add under another's task", { type: "add", parentId: "t2", title: "Help" }, "own open tasks"],
+    ["add under a closed task", { type: "add", parentId: "t3", title: "More" }, "own open tasks"],
+    [
+      "assign its subtasks to another",
+      {
+        type: "add",
+        parentId: "t1",
+        title: "Review",
+        children: [{ title: "Check", assigneeId: "critic" }],
+      },
+      "assigned to you",
+    ],
+    [
+      "update another's task",
+      { type: "update", taskId: "t2", patch: { title: "Mine" } },
+      "own open",
+    ],
+    [
+      "reopen a closed task",
+      { type: "update", taskId: "t3", patch: { status: "in_progress" } },
+      "own open",
+    ],
+    [
+      "close its task",
+      { type: "update", taskId: "t1", patch: { status: "completed" } },
+      "Only the lead closes",
+    ],
+    [
+      "cancel its task",
+      { type: "update", taskId: "t1", patch: { status: "cancelled" } },
+      "Only the lead closes",
+    ],
+    [
+      "reassign",
+      { type: "assign", taskId: "t1", assigneeId: "critic" },
+      "Only the lead can assign",
+    ],
+    ["move", { type: "move", taskId: "t1" }, "Only the lead can move"],
+    ["remove", { type: "remove", taskId: "t1" }, "Only the lead can remove"],
+  ])("cannot %s", (_case, operation, error) => {
+    expect(() => asBuilder([operation])).toThrow(error);
+  });
+
+  test("may edit a subtask it opened earlier in the same batch", () => {
+    const { tasks: updated } = asBuilder([
+      { type: "add", parentId: "t1", title: "Parser" },
+      { type: "update", taskId: "t4", patch: { status: "in_progress" } },
+    ]);
+    expect(byId(updated, "t4")?.status).toBe("in_progress");
+  });
+});
+
+test("notes name the task whose thread they post into, including one the batch opens", () => {
+  const { notes } = edit(
+    [task("t1")],
+    [
+      { type: "add", title: "Parser", note: "Split out of t1." },
+      { type: "update", taskId: "t1", patch: { status: "in_progress" }, note: "Starting." },
+      { type: "assign", taskId: "t1", assigneeId: "builder", note: "Yours." },
+    ],
+    1,
+  );
+  expect(notes).toEqual([
+    { taskId: "t2", note: "Split out of t1." },
+    { taskId: "t1", note: "Starting." },
+    { taskId: "t1", note: "Yours." },
+  ]);
+  expect(() =>
+    edit(
+      [task("t1")],
+      [
+        { type: "update", taskId: "t1", patch: { title: "Gone" }, note: "Renamed." },
+        { type: "remove", taskId: "t1" },
+      ],
+    ),
+  ).toThrow("can't take a note");
+});
+
+test("an agent's queue lists high priority first, then tree order", () => {
+  const tasks = [
+    task("t1", { priority: "low" }),
+    task("t2", { position: 1 }),
+    task("t3", { parentId: "t2", priority: "high" }),
+    task("t4", { position: 2, priority: "high" }),
+  ];
+  expect(teamTasksByPriority(tasks).map(({ id }) => id)).toEqual(["t3", "t4", "t2", "t1"]);
+});
 
 test("the tree orders siblings by position and lists parents before their subtasks", () => {
   const tasks = [

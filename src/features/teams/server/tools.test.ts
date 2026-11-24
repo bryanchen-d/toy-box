@@ -36,13 +36,17 @@ test.each([
   ).toEqual(["finish_agent_turn", "read_team", "send_team_message", "set_agent_status"]);
 });
 
-test("only leads receive nonterminal task and routine tools", () => {
-  for (const name of ["update_team", "edit_team_tasks", "set_routine", "delete_routine"]) {
+test("only leads receive nonterminal team and routine tools; assignees edit their own tasks", () => {
+  for (const name of ["update_team", "set_routine", "delete_routine"]) {
     const tool = teamLeadTools.find((tool) => tool.name === name);
     expect(tool).toBeDefined();
     expect(tool?.isTerminal).not.toBe(true);
     expect([...teamMemberTools, ...teamTools].some((tool) => tool.name === name)).toBe(false);
   }
+  for (const tools of [teamLeadTools, teamMemberTools]) {
+    expect(tools.some(({ name }) => name === "edit_team_tasks")).toBe(true);
+  }
+  expect(teamTools.some(({ name }) => name === "edit_team_tasks")).toBe(false);
 });
 
 test("the lead can select or clear a canvas using its shared artifact identity", () => {
