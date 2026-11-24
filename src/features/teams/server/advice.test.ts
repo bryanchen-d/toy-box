@@ -100,12 +100,7 @@ test("applying a move takes members, with their sessions, to a new team led by i
     agentId: "comms",
   });
   await teams.editTasks(build.id, {
-    operations: [
-      {
-        type: "add",
-        task: { id: "t1", title: "Post replies", status: "pending", ownerId: "comms" },
-      },
-    ],
+    operations: [{ type: "add", title: "Post replies", assigneeId: "comms" }],
   });
   const advice = await proposeTeamAdviceFromAgent("auditor", {
     title: "Give Slack its own team",
@@ -119,9 +114,9 @@ test("applying a move takes members, with their sessions, to a new team led by i
   expect(comms).toMatchObject({ teamId: target.id, isLead: false });
   expect((await teams.listMembers(build.id)).map(({ id }) => id)).toEqual(["auditor"]);
   expect(await teams.listRoutines(build.id)).toEqual([]);
-  expect((await teams.getTeam(build.id))?.tasks).toEqual([
-    { id: "t1", title: "Post replies", status: "pending" },
-  ]);
+  const [released] = await teams.listTasks(build.id);
+  expect(released).toMatchObject({ id: "t1", title: "Post replies", status: "pending" });
+  expect(released).not.toHaveProperty("assigneeId");
   expect((await teams.listMessagesAfter(target.id)).map(({ content }) => content)).toEqual([
     { type: "member_joined", member: expect.objectContaining({ id: "comms", teamId: target.id }) },
   ]);

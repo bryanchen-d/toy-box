@@ -2,7 +2,9 @@ import { useRef, useState, type ReactNode } from "react";
 import { Clock3 } from "lucide-react";
 import { AgentAvatar } from "@teams/components/agents/AgentAvatar";
 import {
+  isTeamTaskOpen,
   teamTasksDiff,
+  teamTaskTree,
   type Team,
   type TeamAgent,
   type TeamArtifact,
@@ -29,11 +31,13 @@ const SUMMARY_LIMIT = 3;
 /** What the overview shows: the Team's context, then a summary of each panel that opens it. */
 export function TeamOverviewContent({
   team,
+  tasks,
   artifacts,
   routines,
   onBrowseDirectory,
 }: {
   team: Team;
+  tasks: TeamTask[];
   artifacts: TeamArtifact[];
   routines: TeamRoutine[];
   onBrowseDirectory: () => void;
@@ -41,9 +45,10 @@ export function TeamOverviewContent({
   const { lead, members, presence, openArtifact, openPanel } = useTeamPane();
   const agents = [lead, ...[...members].sort((left, right) => left.name.localeCompare(right.name))];
   const workingCount = agents.filter(({ id }) => presence[id]?.state === "working").length;
-  const completedCount = team.tasks.filter(({ status }) => status === "done").length;
-  const inProgress = allTasks(team.tasks).filter(({ status }) => status === "in_progress");
-  const diff = teamTasksDiff(team.tasks);
+  const topLevel = teamTaskTree(tasks);
+  const closedCount = topLevel.filter((task) => !isTeamTaskOpen(task)).length;
+  const inProgress = tasks.filter(({ status }) => status === "in_progress");
+  const diff = teamTasksDiff(tasks);
   const sharedArtifacts = artifacts.filter(({ archived }) => !archived);
   const [now] = useState(() => new Date());
   const nextRoutine = routines
@@ -93,14 +98,14 @@ export function TeamOverviewContent({
 
       <OverviewSection
         title="Task list"
-        count={`${completedCount}/${team.tasks.length}`}
+        count={`${closedCount}/${topLevel.length}`}
         detail={diff && <TaskDiff diff={diff} />}
         panel="tasks"
         onOpenPanel={openPanel}
       >
-        {team.tasks.length > 0 ? (
+        {topLevel.length > 0 ? (
           <div className="space-y-2">
-            <ProgressBar value={completedCount / team.tasks.length} className="block w-full" />
+            <ProgressBar value={closedCount / topLevel.length} className="block w-full" />
             {inProgress.length > 0 ? (
               <ul className="space-y-1 text-sm text-foreground/90">
                 {inProgress.slice(0, SUMMARY_LIMIT).map((task) => (
@@ -170,10 +175,6 @@ export function TeamOverviewContent({
       </OverviewSection>
     </div>
   );
-}
-
-function allTasks(tasks: readonly TeamTask[]): TeamTask[] {
-  return tasks.flatMap((task) => [task, ...allTasks(task.children ?? [])]);
 }
 
 function OverviewAgentAvatar({ agent }: { agent: TeamAgent }) {

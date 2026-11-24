@@ -15,6 +15,7 @@ import {
   teamHasPendingRequest,
   teamsAddressedBy,
   teamTasksDiff,
+  teamTaskTree,
   resolveTeamAudience,
   type TeamAgent,
   type TeamState,
@@ -78,7 +79,7 @@ export function TeamComposer({
   onShowRequest?: () => void;
 }) {
   const team = state?.team;
-  const diff = teamTasksDiff(team?.tasks ?? []);
+  const diff = teamTasksDiff(state?.tasks ?? []);
   const inThread = threadSequence !== undefined;
   const request = state?.request;
   const needsReply = team ? teamHasPendingRequest(team) : false;
@@ -129,7 +130,7 @@ export function TeamComposer({
           <ComposerTray
             artifacts={artifacts ?? []}
             checklist={teamTaskItems({
-              tasks: team?.tasks ?? [],
+              tasks: teamTaskTree(state?.tasks ?? []),
               owners: agents,
               artifacts: state?.artifacts ?? [],
               onArtifactOpen: ({ file }) => openArtifact(file),

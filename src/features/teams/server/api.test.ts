@@ -160,8 +160,8 @@ test("a reply committed after the durable read cannot advance the snapshot beyon
 
 test("cached reconnects replay before presence; an expired cursor replaces history", async () => {
   const { team, teams } = await openTeam();
-  const changed = await teams.updateTeam(team.id, {
-    tasks: [{ id: "work", title: "Work added while disconnected", status: "pending" }],
+  const changed = await teams.editTasks(team.id, {
+    operations: [{ type: "add", title: "Work added while disconnected" }],
   });
   for (const event of changed.events) publishTeamEvent(team.id, resolveEventResources(event));
   const reads = spyOn(TeamDatabase.prototype, "getSnapshot");
@@ -181,7 +181,7 @@ test("cached reconnects replay before presence; an expired cursor replaces histo
   const expired = observe(team.id, 0);
   expect(await expired.next()).toMatchObject({
     type: "snapshot",
-    state: { team: changed.team },
+    state: { team: changed.team, tasks: changed.opened },
   });
   expect(reads).toHaveBeenCalledTimes(1);
 });

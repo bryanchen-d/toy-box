@@ -7,7 +7,6 @@ const team: Team = {
   name: "Planning",
   paused: false,
   model: { provider: "copilot", name: "default" },
-  tasks: [],
   latestSequence: 2,
   seenThrough: 1,
   requestSequence: null,

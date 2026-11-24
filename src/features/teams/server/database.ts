@@ -4,15 +4,16 @@ import {
   teamAgentMetadataSchema,
   teamHandle,
   isTeamSystemMessage,
-  teamTasksSchema,
   applyTeamTaskEdits,
   applyTeamArtifactArrangement,
+  orderTeamTasks,
   teamTasksComplete,
+  teamTaskPrioritySchema,
+  teamTaskStatusSchema,
   mentionsTeamTask,
   teamSystemMessageContentSchema,
   connectorCoordinatorsSchema,
   TEAM_LEAD_PROFILE,
-  unassignTeamTasks,
   type Team,
   type TeamEvent as ClientTeamEvent,
   type TeamChanges,
@@ -47,6 +48,7 @@ import {
 } from "@teams/model/advice";
 import { applyPatch } from "@teams/model/changes";
 import { previewSchema } from "@/shared/preview";
+import { diffStatsSchema } from "@/shared/diffStats";
 import { connectorOriginSchema } from "@connectors/model";
 import { artifactAppPathSchema } from "@apps/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
@@ -111,7 +113,7 @@ export class TeamDatabase {
       await db`
         INSERT INTO teams ${db({
           id,
-          ...teamColumns({ ...input, paused: false, tasks: [] }),
+          ...teamColumns({ ...input, paused: false }),
           updated_at: lead.createdAt,
         })}
       `;
@@ -197,6 +199,7 @@ export class TeamDatabase {
         revision: row.revision,
         ...teamRoster(await new WorkerDatabase(db).list({ type: "team", teamId })),
         messages: await listMessagesBefore(db, teamId, undefined, messageLimit),
+        tasks: await listTasks(db, teamId),
         artifacts: await listArtifacts(db, teamId),
         routines: await listRoutines(db, teamId),
         advice: await listAdvice(db, teamId),
@@ -296,7 +299,6 @@ export class TeamDatabase {
   async updateTeam(leadId: string, input: UpdateTeamInput) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireLeadTeam(db, leadId);
-      if (input.tasks) await assertTaskReferences(db, team.id, input.tasks);
       if (input.canvasArtifactId) {
         const artifact = (await listArtifacts(db, team.id)).find(
           ({ id }) => id === input.canvasArtifactId,
@@ -328,12 +330,36 @@ export class TeamDatabase {
     });
   }
 
+  async listTasks(teamId: string): Promise<TeamTask[]> {
+    return listTasks(this.db, teamId);
+  }
+
+  /**
+   * Applies an ordered task batch. Opened tasks take the team's next numbers, and each changed or
+   * removed task publishes its own event. The lead's close that completes the list appends
+   * `tasks_completed`.
+   */
   async editTasks(leadId: string, { operations }: EditTeamTasksInput) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireLeadTeam(db, leadId);
-      const tasks = applyTeamTaskEdits(team.tasks, operations);
-      await assertTaskReferences(db, team.id, tasks, team.tasks);
-      return updateTeamFields(db, team, { tasks }, { type: "agent", agentId: leadId });
+      const before = await listTasks(db, team.id);
+      const [counter] = await db<Pick<TeamRow, "last_task_number">[]>`
+        SELECT last_task_number FROM teams WHERE id = ${team.id}
+      `;
+      const { tasks, opened, lastTaskNumber } = applyTeamTaskEdits(before, operations, {
+        actor: { type: "agent", agentId: leadId },
+        now: new Date().toISOString(),
+        lastTaskNumber: counter!.last_task_number,
+      });
+      await assertTaskReferences(db, team.id, tasks, before);
+      const events: TeamEvent[] = await saveTasks(db, team.id, before, tasks);
+      if (lastTaskNumber !== counter!.last_task_number) {
+        await db`UPDATE teams SET last_task_number = ${lastTaskNumber} WHERE id = ${team.id}`;
+      }
+      if (!teamTasksComplete(before) && teamTasksComplete(tasks)) {
+        events.push(await appendSystemMessage(db, team.id, { type: "tasks_completed" }));
+      }
+      return { ...(await recordTeamChange(db, team, events)), opened };
     });
   }
 
@@ -359,18 +385,11 @@ export class TeamDatabase {
       const member = teamMemberFromWorker(worker);
       if (!(await workers.delete(agentId))) return null;
       const team = await requireTeam(db, member.teamId);
-      const { tasks } = team;
-      const unassigned = unassignTeamTasks(tasks, agentId);
-      if (!Bun.deepEquals(unassigned, tasks)) {
-        await db`
-          UPDATE teams SET tasks = ${JSON.stringify(unassigned)} WHERE id = ${member.teamId}
-        `;
-      }
+      const events = await releaseTasks(db, member.teamId, [agentId]);
       const routines = await db<TeamRoutineRow[]>`
         DELETE FROM team_routines WHERE team_id = ${member.teamId} AND agent_id = ${agentId}
         RETURNING id, title, schedule, prompt, agent_id
       `;
-      const events = [];
       for (const routine of routines) {
         events.push(
           await appendSystemMessage(db, member.teamId, {
@@ -415,14 +434,11 @@ export class TeamDatabase {
         moving.push(worker);
       }
 
-      const tasks = moving.reduce(
-        (current, { sessionId }) => unassignTeamTasks(current, sessionId),
-        source.tasks,
+      const sourceEvents = await releaseTasks(
+        db,
+        source.id,
+        moving.map(({ sessionId }) => sessionId),
       );
-      if (!Bun.deepEquals(tasks, source.tasks)) {
-        await db`UPDATE teams SET tasks = ${JSON.stringify(tasks)} WHERE id = ${source.id}`;
-      }
-      const sourceEvents: TeamEvent[] = [];
       const targetEvents: TeamEvent[] = [];
       for (const worker of moving) {
         const routines = await db<TeamRoutineRow[]>`
@@ -1184,9 +1200,7 @@ async function updateTeamFields(
     if (agentId !== (current.connectorCoordinators?.[connectorId] ?? null))
       updates.push({ type: "connector_coordinator_changed", actor, connectorId, agentId });
   }
-  if (!teamTasksComplete(current.tasks) && teamTasksComplete(next.tasks))
-    updates.push({ type: "tasks_completed" });
-  // User edits count as activity; task revisions alone stay quiet.
+  // User edits count as activity.
   const updatedAt = actor.type === "user" ? new Date().toISOString() : current.updatedAt;
   await db`
     UPDATE teams SET ${db({
@@ -1195,13 +1209,6 @@ async function updateTeamFields(
     })}
     WHERE id = ${current.id}
   `;
-  if (!Bun.deepEquals(next.tasks, current.tasks)) {
-    events.push({
-      type: "tasks",
-      revision: await advanceRevision(db, current.id),
-      tasks: next.tasks,
-    });
-  }
   if (!Bun.deepEquals(next.avatar, current.avatar)) {
     events.push({
       type: "avatar",
@@ -1235,7 +1242,6 @@ function teamColumns(
     | "purpose"
     | "directory"
     | "model"
-    | "tasks"
     | "preview"
     | "canvasArtifactId"
     | "connectorCoordinators"
@@ -1248,7 +1254,6 @@ function teamColumns(
     purpose: team.purpose ?? null,
     directory: team.directory ?? null,
     model: JSON.stringify(team.model),
-    tasks: JSON.stringify(team.tasks),
     preview: team.preview ? JSON.stringify(team.preview) : null,
     canvas_artifact_id: team.canvasArtifactId ?? null,
     connector_coordinators: JSON.stringify(team.connectorCoordinators ?? {}),
@@ -1559,7 +1564,7 @@ type TeamRow = {
   paused: number;
   directory: string | null;
   model: string;
-  tasks: string;
+  last_task_number: number;
   preview: string | null;
   canvas_artifact_id: string | null;
   connector_coordinators: string;
@@ -1621,7 +1626,6 @@ function teamFromRow(row: TeamRow): Team {
     ...(row.purpose ? { purpose: row.purpose } : {}),
     ...(row.directory ? { directory: row.directory } : {}),
     model: modelConfigurationSchema.parse(JSON.parse(row.model)),
-    tasks: teamTasksSchema.parse(JSON.parse(row.tasks)),
     ...(row.preview ? { preview: previewSchema.parse(JSON.parse(row.preview)) } : {}),
     ...(row.canvas_artifact_id ? { canvasArtifactId: row.canvas_artifact_id } : {}),
     ...(Object.keys(coordinators).length ? { connectorCoordinators: coordinators } : {}),
@@ -1771,11 +1775,15 @@ function reactionsByMessage(rows: TeamReactionRow[]): Map<number, TeamReaction[]
   return reactions;
 }
 
+/**
+ * New or changed assignees and artifacts must be current, while an unchanged stale reference
+ * never blocks unrelated progress.
+ */
 async function assertTaskReferences(
   db: Bun.SQL,
   teamId: string,
   tasks: readonly TeamTask[],
-  previousTasks: readonly TeamTask[] = [],
+  previousTasks: readonly TeamTask[],
 ): Promise<void> {
   const [agents, artifacts] = await Promise.all([
     new WorkerDatabase(db).list({ type: "team", teamId }),
@@ -1783,29 +1791,141 @@ async function assertTaskReferences(
   ]);
   const agentIds = new Set(agents.map(({ sessionId }) => sessionId));
   const artifactIds = new Set(artifacts.map(({ id }) => id));
-  const previous = new Map<string, TeamTask>();
-  const indexPrevious = (tasks: readonly TeamTask[]) => {
-    for (const task of tasks) {
-      previous.set(task.id, task);
-      if (task.children) indexPrevious(task.children);
+  const previous = new Map(previousTasks.map((task) => [task.id, task]));
+  for (const task of tasks) {
+    const before = previous.get(task.id);
+    if (
+      task.assigneeId &&
+      task.assigneeId !== before?.assigneeId &&
+      !agentIds.has(task.assigneeId)
+    ) {
+      throw new Error("Assign tasks to the team lead or a current member.");
     }
-  };
-  indexPrevious(previousTasks);
-  const visit = (tasks: readonly TeamTask[]) => {
-    for (const task of tasks) {
-      const before = previous.get(task.id);
-      if (task.ownerId && task.ownerId !== before?.ownerId && !agentIds.has(task.ownerId)) {
-        throw new Error("Task owners must be the team lead or a current member.");
-      }
-      if (
-        task.artifactId &&
-        task.artifactId !== before?.artifactId &&
-        !artifactIds.has(task.artifactId)
-      ) {
-        throw new Error(`Task "${task.id}" must reference an artifact shared in this team.`);
-      }
-      if (task.children) visit(task.children);
+    if (
+      task.artifactId &&
+      task.artifactId !== before?.artifactId &&
+      !artifactIds.has(task.artifactId)
+    ) {
+      throw new Error(`Task "${task.id}" must reference an artifact shared in this team.`);
     }
-  };
-  visit(tasks);
+  }
 }
+
+/** A team's tasks in tree order: each parent before its subtasks, siblings in order. */
+async function listTasks(db: Bun.SQL, teamId: string): Promise<TeamTask[]> {
+  const rows = await db<TeamTaskRow[]>`SELECT * FROM team_tasks WHERE team_id = ${teamId}`;
+  return orderTeamTasks(rows.map(taskFromRow));
+}
+
+/** Persists the difference between two task lists, publishing one event per task it changes. */
+async function saveTasks(
+  db: Bun.SQL,
+  teamId: string,
+  before: readonly TeamTask[],
+  after: readonly TeamTask[],
+): Promise<TeamEvent[]> {
+  const previous = new Map(before.map((task) => [task.id, task]));
+  const kept = new Set(after.map(({ id }) => id));
+  const events: TeamEvent[] = [];
+  // Parents first, so each subtask's parent exists when the subtask is written.
+  for (const task of orderTeamTasks(after)) {
+    const current = previous.get(task.id);
+    if (Bun.deepEquals(current, task)) continue;
+    if (current) {
+      await db`
+        UPDATE team_tasks SET ${db(taskColumns(task))}
+        WHERE team_id = ${teamId} AND id = ${task.id}
+      `;
+    } else {
+      await db`
+        INSERT INTO team_tasks ${db({ team_id: teamId, id: task.id, ...taskColumns(task) })}
+      `;
+    }
+    events.push({ type: "task", task, revision: await advanceRevision(db, teamId) });
+  }
+  // Subtasks first, so no client ever holds a subtask whose parent is gone.
+  for (const { id } of orderTeamTasks(before).reverse()) {
+    if (kept.has(id)) continue;
+    await db`DELETE FROM team_tasks WHERE team_id = ${teamId} AND id = ${id}`;
+    events.push({ type: "task_removed", taskId: id, revision: await advanceRevision(db, teamId) });
+  }
+  return events;
+}
+
+/** A member leaving the team releases every task assigned to it. */
+async function releaseTasks(
+  db: Bun.SQL,
+  teamId: string,
+  agentIds: readonly string[],
+): Promise<TeamEvent[]> {
+  const updatedAt = new Date().toISOString();
+  const events: TeamEvent[] = [];
+  for (const agentId of agentIds) {
+    const rows = await db<TeamTaskRow[]>`
+      UPDATE team_tasks SET assignee_id = NULL, updated_at = ${updatedAt}
+      WHERE team_id = ${teamId} AND assignee_id = ${agentId}
+      RETURNING *
+    `;
+    for (const task of orderTeamTasks(rows.map(taskFromRow))) {
+      events.push({ type: "task", task, revision: await advanceRevision(db, teamId) });
+    }
+  }
+  return events;
+}
+
+function taskColumns(task: TeamTask) {
+  return {
+    parent_id: task.parentId ?? null,
+    position: task.position,
+    title: task.title,
+    description: task.description ?? null,
+    status: task.status,
+    priority: task.priority,
+    assignee_id: task.assigneeId ?? null,
+    opened_by: task.openedBy.type === "agent" ? task.openedBy.agentId : null,
+    artifact_id: task.artifactId ?? null,
+    diff: task.diff ? JSON.stringify(task.diff) : null,
+    thread_sequence: task.threadSequence ?? null,
+    opened_at: task.openedAt,
+    updated_at: task.updatedAt,
+    closed_at: task.closedAt ?? null,
+  };
+}
+
+function taskFromRow(row: TeamTaskRow): TeamTask {
+  return {
+    id: row.id,
+    ...(row.parent_id === null ? {} : { parentId: row.parent_id }),
+    position: row.position,
+    title: row.title,
+    ...(row.description === null ? {} : { description: row.description }),
+    status: teamTaskStatusSchema.parse(row.status),
+    priority: teamTaskPrioritySchema.parse(row.priority),
+    ...(row.assignee_id === null ? {} : { assigneeId: row.assignee_id }),
+    openedBy: row.opened_by === null ? { type: "user" } : { type: "agent", agentId: row.opened_by },
+    ...(row.artifact_id === null ? {} : { artifactId: row.artifact_id }),
+    ...(row.diff === null ? {} : { diff: diffStatsSchema.parse(JSON.parse(row.diff)) }),
+    ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
+    openedAt: row.opened_at,
+    updatedAt: row.updated_at,
+    ...(row.closed_at === null ? {} : { closedAt: row.closed_at }),
+  };
+}
+
+type TeamTaskRow = {
+  id: string;
+  parent_id: string | null;
+  position: number;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assignee_id: string | null;
+  opened_by: string | null;
+  artifact_id: string | null;
+  diff: string | null;
+  thread_sequence: number | null;
+  opened_at: string;
+  updated_at: string;
+  closed_at: string | null;
+};

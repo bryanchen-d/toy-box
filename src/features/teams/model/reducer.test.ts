@@ -9,6 +9,7 @@ import {
   type TeamState,
 } from ".";
 import { mergeTeamMessages, reduceTeamState } from "./reducer";
+import { teamTask } from "./testFixtures";
 
 const message = (sequence: number): TeamConversationMessage => ({
   id: `message-${sequence}`,
@@ -25,7 +26,6 @@ function snapshot(): TeamState {
       name: "Studio",
       paused: false,
       model: { provider: "codex", name: "gpt-5.5" },
-      tasks: [],
       latestSequence: 101,
       seenThrough: 0,
       requestSequence: null,
@@ -36,6 +36,7 @@ function snapshot(): TeamState {
     lead: teamLead("team"),
     members: [],
     messages: [message(1), message(101)],
+    tasks: [],
     artifacts: [],
     routines: [],
     advice: [],
@@ -80,25 +81,33 @@ test("pause and resume replay to the same team state without changing attention"
   expect(resumed.messages).toHaveLength(previous.messages.length + 2);
 });
 
-test("quiet tasks and model changes advance the cursor without creating transcript activity", () => {
+test("quiet task and model changes advance the cursor without creating transcript activity", () => {
   const previous = snapshot();
   previous.team.requestSequence = 100;
   previous.team.completedSequence = 101;
-  const tasks = [
-    {
-      id: "build",
-      title: "Build",
-      status: "in_progress" as const,
-      artifactId: "machine:/workspace/design.md",
-      diff: { added: 12, removed: 3 },
-    },
-  ];
-  const tasked = reduceTeamState(previous, { type: "tasks", revision: 102, tasks });
-  expect(tasked.team).toEqual({ ...previous.team, tasks });
-  expect(tasked.messages).toBe(previous.messages);
+  const build = teamTask("t1", {
+    title: "Build",
+    status: "in_progress",
+    artifactId: "machine:/workspace/design.md",
+    diff: { added: 12, removed: 3 },
+  });
+  const review = teamTask("t2", { parentId: "t1", title: "Review" });
+  const opened = [build, review].reduce(
+    (state, task, index) => reduceTeamState(state, { type: "task", revision: 102 + index, task }),
+    previous,
+  );
+  expect(opened.tasks).toEqual([build, review]);
+  expect(opened.team).toBe(previous.team);
+  expect(opened.messages).toBe(previous.messages);
+  const closed = { ...build, status: "completed" as const };
+  const tasked = reduceTeamState(
+    reduceTeamState(opened, { type: "task", revision: 104, task: closed }),
+    { type: "task_removed", revision: 105, taskId: review.id },
+  );
+  expect(tasked.tasks).toEqual([closed]);
   const event = {
     type: "model" as const,
-    revision: 103,
+    revision: 106,
     model: { provider: "codex" as const, name: "gpt-5.5-mini" },
     updatedAt: "2026-10-03T21:00:00.000Z",
   };
@@ -108,7 +117,7 @@ test("quiet tasks and model changes advance the cursor without creating transcri
     model: event.model,
     updatedAt: event.updatedAt,
   });
-  expect(changed.revision).toBe(103);
+  expect(changed.revision).toBe(106);
   expect(changed.messages).toBe(previous.messages);
   for (const revision of [event.revision, event.revision - 1]) {
     expect(reduceTeamState(changed, { ...event, revision })).toBe(changed);
@@ -315,39 +324,14 @@ test("presence replaces the reconnect baseline or merges sparse live changes wit
   expect(live.team).toBe(previous.team);
 });
 
-test("member departure removes its presence and recursively releases task ownership", () => {
+test("member departure removes its presence", () => {
   const member = { teamId: "team", id: "reviewer", name: "Reviewer" };
-  const outcome = { artifactId: "session:reviewer:review.md", diff: { added: 12, removed: 3 } };
   const previous = snapshot();
   previous.members = [member];
   previous.presence[member.id] = { state: "working" };
-  previous.team.tasks = [
-    {
-      id: "release",
-      title: "Release",
-      status: "in_progress",
-      ownerId: member.id,
-      children: [
-        { id: "review", title: "Review", status: "pending", ownerId: member.id, ...outcome },
-        { id: "ship", title: "Ship", status: "pending", ownerId: "team" },
-      ],
-    },
-  ];
   const departed = reduceTeamState(previous, system(102, { type: "member_left", member }));
   expect(departed.members).toEqual([]);
   expect(departed.presence).toEqual({ team: { state: "idle" } });
-  expect(departed.team.tasks).toEqual([
-    {
-      id: "release",
-      title: "Release",
-      status: "in_progress",
-      children: [
-        { id: "review", title: "Review", status: "pending", ...outcome },
-        { id: "ship", title: "Ship", status: "pending", ownerId: "team" },
-      ],
-    },
-  ]);
-  expect(previous.team.tasks[0]!.ownerId).toBe(member.id);
 });
 
 test("local posts preserve server cursors and reconcile by identity across interleaved commits", () => {

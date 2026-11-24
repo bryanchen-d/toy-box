@@ -1,6 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import { ListChecks, ListTodo, LoaderCircle } from "lucide-react";
-import { teamTasksDiff, type Team, type TeamArtifact, type TeamTask } from "@teams/model";
+import {
+  isTeamTaskOpen,
+  teamTasksDiff,
+  teamTaskTree,
+  type TeamArtifact,
+  type TeamTask,
+} from "@teams/model";
 import { findTeamTaskMessage } from "@teams/server/functions";
 import { Badge } from "@/shared/ui/badge";
 import { Checklist, type ChecklistFilter } from "@/shared/ui/checklist";
@@ -35,12 +41,12 @@ const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })
  * opens the newest message that cites its ID.
  */
 export function TeamTasks({
-  team,
+  tasks,
   artifacts,
   view,
   onViewChange,
 }: {
-  team: Team;
+  tasks: TeamTask[];
   artifacts: TeamArtifact[];
   view: TaskView;
   onViewChange: (view: TaskView) => void;
@@ -52,15 +58,16 @@ export function TeamTasks({
       if (location) openMessage(location);
     },
   });
-  const completedCount = team.tasks.filter(({ status }) => status === "done").length;
-  const diff = teamTasksDiff(team.tasks);
+  const tree = teamTaskTree(tasks);
+  const closedCount = tree.filter((task) => !isTeamTaskOpen(task)).length;
+  const diff = teamTasksDiff(tasks);
   const { show, empty } = VIEWS.find(({ value }) => value === view)!;
 
   return (
     <section aria-label="Task list" className="flex h-full min-h-0 min-w-0 flex-col bg-panel">
       <TeamPanelHeader icon={ListChecks} title="Task list">
         <Badge variant="count">
-          {completedCount}/{team.tasks.length}
+          {closedCount}/{tree.length}
         </Badge>
         {diff && <TaskDiff diff={diff} />}
         <div className="ml-auto">
@@ -78,10 +85,10 @@ export function TeamTasks({
             Unable to find a message about {lookup.variables?.id}: {lookup.error.message}
           </p>
         )}
-        {team.tasks.length > 0 ? (
+        {tree.length > 0 ? (
           <Checklist
             items={teamTaskItems({
-              tasks: team.tasks,
+              tasks: tree,
               owners: agents,
               artifacts,
               onArtifactOpen: (artifact) => openArtifact(artifact.file),

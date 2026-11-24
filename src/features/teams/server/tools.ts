@@ -328,7 +328,7 @@ const setTeamStatusTool = defineTool("set_agent_status", {
 
 const updateTeamTool = defineTool("update_team", {
   description:
-    "Updates this team's name, icon (avatar), purpose, working directory, tasks, preview, canvas, or connector coordinators. Only the lead can update it. Design an avatar as SVG path data and a background color; use this same field to replace it when asked for a new team icon. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_team_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set connectorCoordinators to the complete map from connectorId (from read_team's connectors) to the agentId of the team agent that coordinates that connector: its messages then wake that agent instead of you, unless they mention agents or answer an agent's own message. Set avatar, purpose, directory, preview, canvasArtifactId, or connectorCoordinators to null to clear it.",
+    "Updates this team's name, icon (avatar), purpose, working directory, preview, canvas, or connector coordinators. Only the lead can update it. Design an avatar as SVG path data and a background color; use this same field to replace it when asked for a new team icon. Use an existing absolute directory, which applies to all agents at their next execution. Use edit_team_tasks for tasks. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. For an interactive canvas, create a session .toy app using the create-agent-teams-app skill, validate it, share_team_artifact, then set canvasArtifactId to its artifactId. A canvas is trusted app code, not a sandbox or an approval engine; distinguish request delivery from completed work and surface failures. Set connectorCoordinators to the complete map from connectorId (from read_team's connectors) to the agentId of the team agent that coordinates that connector: its messages then wake that agent instead of you, unless they mention agents or answer an agent's own message. Set avatar, purpose, directory, preview, canvasArtifactId, or connectorCoordinators to null to clear it.",
   parameters: updateTeamInputSchema,
   handler: async (args, invocation) => {
     const { updateTeamFromLead } = await import("@teams/server");
@@ -338,19 +338,17 @@ const updateTeamTool = defineTool("update_team", {
 
 const editTeamTasksTool = defineTool("edit_team_tasks", {
   description:
-    "Adds, updates, removes, or moves this team's tasks by stable ID in one atomic batch. Returns targeted task IDs without repeating the tree.",
+    "Opens, updates, assigns, moves, closes, or removes this team's tasks in one atomic batch. The server numbers each opened task, such as t12, and returns the new IDs.",
   parameters: editTeamTasksInputSchema,
   handler: async (input, invocation) => {
     const { editTeamTasksFromLead } = await import("@teams/server");
-    await editTeamTasksFromLead(invocation.sessionId, input);
+    const opened = await editTeamTasksFromLead(invocation.sessionId, input);
     return {
-      taskIds: [
-        ...new Set(
-          input.operations.map((operation) =>
-            operation.type === "add" ? operation.task.id : operation.taskId,
-          ),
-        ),
-      ],
+      opened: opened.map(({ id, title, parentId }) => ({
+        taskId: id,
+        title,
+        ...(parentId ? { parentId } : {}),
+      })),
     };
   },
 });
@@ -551,6 +549,7 @@ async function toTeamReadToolResult(
           members: result.members.map((member) =>
             agentForTool(member, result.team.id, member.model),
           ),
+          tasks: result.tasks.map(({ position: _position, ...task }) => task),
           artifacts: result.artifacts.map(artifactForTool),
           routines: result.routines.map(({ id, ...routine }) => ({ routineId: id, ...routine })),
           connectors,
@@ -573,7 +572,6 @@ function teamContextForTool({
   avatar,
   purpose,
   directory,
-  tasks,
   preview,
   canvasArtifactId,
   connectorCoordinators,
@@ -590,7 +588,6 @@ function teamContextForTool({
     directory,
     paused,
     model,
-    tasks,
     preview,
     canvasArtifactId,
     connectorCoordinators,

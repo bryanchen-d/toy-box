@@ -1,73 +1,100 @@
 import { z } from "zod";
 import { diffStatsSchema, type DiffStats } from "@/shared/diffStats";
+import type { TeamMessageActor } from ".";
 import { applyPatch, hasChanges } from "./changes";
 
-const taskIdSchema = z.string().trim().min(1).max(255);
+/**
+ * Every task is open or closed, and its status says how. This grouping is the one place that
+ * decides which, so filters, counts, and wakes never disagree with a task's status.
+ */
+export const TEAM_TASK_STATUSES = {
+  open: ["pending", "in_progress", "blocked", "in_review"],
+  closed: ["completed", "cancelled", "deferred", "cut", "duplicate"],
+} as const;
 
-export const teamTaskSchema = z
-  .object({
-    id: taskIdSchema.describe(
-      "A short stable ID unique within the team, such as t1 or t12. Preserve it when editing.",
-    ),
-    title: z.string().trim().min(1).max(240).describe("A concise outcome or next step."),
-    status: z.enum(["pending", "in_progress", "blocked", "done"]),
-    ownerId: z
-      .string()
-      .trim()
-      .min(1)
-      .max(255)
-      .optional()
-      .describe("The team lead ID or current member ID responsible for the task."),
-    artifactId: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "The artifactId of this task's own outcome, returned by sharing or reading an artifact in this team. Do not copy subtask artifact references to a parent.",
-      ),
-    diff: diffStatsSchema
-      .optional()
-      .describe(
-        "Measured lines directly attributed to this task. Exclude subtask counts; parent totals are computed automatically.",
-      ),
-    get children() {
-      return z.array(teamTaskSchema).max(50).optional().describe("Optional subtasks.");
-    },
-  })
-  .strict();
+export type TeamTaskState = keyof typeof TEAM_TASK_STATUSES;
+export const teamTaskStatusSchema = z.enum([
+  ...TEAM_TASK_STATUSES.open,
+  ...TEAM_TASK_STATUSES.closed,
+]);
+export type TeamTaskStatus = z.output<typeof teamTaskStatusSchema>;
+export const teamTaskPrioritySchema = z.enum(["high", "normal", "low"]);
+export type TeamTaskPriority = z.output<typeof teamTaskPrioritySchema>;
 
-export type TeamTask = z.output<typeof teamTaskSchema>;
-
-export const teamTasksSchema = z
-  .array(teamTaskSchema)
-  .max(50)
-  .superRefine((tasks, context) => {
-    const ids = new Set<string>();
-    const visit = (tasks: readonly TeamTask[], path: (string | number)[]) => {
-      tasks.forEach((task, index) => {
-        if (ids.has(task.id)) {
-          context.addIssue({
-            code: "custom",
-            message: `Task ID "${task.id}" is already in use in this team.`,
-            path: [...path, index, "id"],
-          });
-        }
-        ids.add(task.id);
-        if (task.children) visit(task.children, [...path, index, "children"]);
-      });
-    };
-    visit(tasks, []);
-  });
-
-export function teamTasksForAgent(tasks: readonly TeamTask[], agentId: string): TeamTask[] {
-  return tasks.flatMap((task) => [
-    ...(task.ownerId === agentId ? [task] : []),
-    ...teamTasksForAgent(task.children ?? [], agentId),
-  ]);
+export function teamTaskState(status: TeamTaskStatus): TeamTaskState {
+  return (TEAM_TASK_STATUSES.closed as readonly TeamTaskStatus[]).includes(status)
+    ? "closed"
+    : "open";
 }
 
-/** Sum reported work across task trees without storing derived totals. */
-export function teamTasksDiff(tasks: readonly TeamTask[]): DiffStats | undefined {
+export function isTeamTaskOpen({ status }: Pick<TeamTask, "status">): boolean {
+  return teamTaskState(status) === "open";
+}
+
+/** One unit of the team's work. The server numbers, stamps, and orders it; agents set judgment. */
+export type TeamTask = {
+  /** `t<N>` from the team's counter, which never reuses a number; older IDs keep their text. */
+  id: string;
+  /** The task this one decomposes. */
+  parentId?: string;
+  /** Order among its siblings, ascending. */
+  position: number;
+  title: string;
+  /** Markdown: an overview, why, the approach, and alternatives. Deeper design links a brief. */
+  description?: string;
+  status: TeamTaskStatus;
+  priority: TeamTaskPriority;
+  /** The one agent directly responsible for it. */
+  assigneeId?: string;
+  openedBy: TeamMessageActor;
+  /** The `id` of the shared artifact this task produced. */
+  artifactId?: string;
+  /** Measured lines directly attributed to this task; totals derive from descendants. */
+  diff?: DiffStats;
+  /** The root of the task's thread, once it has one. */
+  threadSequence?: number;
+  openedAt: string;
+  updatedAt: string;
+  closedAt?: string;
+};
+
+/** A task with its subtasks, in sibling order, as lists present it. */
+export type TeamTaskNode = TeamTask & { children: TeamTaskNode[] };
+
+/** Arrange a team's tasks into their tree, each sibling list in order. */
+export function teamTaskTree(tasks: readonly TeamTask[]): TeamTaskNode[] {
+  const children = new Map<string | undefined, TeamTask[]>();
+  for (const task of tasks) {
+    const siblings = children.get(task.parentId) ?? [];
+    siblings.push(task);
+    children.set(task.parentId, siblings);
+  }
+  const build = (parentId: string | undefined): TeamTaskNode[] =>
+    (children.get(parentId) ?? [])
+      .sort((left, right) => left.position - right.position)
+      .map((task) => ({ ...task, children: build(task.id) }));
+  return build(undefined);
+}
+
+/** Every task in tree order: each parent before its subtasks, siblings in order. */
+export function orderTeamTasks(tasks: readonly TeamTask[]): TeamTask[] {
+  const flatten = (nodes: readonly TeamTaskNode[]): TeamTask[] =>
+    nodes.flatMap(({ children, ...task }) => [task, ...flatten(children)]);
+  return flatten(teamTaskTree(tasks));
+}
+
+/** The tasks assigned to an agent, in tree order. */
+export function teamTasksForAgent(tasks: readonly TeamTask[], agentId: string): TeamTask[] {
+  return orderTeamTasks(tasks).filter(({ assigneeId }) => assigneeId === agentId);
+}
+
+/**
+ * Sum reported work without storing derived totals: every task in a flat list, or a node with its
+ * subtasks when given tree nodes.
+ */
+export function teamTasksDiff(
+  tasks: readonly { diff?: DiffStats; children?: readonly TeamTaskNode[] }[],
+): DiffStats | undefined {
   return tasks
     .flatMap(({ diff, children = [] }) => [diff, teamTasksDiff(children)])
     .reduce<DiffStats | undefined>((total, diff) => {
@@ -79,128 +106,13 @@ export function teamTasksDiff(tasks: readonly TeamTask[]): DiffStats | undefined
     }, undefined);
 }
 
-const taskPatchSchema = teamTaskSchema
-  .omit({ id: true, children: true })
-  .partial()
-  .extend({
-    ownerId: teamTaskSchema.shape.ownerId.nullable(),
-    artifactId: teamTaskSchema.shape.artifactId.nullable(),
-    diff: teamTaskSchema.shape.diff.nullable(),
-  })
-  .refine(hasChanges, { message: "Change at least one task field." });
-
-export const editTeamTasksInputSchema = z
-  .object({
-    operations: z
-      .array(
-        z.discriminatedUnion("type", [
-          z
-            .object({
-              type: z.literal("add"),
-              parentId: taskIdSchema.optional().describe("Omit to append a top-level task."),
-              task: teamTaskSchema,
-            })
-            .strict(),
-          z
-            .object({
-              type: z.literal("update"),
-              taskId: taskIdSchema,
-              patch: taskPatchSchema.describe(
-                "Omitted fields and children stay unchanged. Null clears an optional field.",
-              ),
-            })
-            .strict(),
-          z.object({ type: z.literal("remove"), taskId: taskIdSchema }).strict(),
-          z
-            .object({
-              type: z.literal("move"),
-              taskId: taskIdSchema,
-              parentId: taskIdSchema.optional().describe("Omit to append a top-level task."),
-            })
-            .strict()
-            .describe(
-              "Move the existing subtree intact. Its new parent must be outside that subtree.",
-            ),
-        ]),
-      )
-      .min(1)
-      .describe("Applied in order as one atomic edit. Removing a task removes its subtree."),
-  })
-  .strict();
-
-export type EditTeamTasksInput = z.output<typeof editTeamTasksInputSchema>;
-
-/** Each operation preserves a valid tree; the caller commits only the final result. */
-export function applyTeamTaskEdits(
-  tasks: readonly TeamTask[],
-  operations: EditTeamTasksInput["operations"],
-): TeamTask[] {
-  return operations.reduce<TeamTask[]>(
-    (current, operation) => {
-      switch (operation.type) {
-        case "add":
-        case "move": {
-          const inserted = operation.type === "add" ? [operation.task] : [];
-          // Detaching first makes self and descendant destinations unreachable.
-          const remaining =
-            operation.type === "move"
-              ? changeTask(current, operation.taskId, (task) => {
-                  inserted.push(task);
-                  return null;
-                })
-              : current;
-          return teamTasksSchema.parse(
-            operation.parentId
-              ? changeTask(remaining, operation.parentId, (parent) => ({
-                  ...parent,
-                  children: [...(parent.children ?? []), ...inserted],
-                }))
-              : [...remaining, ...inserted],
-          );
-        }
-        case "update":
-          return changeTask(current, operation.taskId, (task) => applyPatch(task, operation.patch));
-        case "remove":
-          return changeTask(current, operation.taskId, () => null);
-      }
-    },
-    [...tasks],
-  );
-}
-
-function changeTask(
-  tasks: readonly TeamTask[],
-  taskId: string,
-  change: (task: TeamTask) => TeamTask | null,
-): TeamTask[] {
-  let found = false;
-  const visit = (tasks: readonly TeamTask[]): TeamTask[] =>
-    tasks.flatMap((task) => {
-      if (task.id === taskId) {
-        found = true;
-        const next = change(task);
-        return next ? [next] : [];
-      }
-      return [task.children ? { ...task, children: visit(task.children) } : task];
-    });
-  const next = visit(tasks);
-  if (!found) throw new Error(`Task "${taskId}" was not found in this team.`);
-  return next;
-}
-
-export function unassignTeamTasks(tasks: readonly TeamTask[], agentId: string): TeamTask[] {
-  return tasks.map(({ ownerId, children, ...task }) => ({
-    ...task,
-    ...(ownerId && ownerId !== agentId ? { ownerId } : {}),
-    ...(children ? { children: unassignTeamTasks(children, agentId) } : {}),
-  }));
-}
-
-/** A task list is complete when it has tasks and every task and subtask is done. */
+/** A task list is complete when it has tasks, every one is closed, and at least one completed. */
 export function teamTasksComplete(tasks: readonly TeamTask[]): boolean {
-  const allDone = (tasks: readonly TeamTask[]): boolean =>
-    tasks.every(({ status, children = [] }) => status === "done" && allDone(children));
-  return tasks.length > 0 && allDone(tasks);
+  return (
+    tasks.length > 0 &&
+    tasks.every((task) => !isTeamTaskOpen(task)) &&
+    tasks.some(({ status }) => status === "completed")
+  );
 }
 
 /** Whether text cites a task by its whole ID, as agents name tasks such as t12 in messages. */
@@ -213,3 +125,264 @@ export function mentionsTeamTask(text: string, taskId: string): boolean {
 
 const isIdCharacter = (character: string | undefined) =>
   character !== undefined && /[\w-]/.test(character);
+
+const MAX_SUBTASKS = 50;
+export const teamTaskIdSchema = z.string().trim().min(1).max(255);
+const agentIdSchema = z.string().trim().min(1).max(255);
+const taskTitleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(240)
+  .describe("A concise outcome, without status narrative.");
+const taskDescriptionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_000)
+  .describe(
+    "Markdown under the headings that help: Overview, Why, Approach, and Alternatives and trade-offs. At most 2,000 characters; link a brief for deeper design.",
+  );
+const taskArtifactIdSchema = z
+  .string()
+  .min(1)
+  .describe(
+    "The artifactId of this task's own outcome, returned by sharing or reading an artifact in this team. Do not copy subtask artifact references to a parent.",
+  );
+const taskDiffSchema = diffStatsSchema.describe(
+  "Measured lines directly attributed to this task. Exclude subtask counts; parent totals are computed automatically.",
+);
+
+const newTeamTaskSchema = z
+  .object({
+    title: taskTitleSchema,
+    description: taskDescriptionSchema.optional(),
+    priority: teamTaskPrioritySchema.optional().describe("Omit for normal."),
+    assigneeId: agentIdSchema
+      .optional()
+      .describe("The agentId of the one team agent directly responsible for it."),
+    get children() {
+      return z.array(newTeamTaskSchema).max(MAX_SUBTASKS).optional().describe("Subtasks to open.");
+    },
+  })
+  .strict();
+type NewTeamTask = z.output<typeof newTeamTaskSchema>;
+
+const taskPatchSchema = z
+  .object({
+    title: taskTitleSchema.optional(),
+    description: taskDescriptionSchema.nullable().optional(),
+    status: teamTaskStatusSchema.optional(),
+    priority: teamTaskPrioritySchema.optional(),
+    artifactId: taskArtifactIdSchema.nullable().optional(),
+    diff: taskDiffSchema.nullable().optional(),
+  })
+  .strict()
+  .refine(hasChanges, { message: "Change at least one task field." });
+
+export const editTeamTasksInputSchema = z
+  .object({
+    operations: z
+      .array(
+        z.discriminatedUnion("type", [
+          newTeamTaskSchema
+            .extend({
+              type: z.literal("add"),
+              parentId: teamTaskIdSchema.optional().describe("Omit to open a top-level task."),
+            })
+            .strict()
+            .describe("Opens a pending task, numbered by the server, with optional subtasks."),
+          z
+            .object({
+              type: z.literal("update"),
+              taskId: teamTaskIdSchema,
+              patch: taskPatchSchema.describe(
+                "Omitted fields stay unchanged. Null clears an optional field.",
+              ),
+            })
+            .strict(),
+          z
+            .object({
+              type: z.literal("assign"),
+              taskId: teamTaskIdSchema,
+              assigneeId: agentIdSchema.nullable().describe("Null leaves the task unassigned."),
+            })
+            .strict(),
+          z
+            .object({
+              type: z.literal("move"),
+              taskId: teamTaskIdSchema,
+              parentId: teamTaskIdSchema.optional().describe("Omit to move it to the top level."),
+            })
+            .strict()
+            .describe(
+              "Moves the existing subtree intact. Its new parent must be outside that subtree.",
+            ),
+          z
+            .object({ type: z.literal("remove"), taskId: teamTaskIdSchema })
+            .strict()
+            .describe("Removes a mistaken task and its subtasks; close unwanted work instead."),
+        ]),
+      )
+      .min(1)
+      .describe("Applied in order as one atomic edit."),
+  })
+  .strict();
+
+export type EditTeamTasksInput = z.output<typeof editTeamTasksInputSchema>;
+type TeamTaskEdit = EditTeamTasksInput["operations"][number];
+
+/**
+ * Applies an ordered batch to a team's tasks and returns the result, the tasks it opened, and the
+ * counter after numbering them. Each operation leaves a valid tree; the caller commits only the end.
+ */
+export function applyTeamTaskEdits(
+  tasks: readonly TeamTask[],
+  operations: readonly TeamTaskEdit[],
+  context: { actor: TeamMessageActor; now: string; lastTaskNumber: number },
+): { tasks: TeamTask[]; opened: TeamTask[]; lastTaskNumber: number } {
+  const { actor, now } = context;
+  let lastTaskNumber = context.lastTaskNumber;
+  const opened: TeamTask[] = [];
+  const open = (
+    current: TeamTask[],
+    parentId: string | undefined,
+    task: NewTeamTask,
+  ): TeamTask[] => {
+    const id = `t${++lastTaskNumber}`;
+    const { children = [], priority = "normal", ...fields } = task;
+    const next: TeamTask = {
+      id,
+      ...(parentId ? { parentId } : {}),
+      position: nextPosition(current, parentId),
+      ...fields,
+      status: "pending",
+      priority,
+      openedBy: actor,
+      openedAt: now,
+      updatedAt: now,
+    };
+    opened.push(next);
+    return children.reduce<TeamTask[]>((tree, child) => open(tree, id, child), [...current, next]);
+  };
+
+  const result = operations.reduce<TeamTask[]>(
+    (current, operation) => {
+      switch (operation.type) {
+        case "add": {
+          const { type: _type, parentId, ...task } = operation;
+          if (parentId) requireTask(current, parentId);
+          return withRoom(open(current, parentId, task), parentId);
+        }
+        case "update":
+          return changeTask(current, operation.taskId, (task) => applyPatch(task, operation.patch));
+        case "assign":
+          return changeTask(current, operation.taskId, (task) =>
+            applyPatch(task, { assigneeId: operation.assigneeId }),
+          );
+        case "move": {
+          const { taskId, parentId } = operation;
+          requireTask(current, taskId);
+          if (parentId && subtreeIds(current, taskId).has(parentId)) {
+            throw new Error(`Move task "${taskId}" outside its own subtree.`);
+          }
+          if (parentId) requireTask(current, parentId);
+          return withRoom(
+            changeTask(current, taskId, ({ parentId: _from, ...task }) => ({
+              ...task,
+              ...(parentId ? { parentId } : {}),
+              position: nextPosition(
+                current.filter(({ id }) => id !== taskId),
+                parentId,
+              ),
+            })),
+            parentId,
+          );
+        }
+        case "remove": {
+          requireTask(current, operation.taskId);
+          const removed = subtreeIds(current, operation.taskId);
+          return current.filter(({ id }) => !removed.has(id));
+        }
+      }
+    },
+    [...tasks],
+  );
+  // Only the end of the batch counts, so a change and its undo leave a task untouched.
+  const before = new Map(tasks.map((task) => [task.id, task]));
+  return {
+    tasks: result.map((task) => {
+      const previous = before.get(task.id);
+      return previous ? stamp(previous, task, now) : task;
+    }),
+    opened,
+    lastTaskNumber,
+  };
+}
+
+/** Records when a task changed, and when it closed; reopening clears that. */
+function stamp(previous: TeamTask, next: TeamTask, now: string): TeamTask {
+  if (sameTask(previous, next)) return previous;
+  const { closedAt: _closedAt, ...task } = next;
+  const closedAt = isTeamTaskOpen(next)
+    ? undefined
+    : isTeamTaskOpen(previous)
+      ? now
+      : previous.closedAt;
+  return { ...task, updatedAt: now, ...(closedAt ? { closedAt } : {}) };
+}
+
+function sameTask(left: TeamTask, right: TeamTask): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]) as Set<keyof TeamTask>;
+  return [...keys].every((key) => {
+    const [a, b] = [left[key], right[key]];
+    return typeof a === "object" && typeof b === "object"
+      ? JSON.stringify(a) === JSON.stringify(b)
+      : a === b;
+  });
+}
+
+function changeTask(
+  tasks: readonly TeamTask[],
+  taskId: string,
+  change: (task: TeamTask) => TeamTask,
+): TeamTask[] {
+  requireTask(tasks, taskId);
+  return tasks.map((task) => (task.id === taskId ? change(task) : task));
+}
+
+function requireTask(tasks: readonly TeamTask[], taskId: string): TeamTask {
+  const task = tasks.find(({ id }) => id === taskId);
+  if (!task) throw new Error(`Task "${taskId}" was not found in this team.`);
+  return task;
+}
+
+function nextPosition(tasks: readonly TeamTask[], parentId: string | undefined): number {
+  return (
+    Math.max(-1, ...tasks.filter((task) => task.parentId === parentId).map((t) => t.position)) + 1
+  );
+}
+
+function withRoom(tasks: TeamTask[], parentId: string | undefined): TeamTask[] {
+  const siblings = tasks.filter((task) => task.parentId === parentId).length;
+  if (siblings > MAX_SUBTASKS) {
+    throw new Error(
+      `${parentId ? `Task "${parentId}"` : "The top level"} already holds ${MAX_SUBTASKS} tasks. Group them into a milestone first.`,
+    );
+  }
+  return tasks;
+}
+
+function subtreeIds(tasks: readonly TeamTask[], taskId: string): Set<string> {
+  const ids = new Set([taskId]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const { id, parentId } of tasks) {
+      if (parentId && ids.has(parentId) && !ids.has(id)) {
+        ids.add(id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}

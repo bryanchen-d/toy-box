@@ -6,11 +6,12 @@ import {
   type TeamAgent,
   type TeamAgentIdentity,
   type TeamArtifact,
-  type TeamTask,
+  type TeamTaskNode,
+  type TeamTaskStatus,
 } from "@teams/model";
 import type { DiffStats } from "@/shared/diffStats";
 import { Button } from "@/shared/ui/button";
-import type { ChecklistItem } from "@/shared/ui/checklist";
+import type { ChecklistItem, ChecklistStatus } from "@/shared/ui/checklist";
 import { PopoverClose } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -19,7 +20,20 @@ const DIFF_COUNT_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
-/** Both Team checklists present the same task identities, owners, and linked outcomes. */
+/** The checklist's nearest mark for each status; every closed task reads as done. */
+const CHECKLIST_STATUS: Record<TeamTaskStatus, ChecklistStatus> = {
+  pending: "pending",
+  in_progress: "in_progress",
+  blocked: "blocked",
+  in_review: "in_progress",
+  completed: "done",
+  cancelled: "done",
+  deferred: "done",
+  cut: "done",
+  duplicate: "done",
+};
+
+/** Both Team checklists present the same task identities, assignees, and linked outcomes. */
 export function teamTaskItems({
   tasks,
   owners,
@@ -28,12 +42,12 @@ export function teamTaskItems({
   onTaskSelect,
   closeOnArtifactOpen = false,
 }: {
-  tasks: readonly TeamTask[];
+  tasks: readonly TeamTaskNode[];
   owners: readonly TeamAgent[];
   artifacts: readonly TeamArtifact[];
   onArtifactOpen: (artifact: TeamArtifact) => void;
   /** Leads from a task to where it was discussed. */
-  onTaskSelect?: (task: TeamTask) => void;
+  onTaskSelect?: (task: TeamTaskNode) => void;
   closeOnArtifactOpen?: boolean;
 }): ChecklistItem[] {
   return tasks.map((task) => {
@@ -44,9 +58,9 @@ export function teamTaskItems({
     return {
       id: task.id,
       title: task.title,
-      status: task.status,
+      status: CHECKLIST_STATUS[task.status],
       detail:
-        diff || task.ownerId || task.artifactId ? (
+        diff || task.assigneeId || task.artifactId ? (
           <span className="inline-flex items-center gap-[9px]">
             {diff && <TaskDiff diff={diff} />}
             {task.artifactId && (
@@ -56,7 +70,7 @@ export function teamTaskItems({
                 closeOnOpen={closeOnArtifactOpen}
               />
             )}
-            {task.ownerId && <TaskOwner owner={teamAgentIdentity(owners, task.ownerId)} />}
+            {task.assigneeId && <TaskOwner owner={teamAgentIdentity(owners, task.assigneeId)} />}
           </span>
         ) : undefined,
       ...(onTaskSelect && {
@@ -66,15 +80,16 @@ export function teamTaskItems({
         },
       }),
       children:
-        task.children &&
-        teamTaskItems({
-          tasks: task.children,
-          owners,
-          artifacts,
-          onArtifactOpen,
-          onTaskSelect,
-          closeOnArtifactOpen,
-        }),
+        task.children.length > 0
+          ? teamTaskItems({
+              tasks: task.children,
+              owners,
+              artifacts,
+              onArtifactOpen,
+              onTaskSelect,
+              closeOnArtifactOpen,
+            })
+          : undefined,
     };
   });
 }

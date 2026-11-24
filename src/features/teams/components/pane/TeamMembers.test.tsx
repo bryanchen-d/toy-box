@@ -8,6 +8,7 @@ import { workspaceQueries } from "@workspace/queries";
 import { createEmptyWorkspaceState } from "@workspace/model/state/reducer";
 import { WorkspaceSurfaceProvider } from "@workspace/hooks/layout/surface";
 import { teamAgentIdentity, teamLead, type Team, type TeamMember } from "@teams/model";
+import { teamTask } from "@teams/model/testFixtures";
 import { TeamMembers } from "./TeamMembers";
 import { TeamPaneProvider } from "./TeamPaneContext";
 
@@ -17,26 +18,25 @@ test("the team table includes lead and members, nested work and waiting details,
     name: "Release",
     paused: false,
     model: { provider: "copilot", name: "claude-opus-5.5", reasoningEffort: "high" },
-    tasks: [
-      {
-        id: "t1",
-        title: "Ship release",
-        status: "in_progress",
-        ownerId: "team",
-        children: [
-          { id: "t2", title: "Implement feature", status: "in_progress", ownerId: "builder" },
-          { id: "t3", title: "Write docs", status: "pending", ownerId: "builder" },
-          { id: "t4", title: "Review API", status: "blocked", ownerId: "critic" },
-          { id: "t5", title: "Old completed task", status: "done", ownerId: "builder" },
-        ],
-      },
-    ],
     latestSequence: 0,
     seenThrough: 0,
     completedSequence: null,
     requestSequence: null,
     updatedAt: "2026-10-29T20:00:00Z",
   };
+  const tasks = [
+    teamTask("t1", { title: "Ship release", status: "in_progress", assigneeId: "team" }),
+    ...(
+      [
+        ["t2", "Implement feature", "in_progress", "builder"],
+        ["t3", "Write docs", "pending", "builder"],
+        ["t4", "Review API", "blocked", "critic"],
+        ["t5", "Old completed task", "completed", "builder"],
+      ] as const
+    ).map(([id, title, status, assigneeId], position) =>
+      teamTask(id, { parentId: "t1", position, title, status, assigneeId }),
+    ),
+  ];
   const lead = teamLead(team.id);
   const members: TeamMember[] = [
     { id: "critic", teamId: team.id, name: "Critic" },
@@ -96,7 +96,7 @@ test("the team table includes lead and members, nested work and waiting details,
         }}
       >
         <WorkspaceSurfaceProvider surface="main" panes={[]} onOpenApp={noop}>
-          <TeamMembers team={team} />
+          <TeamMembers team={team} tasks={tasks} />
         </WorkspaceSurfaceProvider>
       </TeamPaneProvider>
     </QueryClientProvider>,
@@ -142,7 +142,6 @@ function renderUsage(usage?: SessionUsage) {
     name: "Team",
     paused: false,
     model: { provider: "copilot", name: "test" },
-    tasks: [],
     latestSequence: 0,
     seenThrough: 0,
     completedSequence: null,
@@ -172,7 +171,7 @@ function renderUsage(usage?: SessionUsage) {
           openPanel: noop,
         }}
       >
-        <TeamMembers team={team} />
+        <TeamMembers team={team} tasks={[]} />
       </TeamPaneProvider>
     </QueryClientProvider>,
   );

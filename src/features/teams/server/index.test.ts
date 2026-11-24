@@ -141,8 +141,11 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
     content: "Choose the next task.",
     request: true,
   });
-  await updateTeamFromLead(team.id, {
-    tasks: [{ id: "ship", title: "Ship", status: "done" }],
+  const { opened } = await teams.editTasks(team.id, {
+    operations: [{ type: "add", title: "Ship" }],
+  });
+  await editTeamTasksFromLead(team.id, {
+    operations: [{ type: "update", taskId: opened[0]!.id, patch: { status: "completed" } }],
   });
   expect(
     events.filter((event) => event.type === "message").map(({ message }) => message.content),
@@ -700,27 +703,31 @@ test("a Session can seed and passively read Team context", async () => {
   );
   await updateTeamFromLead(team.id, {
     purpose: "Turn the evidence into a useful recommendation.",
-    tasks: [{ id: "synthesize", title: "Synthesize the evidence", status: "in_progress" }],
     preview: { kind: "url", url: "http://127.0.0.1:3000" },
   });
   const outcome = { artifactId: artifact.artifactId, diff: { added: 32, removed: 8 } };
   expect(
     await invokeTool(
       "edit_team_tasks",
-      { operations: [{ type: "update", taskId: "synthesize", patch: outcome }] },
+      { operations: [{ type: "add", title: "Synthesize the evidence" }] },
       team.id,
     ),
-  ).toEqual({ taskIds: ["synthesize"] });
+  ).toEqual({ opened: [{ taskId: "t1", title: "Synthesize the evidence" }] });
+  await invokeTool(
+    "edit_team_tasks",
+    {
+      operations: [{ type: "update", taskId: "t1", patch: { ...outcome, status: "in_progress" } }],
+    },
+    team.id,
+  );
 
   const result = await invokeTool("read_team", { teamId: team.id });
   expect(result).toMatchObject({
     team: {
       purpose: "Turn the evidence into a useful recommendation.",
-      tasks: [
-        { id: "synthesize", title: "Synthesize the evidence", status: "in_progress", ...outcome },
-      ],
       preview: { kind: "url", url: "http://127.0.0.1:3000" },
     },
+    tasks: [{ id: "t1", title: "Synthesize the evidence", status: "in_progress", ...outcome }],
     members: [],
     messages: expect.arrayContaining([
       expect.objectContaining({
@@ -862,11 +869,8 @@ test("committed edits and reads replay to the durable view and only a new purpos
   expect(workspaceUpdates).toEqual(["Shipping", "Shipped"]);
 
   const beforeTasks = (await teams.getTeam(team.id))!;
-  const tasks = [
-    { id: "verify", title: "Verify", status: "pending", diff: { added: 3, removed: 1 } },
-  ] as const;
   await editTeamTasksFromLead(team.id, {
-    operations: [{ type: "add", task: tasks[0] }],
+    operations: [{ type: "add", title: "Verify" }],
   });
   expect(await teams.getTeam(team.id)).toMatchObject({
     latestSequence: beforeTasks.latestSequence,
@@ -880,17 +884,20 @@ test("committed edits and reads replay to the durable view and only a new purpos
   await markTeamRead(team.id, 100);
   await markTeamRead(team.id, 1);
   await updateTeamFromLead(team.id, {
-    tasks: [...tasks],
     preview: { kind: "url", url: "http://localhost:3000" },
+  });
+  await editTeamTasksFromLead(team.id, {
+    operations: [{ type: "update", taskId: "t1", patch: { diff: { added: 3, removed: 1 } } }],
   });
   await editTeam({ teamId: team.id, model });
   expect(teamEvents.slice(3).map(({ type, revision }) => [type, revision])).toEqual([
-    ["tasks", 4],
+    ["task", 4],
     ["message", 5],
     ["model", 6],
     ["read", 7],
+    ["task", 8],
   ]);
-  expect(teamEvents.at(-1)).toEqual({
+  expect(teamEvents.at(-2)).toEqual({
     type: "read",
     revision: 7,
     seenThrough: 4,

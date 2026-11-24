@@ -29,10 +29,12 @@ type MembersDialog =
 
 export function TeamMembers({
   team,
+  tasks,
   isVisible = true,
   selectedAgentId,
 }: {
   team: Team;
+  tasks: readonly TeamTask[];
   isVisible?: boolean;
   selectedAgentId?: string;
 }) {
@@ -169,10 +171,10 @@ export function TeamMembers({
           <tbody>
             {agents.map((agent) => {
               const activity = presence[agent.id] ?? { state: "idle" };
-              const tasks = teamTasksForAgent(team.tasks, agent.id);
-              const current = tasks.filter(({ status }) => status === "in_progress");
-              const pending = tasks.filter(({ status }) => status === "pending");
-              const blocked = tasks.filter(({ status }) => status === "blocked");
+              const assigned = teamTasksForAgent(tasks, agent.id);
+              const current = assigned.filter(({ status }) => status === "in_progress");
+              const pending = assigned.filter(({ status }) => status === "pending");
+              const blocked = assigned.filter(({ status }) => status === "blocked");
               const model =
                 agent.id === lead.id
                   ? team.model

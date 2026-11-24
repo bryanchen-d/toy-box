@@ -442,6 +442,7 @@ function TeamContent({
                   {aside.type === "overview" && (
                     <TeamOverview
                       team={state.team}
+                      tasks={state.tasks}
                       artifacts={state.artifacts}
                       routines={state.routines}
                     />
@@ -468,13 +469,14 @@ function TeamContent({
                   {aside.type === "members" && (
                     <TeamMembers
                       team={state.team}
+                      tasks={state.tasks}
                       isVisible={isVisible}
                       selectedAgentId={aside.selectedAgentId}
                     />
                   )}
                   {aside.type === "tasks" && (
                     <TeamTasks
-                      team={state.team}
+                      tasks={state.tasks}
                       artifacts={state.artifacts}
                       view={taskView}
                       onViewChange={setTaskView}

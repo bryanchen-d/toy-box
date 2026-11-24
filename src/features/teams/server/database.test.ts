@@ -1,6 +1,6 @@
 import { teamAgent, createStoredTeam } from "@teams/server/testFixtures";
 import { describe, expect, onTestFinished, setSystemTime, test } from "bun:test";
-import type { TeamTask } from "@teams/model";
+import type { EditTeamTasksInput } from "@teams/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { createTestDatabase } from "@/server/database";
 import { TeamDatabase } from "./database";
@@ -157,16 +157,19 @@ describe("team attention", () => {
         sender,
         content,
       });
-    /** Reopens one task, then completes the list, returning the completion message. */
-    const complete = async (title = "Release") => {
-      await teams.updateTeam(team.id, {
-        tasks: [{ id: "release", title, status: "pending" }],
-      });
-      const { events } = await teams.updateTeam(team.id, {
-        tasks: [{ id: "release", title, status: "done" }],
-      });
+    /** Reopens the list's one task, then completes it, returning the completion message. */
+    const complete = async () => {
+      const [existing] = await teams.listTasks(team.id);
+      const taskId =
+        existing?.id ??
+        (await teams.editTasks(team.id, { operations: [{ type: "add", title: "Release" }] }))
+          .opened[0]!.id;
+      await edit([{ type: "update", taskId, patch: { status: "in_progress" } }]);
+      const { events } = await edit([{ type: "update", taskId, patch: { status: "completed" } }]);
       return events.find((event) => event.type === "message")!.message;
     };
+    const edit = (operations: EditTeamTasksInput["operations"]) =>
+      teams.editTasks(team.id, { operations });
     /** Sends a lead message flagged as a user request, returning the question. */
     const ask = async (content: string) => {
       const { events } = await teams.appendMessage({
@@ -178,22 +181,25 @@ describe("team attention", () => {
       });
       return events[0]!.message;
     };
-    return { teams, team, post, complete, ask };
+    return { teams, team, post, complete, ask, edit };
   }
 
-  test("rewriting a complete list never repeats completion; reopening a task does", async () => {
-    const { teams, team } = await setup();
-    const update = async (tasks: TeamTask[]) =>
-      (await teams.updateTeam(team.id, { tasks })).events.filter(
-        (event) => event.type === "message",
-      ).length;
-    const release = { id: "release", title: "Release", status: "done" } as const;
-    expect(await update([release])).toBe(1);
+  test("completion follows the list becoming complete: every task closed, one completed", async () => {
+    const { teams, team, edit } = await setup();
+    const completions = async (operations: EditTeamTasksInput["operations"]) =>
+      (await edit(operations)).events.filter((event) => event.type === "message").length;
+    expect(await completions([{ type: "add", title: "Release" }])).toBe(0);
+    expect(
+      await completions([{ type: "update", taskId: "t1", patch: { status: "completed" } }]),
+    ).toBe(1);
     expect((await teams.getTeam(team.id))?.completedSequence).toBe(1);
-    expect(await update([release, { id: "notes", title: "Notes", status: "done" }])).toBe(0);
-    expect(await update([release, { id: "ship", title: "Ship", status: "pending" }])).toBe(0);
-    expect(await update([release, { id: "ship", title: "Ship", status: "done" }])).toBe(1);
-    expect(await update([])).toBe(0);
+    expect(await completions([{ type: "update", taskId: "t1", patch: { title: "Ship" } }])).toBe(0);
+    expect(await completions([{ type: "add", title: "Notes" }])).toBe(0);
+    expect(
+      await completions([{ type: "update", taskId: "t2", patch: { status: "cancelled" } }]),
+    ).toBe(1);
+    expect(await completions([{ type: "remove", taskId: "t1" }])).toBe(0);
+    expect(await completions([{ type: "remove", taskId: "t2" }])).toBe(0);
   });
 
   test("a request persists on the lead message without an extra transcript entry", async () => {
@@ -380,7 +386,6 @@ describe("team task edits", () => {
     onTestFinished(() => database.close());
     const teams = new TeamDatabase(database);
     const team = await createStoredTeam(teams, { name: "Outcomes", ...TEAM_DEFAULTS });
-    const task = { id: "t1", title: "Review", status: "pending" } as const;
     const file = machineFile("/workspace/review.md");
     await teams.shareArtifact({
       teamId: team.id,
@@ -388,133 +393,164 @@ describe("team task edits", () => {
       title: "Review findings",
       actor: { type: "agent", agentId: team.id },
     });
-    await teams.updateTeam(team.id, { tasks: [task] });
-    return { database, teams, team, task, artifactId: workspaceFileId(file) };
+    const edit = (operations: EditTeamTasksInput["operations"]) =>
+      teams.editTasks(team.id, { operations });
+    const [task] = (await edit([{ type: "add", title: "Review" }])).opened;
+    return { database, teams, team, task: task!, edit, artifactId: workspaceFileId(file) };
   }
 
+  test("each changed task publishes one event, and snapshots read the rows back", async () => {
+    const { teams, team, task, edit } = await setup();
+    const revision = (await teams.getRoster(team.id))!.revision;
+    const { opened, events } = await edit([
+      { type: "add", parentId: task.id, title: "Draft", children: [{ title: "Outline" }] },
+      { type: "update", taskId: task.id, patch: { status: "in_progress", priority: "high" } },
+    ]);
+    const tasks = await teams.listTasks(team.id);
+    expect(tasks.map(({ id, parentId }) => [id, parentId])).toEqual([
+      ["t1", undefined],
+      ["t2", "t1"],
+      ["t3", "t2"],
+    ]);
+    expect(opened).toEqual(tasks.slice(1));
+    expect(events).toEqual(
+      tasks.map((task, index) => ({ type: "task", task, revision: revision + 1 + index })),
+    );
+    expect(tasks[0]).toMatchObject({ status: "in_progress", priority: "high" });
+    expect((await teams.getSnapshot(team.id, 100))?.tasks).toEqual(tasks);
+    const removed = await edit([{ type: "remove", taskId: "t2" }]);
+    expect(removed.events).toEqual([
+      { type: "task_removed", taskId: "t3", revision: revision + 4 },
+      { type: "task_removed", taskId: "t2", revision: revision + 5 },
+    ]);
+    expect(await teams.listTasks(team.id)).toEqual([tasks[0]!]);
+  });
+
+  test("numbers are never reused, even after removing the newest task", async () => {
+    const { teams, team, edit } = await setup();
+    await edit([{ type: "add", title: "Mistake" }]);
+    await edit([{ type: "remove", taskId: "t2" }]);
+    const { opened } = await edit([{ type: "add", title: "Real work" }]);
+    expect(opened.map(({ id }) => id)).toEqual(["t3"]);
+    await expect(
+      edit([
+        { type: "add", title: "Rolled back" },
+        { type: "update", taskId: "missing", patch: { status: "completed" } },
+      ]),
+    ).rejects.toThrow("not found");
+    expect((await edit([{ type: "add", title: "Next" }])).opened[0]?.id).toBe("t4");
+    expect((await teams.listTasks(team.id)).map(({ id }) => id)).toEqual(["t1", "t3", "t4"]);
+  });
+
   test("only the final batch state can advance revision or complete the list", async () => {
-    const { teams, team } = await setup();
+    const { teams, team, task, edit } = await setup();
     const before = await teams.getSnapshot(team.id, 100);
     expect(
       (
-        await teams.editTasks(team.id, {
-          operations: [
-            { type: "update", taskId: "t1", patch: { status: "done" } },
-            { type: "update", taskId: "t1", patch: { status: "pending" } },
-          ],
-        })
+        await edit([
+          { type: "update", taskId: task.id, patch: { status: "completed" } },
+          { type: "update", taskId: task.id, patch: { status: "pending" } },
+        ])
       ).events,
     ).toEqual([]);
     expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
   });
 
   test("serialized field edits preserve concurrent outcomes on the same task", async () => {
-    const { teams, team, task, artifactId } = await setup();
+    const { teams, team, task, edit, artifactId } = await setup();
     const diff = { added: 18, removed: 4 };
     await Promise.all([
-      teams.editTasks(team.id, {
-        operations: [{ type: "update", taskId: task.id, patch: { artifactId } }],
-      }),
-      teams.editTasks(team.id, {
-        operations: [{ type: "update", taskId: task.id, patch: { diff } }],
-      }),
+      edit([{ type: "update", taskId: task.id, patch: { artifactId } }]),
+      edit([{ type: "update", taskId: task.id, patch: { diff } }]),
     ]);
-    expect((await teams.getTeam(team.id))?.tasks).toEqual([{ ...task, artifactId, diff }]);
+    expect(await teams.listTasks(team.id)).toEqual([
+      { ...task, artifactId, diff, updatedAt: expect.any(String) },
+    ]);
   });
 
-  test("out-of-team references reject replacements and roll back entire edit batches", async () => {
-    const { teams, team: other, task, artifactId } = await setup();
+  test("out-of-team references roll back entire edit batches", async () => {
+    const { teams, team: other, artifactId } = await setup();
     const team = await createStoredTeam(teams, { name: "Other", ...TEAM_DEFAULTS });
-    await teams.updateTeam(team.id, { tasks: [task] });
+    const edit = (operations: EditTeamTasksInput["operations"]) =>
+      teams.editTasks(team.id, { operations });
+    const [task] = (await edit([{ type: "add", title: "Review" }])).opened;
     const before = await teams.getSnapshot(team.id, 100);
-    for (const patch of [{ artifactId }, { ownerId: other.id }]) {
-      await expect(teams.updateTeam(team.id, { tasks: [{ ...task, ...patch }] })).rejects.toThrow();
+    for (const operation of [
+      { type: "update", taskId: task!.id, patch: { artifactId } },
+      { type: "assign", taskId: task!.id, assigneeId: other.id },
+    ] satisfies EditTeamTasksInput["operations"]) {
       await expect(
-        teams.editTasks(team.id, {
-          operations: [
-            { type: "update", taskId: task.id, patch: { status: "done" } },
-            { type: "update", taskId: task.id, patch },
-          ],
-        }),
+        edit([{ type: "update", taskId: task!.id, patch: { status: "completed" } }, operation]),
       ).rejects.toThrow();
       expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
     }
   });
 
-  test("stale references do not block progress or moves, but cannot be introduced or replaced wholesale", async () => {
-    const { database, teams, team, task, artifactId } = await setup();
-    const child = { ...task, id: "output", artifactId, ownerId: "former-member" };
+  test("stale references do not block progress or moves, but cannot be introduced", async () => {
+    const { database, teams, team, task, edit, artifactId } = await setup();
     // Simulate references left behind by an external relocation or repair.
     await database`
-      UPDATE teams SET tasks = ${JSON.stringify([{ ...task, children: [child] }])}
-      WHERE id = ${team.id}
+      INSERT INTO team_tasks ${database({
+        team_id: team.id,
+        id: "output",
+        parent_id: task.id,
+        position: 0,
+        title: "Output",
+        status: "pending",
+        priority: "normal",
+        assignee_id: "former-member",
+        opened_by: team.id,
+        artifact_id: artifactId,
+        opened_at: task.openedAt,
+        updated_at: task.openedAt,
+      })}
     `;
-    await teams.editTasks(team.id, {
-      operations: [
-        { type: "update", taskId: task.id, patch: { status: "in_progress" } },
-        { type: "move", taskId: child.id },
-      ],
-    });
-    const tasks: TeamTask[] = [{ ...task, status: "in_progress", children: [] }, child];
-    expect((await teams.getTeam(team.id))?.tasks).toEqual(tasks);
-    await expect(teams.updateTeam(team.id, { tasks })).rejects.toThrow(
-      "Task owners must be the team lead or a current member.",
-    );
+    await database`DELETE FROM team_artifacts WHERE team_id = ${team.id}`;
+    await edit([
+      { type: "update", taskId: task.id, patch: { status: "in_progress" } },
+      { type: "move", taskId: "output" },
+    ]);
+    const [, output] = await teams.listTasks(team.id);
+    expect(output).toMatchObject({ assigneeId: "former-member", artifactId });
+    expect(output).not.toHaveProperty("parentId");
     const before = await teams.getSnapshot(team.id, 100);
-    await expect(
-      teams.editTasks(team.id, {
-        operations: [
-          { type: "update", taskId: task.id, patch: { status: "done" } },
-          {
-            type: "add",
-            task: { ...task, id: "new-group", children: [{ ...child, id: "copy" }] },
-          },
-        ],
-      }),
-    ).rejects.toThrow("Task owners must be the team lead or a current member.");
-    expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
-    await teams.editTasks(team.id, {
-      operations: [{ type: "update", taskId: child.id, patch: { ownerId: null } }],
-    });
-    expect((await teams.getTeam(team.id))?.tasks[1]).toEqual({
-      ...task,
-      id: child.id,
-      artifactId,
-    });
-  });
-
-  test("a relocated artifact blocks new links, not unrelated additions, and can be explicitly repaired", async () => {
-    const { database, teams, team, task, artifactId } = await setup();
-    await teams.updateTeam(team.id, { tasks: [{ ...task, artifactId }] });
-    const relocated = machineFile("/relocated/review.md");
-    const relocatedId = workspaceFileId(relocated);
-    await database`UPDATE team_artifacts SET path = ${relocated.path} WHERE team_id = ${team.id}`;
-    const added = { ...task, id: "next", artifactId: relocatedId };
-    await teams.editTasks(team.id, { operations: [{ type: "add", task: added }] });
-    const before = await teams.getSnapshot(team.id, 100);
-    for (const patch of [{ artifactId }, { ownerId: "missing-member" }]) {
+    for (const operation of [
+      { type: "add", title: "Copy", assigneeId: "former-member" },
+      { type: "assign", taskId: task.id, assigneeId: "former-member" },
+      { type: "update", taskId: task.id, patch: { artifactId } },
+    ] satisfies EditTeamTasksInput["operations"]) {
       await expect(
-        teams.editTasks(team.id, {
-          operations: [
-            { type: "update", taskId: task.id, patch: { status: "done" } },
-            { type: "update", taskId: added.id, patch },
-          ],
-        }),
+        edit([{ type: "update", taskId: task.id, patch: { status: "completed" } }, operation]),
       ).rejects.toThrow();
       expect(await teams.getSnapshot(team.id, 100)).toEqual(before);
     }
-    await expect(
-      teams.updateTeam(team.id, { tasks: [{ ...task, artifactId }, added] }),
-    ).rejects.toThrow('Task "t1" must reference an artifact shared in this team.');
-    await teams.editTasks(team.id, {
-      operations: [
-        { type: "update", taskId: task.id, patch: { artifactId: relocatedId, status: "done" } },
-      ],
-    });
-    expect((await teams.getTeam(team.id))?.tasks).toEqual([
-      { ...task, artifactId: relocatedId, status: "done" },
-      added,
+    await edit([
+      { type: "assign", taskId: "output", assigneeId: null },
+      { type: "update", taskId: "output", patch: { artifactId: null } },
     ]);
+    const [, cleared] = await teams.listTasks(team.id);
+    expect(cleared).not.toHaveProperty("assigneeId");
+    expect(cleared).not.toHaveProperty("artifactId");
+  });
+
+  test("a departing member releases its tasks, each publishing its change", async () => {
+    const { teams, team, edit } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "builder-session", "Builder"));
+    await edit([
+      { type: "assign", taskId: "t1", assigneeId: member.id },
+      { type: "add", title: "Verify", assigneeId: team.id },
+    ]);
+    await expect(
+      teams.editTasks(member.id, {
+        operations: [{ type: "update", taskId: "t1", patch: { status: "completed" } }],
+      }),
+    ).rejects.toThrow("Only the team lead");
+    const { events } = (await teams.deleteMember(member.id))!;
+    const [released, verify] = await teams.listTasks(team.id);
+    expect(released).not.toHaveProperty("assigneeId");
+    expect(verify).toMatchObject({ assigneeId: team.id });
+    expect(events[0]).toMatchObject({ type: "task", task: released });
+    expect(events.slice(1).map((event) => event.type)).toEqual(["message"]);
   });
 });
 
@@ -805,7 +841,7 @@ describe("team database", () => {
     ).toBeNull();
   });
 
-  test("records metadata and preview messages while task revisions remain quiet", async () => {
+  test("records metadata and preview messages", async () => {
     const teams = await openTeams();
     const team = await createStoredTeam(teams, {
       name: "Progress room",
@@ -818,20 +854,12 @@ describe("team database", () => {
       name: "Delivery room",
       purpose: "Ship and validate the product.",
       directory: "/workspace/delivery",
-      tasks: [
-        {
-          id: "build",
-          title: "Build the product",
-          status: "in_progress",
-          ownerId: member.id,
-          children: [{ id: "verify", title: "Verify the preview", status: "pending" }],
-        },
-      ],
       preview: { kind: "url", url: "http://127.0.0.1:3000" },
     });
 
     const actor = { type: "agent", agentId: team.id } as const;
     const messages = update.events.filter((event) => event.type === "message");
+    expect(messages).toHaveLength(update.events.length);
     expect(messages.map(({ message }) => message.content)).toEqual([
       { type: "team_renamed", actor, name: "Delivery room" },
       { type: "team_purpose_changed", actor, purpose: "Ship and validate the product." },
@@ -839,21 +867,16 @@ describe("team database", () => {
       { type: "preview_changed", actor, preview: { kind: "url", url: "http://127.0.0.1:3000" } },
     ]);
     expect(messages.map(({ message }) => message.sequence)).toEqual([2, 3, 4, 5]);
-    expect(update.events[0]).toEqual({
-      type: "tasks",
-      revision: revision! + 1,
-      tasks: update.team.tasks,
-    });
     expect(messages.map(({ revision }) => revision)).toEqual(
-      [2, 3, 4, 5].map((offset) => revision! + offset),
+      [1, 2, 3, 4].map((offset) => revision! + offset),
     );
-    expect((await teams.getRoster(team.id))?.revision).toBe(revision! + 5);
+    expect((await teams.getRoster(team.id))?.revision).toBe(revision! + 4);
     expect(await teams.getTeam(team.id)).toEqual(update.team);
     const cleared = await teams.updateTeam(team.id, { preview: null });
     expect(cleared.events).toMatchObject([
       {
         type: "message",
-        revision: revision! + 6,
+        revision: revision! + 5,
         message: { content: { type: "preview_changed", actor, preview: null } },
       },
     ]);
@@ -865,26 +888,9 @@ describe("team database", () => {
       actor: { type: "agent", agentId: team.id },
       purpose: null,
     });
-    await expect(
-      teams.updateTeam(member.id, {
-        tasks: [{ id: "take-over", title: "Take over", status: "pending" }],
-      }),
-    ).rejects.toThrow("Only the team lead");
-    await expect(
-      teams.editTasks(member.id, {
-        operations: [{ type: "update", taskId: "build", patch: { status: "done" } }],
-      }),
-    ).rejects.toThrow("Only the team lead");
-
-    await teams.deleteMember(member.id);
-    expect((await teams.getTeam(team.id))?.tasks).toEqual([
-      {
-        id: "build",
-        title: "Build the product",
-        status: "in_progress",
-        children: [{ id: "verify", title: "Verify the preview", status: "pending" }],
-      },
-    ]);
+    await expect(teams.updateTeam(member.id, { name: "Take over" })).rejects.toThrow(
+      "Only the team lead",
+    );
   });
 
   test("default avatar initialization does not overwrite a concurrent authored icon", async () => {

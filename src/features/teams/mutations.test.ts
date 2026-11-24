@@ -2,6 +2,7 @@ import { expect, onTestFinished, test } from "bun:test";
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { machineFile } from "@files/model";
 import { teamLead, type TeamArtifact } from "./model";
+import { teamTask } from "./model/testFixtures";
 import { teamQueries, type TeamQueryData } from "./queries";
 import { teamMutations } from "./mutations";
 
@@ -12,7 +13,6 @@ function teamData(artifacts: TeamArtifact[] = []): TeamQueryData {
       name: "Canvas",
       paused: false,
       model: { provider: "copilot", name: "gpt-5.5" },
-      tasks: [],
       latestSequence: 0,
       seenThrough: 0,
       completedSequence: null,
@@ -22,6 +22,7 @@ function teamData(artifacts: TeamArtifact[] = []): TeamQueryData {
     lead: teamLead("team"),
     members: [],
     messages: [],
+    tasks: [],
     artifacts,
     routines: [],
     advice: [],
@@ -40,7 +41,7 @@ test.each([false, true])(
     const state = teamData();
     const key = teamQueries.detail("team").queryKey;
     client.setQueryData(key, state);
-    const task = { id: "verify", title: "Verify the result", status: "in_progress" as const };
+    const task = teamTask("t1", { title: "Verify the result", status: "in_progress" });
     const failure = new Error("Delivery interrupted");
     const mutation = new MutationObserver(client, {
       ...teamMutations.post(),
@@ -54,7 +55,7 @@ test.each([false, true])(
             current && {
               ...current,
               revision: 1,
-              team: { ...current.team, tasks: [task] },
+              tasks: [task],
               optimisticMessageIds: echoed ? [] : current.optimisticMessageIds,
             },
         );
@@ -69,7 +70,7 @@ test.each([false, true])(
       }),
     ).rejects.toBe(failure);
     expect(client.getQueryData<TeamQueryData>(key)?.messages).toHaveLength(echoed ? 1 : 0);
-    expect(client.getQueryData<TeamQueryData>(key)?.team.tasks).toEqual([task]);
+    expect(client.getQueryData<TeamQueryData>(key)?.tasks).toEqual([task]);
     expect(client.getQueryData<TeamQueryData>(key)?.optimisticMessageIds).toEqual([]);
     expect(mutation.getCurrentResult().error).toBe(failure);
   },

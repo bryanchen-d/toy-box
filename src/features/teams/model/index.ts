@@ -13,7 +13,7 @@ import type { TeamAdvice } from "./advice";
 import type { TeamAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
 import { avatarSchema, type Avatar } from "./avatar";
-import { teamTasksSchema, type TeamTask } from "./tasks";
+import { type TeamTask } from "./tasks";
 import {
   agentHandleFromName,
   agentNameSchema,
@@ -50,7 +50,6 @@ export type Team = {
   purpose?: string;
   directory?: string;
   model: ModelConfiguration;
-  tasks: TeamTask[];
   preview?: Preview;
   canvasArtifactId?: string;
   /**
@@ -573,6 +572,8 @@ export type TeamState = {
   messages: TeamMessage[];
   /** The newest unanswered public request, including one outside the message window. */
   request: TeamConversationMessage | null;
+  /** Every task, open and closed; `teamTaskTree` arranges them. */
+  tasks: TeamTask[];
   /** In the user's arrangement: pins first, then new shares. */
   artifacts: TeamArtifact[];
   /** Oldest first. */
@@ -593,7 +594,8 @@ export type TeamEvent<A = TeamAttachment> = (
       agentId: string;
       reaction: TeamReaction["reaction"] | null;
     }
-  | { type: "tasks"; tasks: TeamTask[] }
+  | { type: "task"; task: TeamTask }
+  | { type: "task_removed"; taskId: string }
   | { type: "avatar"; avatar: Avatar | null }
   | { type: "artifacts"; artifacts: TeamArtifact[] }
   | { type: "advice"; advice: TeamAdvice }
@@ -649,11 +651,6 @@ const teamChangesSchema = z
       .describe(
         "The working directory for all team agents on their next execution, or null to clear it.",
       ),
-    tasks: teamTasksSchema
-      .optional()
-      .describe(
-        "The complete task list for initial planning or intentional replacement. Preserve retained task IDs and outcomes; use edit_team_tasks for progress updates.",
-      ),
     preview: previewSchema
       .nullable()
       .optional()
@@ -688,7 +685,7 @@ export const editTeamInputSchema = teamChangesSchema
 
 export const updateTeamInputSchema = teamChangesSchema.omit({ model: true }).refine(hasChanges, {
   message:
-    "Update the name, avatar, purpose, directory, tasks, preview, canvas, connector coordinators, or any combination of them.",
+    "Update the name, avatar, purpose, directory, preview, canvas, connector coordinators, or any combination of them.",
 });
 
 export const postTeamMessageInputSchema = z

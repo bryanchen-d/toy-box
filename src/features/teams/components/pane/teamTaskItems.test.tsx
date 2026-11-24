@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { teamTaskTree } from "@teams/model";
+import { teamTask } from "@teams/model/testFixtures";
 import { Checklist } from "@/shared/ui/checklist";
 import { teamTaskItems } from "./teamTaskItems";
 
@@ -10,14 +12,15 @@ test.each([
   "collapsed parents show compact totals and retain the zero side: %j",
   ({ added, removed, addedText, removedText }) => {
     const items = teamTaskItems({
-      tasks: [
-        {
-          id: "t1",
-          title: "Release",
-          status: "done",
-          children: [{ id: "t2", title: "Build", status: "done", diff: { added, removed } }],
-        },
-      ],
+      tasks: teamTaskTree([
+        teamTask("t1", { title: "Release", status: "completed" }),
+        teamTask("t2", {
+          parentId: "t1",
+          title: "Build",
+          status: "completed",
+          diff: { added, removed },
+        }),
+      ]),
       owners: [],
       artifacts: [],
       onArtifactOpen: () => {},
@@ -33,10 +36,10 @@ test.each([
 
 test("pending tasks keep their titles without displaying reported diff counts", () => {
   const items = teamTaskItems({
-    tasks: [
-      { id: "t1", title: "Queued", status: "pending", diff: { added: 0, removed: 0 } },
-      { id: "t2", title: "Next", status: "pending", diff: { added: 12, removed: 3 } },
-    ],
+    tasks: teamTaskTree([
+      teamTask("t1", { title: "Queued", diff: { added: 0, removed: 0 } }),
+      teamTask("t2", { position: 1, title: "Next", diff: { added: 12, removed: 3 } }),
+    ]),
     owners: [],
     artifacts: [],
     onArtifactOpen: () => {},
@@ -50,17 +53,21 @@ test("pending tasks keep their titles without displaying reported diff counts", 
 
 test("artifact icons belong to their task, not its parents, and omit visible titles", () => {
   const items = teamTaskItems({
-    tasks: [
-      {
-        id: "t1",
-        title: "Release",
-        status: "done",
-        children: [
-          { id: "t2", title: "Plan", status: "done", artifactId: "machine:/project/brief.md" },
-        ],
-      },
-      { id: "t3", title: "Review", status: "done", artifactId: "machine:/missing.md" },
-    ],
+    tasks: teamTaskTree([
+      teamTask("t1", { title: "Release", status: "completed" }),
+      teamTask("t2", {
+        parentId: "t1",
+        title: "Plan",
+        status: "completed",
+        artifactId: "machine:/project/brief.md",
+      }),
+      teamTask("t3", {
+        position: 1,
+        title: "Review",
+        status: "completed",
+        artifactId: "machine:/missing.md",
+      }),
+    ]),
     owners: [],
     artifacts: [
       {

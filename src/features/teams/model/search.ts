@@ -1,6 +1,6 @@
 import {
   teamIdentitySchema,
-  teamTaskSchema,
+  teamTaskIdSchema,
   teamThreadSequenceSchema,
   type TeamConversationMessage,
 } from "./index";
@@ -21,5 +21,5 @@ export type TeamMessageMatch = MessageSearchMatch &
   Pick<TeamConversationMessage, "sender">;
 
 export const teamTaskMessageInputSchema = teamIdentitySchema.extend({
-  taskId: teamTaskSchema.shape.id,
+  taskId: teamTaskIdSchema,
 });

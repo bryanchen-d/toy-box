@@ -66,7 +66,7 @@ describe("app compiler", () => {
           const { state, updateState, actions } = useApp();
           const teams = useTeams();
           const team = useTeam("team-id", { mode: "passive" });
-          const task = team.state?.team.tasks[0];
+          const task = team.state?.tasks[0];
           const artifact = team.state?.artifacts.find(({ id }) => id === task?.artifactId);
           const file = useFile({ kind: "session", sessionId: "session", path: "notes.md" }, "shared");
           const sessions = useWorkspace(workspace => workspace.sessions);
@@ -77,7 +77,7 @@ describe("app compiler", () => {
             const deliveredSequence: number = receipt.sequence;
             void deliveredSequence;
             await actions.createSession({ message: { content: "Start", model: { provider: "codex", name: "model" } } });
-          }}>{state.count}{teams.length}{sessions[0]?.context?.directory}{teamTasksDiff(team.state?.team.tasks ?? [])?.added}</button>;
+          }}>{state.count}{teams.length}{sessions[0]?.context?.directory}{teamTasksDiff(team.state?.tasks ?? [])?.added}</button>;
         }
       `),
     );

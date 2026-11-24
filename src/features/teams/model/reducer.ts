@@ -1,9 +1,4 @@
-import {
-  acknowledgesTeamRequests,
-  compareTeamAgents,
-  isTeamSystemMessage,
-  unassignTeamTasks,
-} from ".";
+import { acknowledgesTeamRequests, compareTeamAgents, isTeamSystemMessage } from ".";
 import type {
   Team,
   TeamArtifact,
@@ -13,6 +8,7 @@ import type {
   TeamObservationEvent,
   TeamRoutine,
   TeamState,
+  TeamTask,
 } from ".";
 import { workspaceFileId } from "@files/model";
 import { upsertTeamAdvice } from "./advice";
@@ -58,6 +54,10 @@ export function reduceTeamState(previous: TeamState, event: TeamStateEvent): Tea
     if (state.request) state.request = reduceTeamReaction(state.request, event);
   } else if (event.type === "artifacts") {
     state.artifacts = event.artifacts;
+  } else if (event.type === "task") {
+    state.tasks = upsertTask(state.tasks, event.task);
+  } else if (event.type === "task_removed") {
+    state.tasks = state.tasks.filter(({ id }) => id !== event.taskId);
   } else if (event.type === "advice") {
     state.advice = upsertTeamAdvice(state.advice, event.advice);
   } else if (event.type === "message") {
@@ -93,8 +93,6 @@ export function reduceTeamState(previous: TeamState, event: TeamStateEvent): Tea
 /** Metadata and attention changes expressed by committed Team events. */
 export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
   switch (event.type) {
-    case "tasks":
-      return { ...team, tasks: event.tasks };
     case "avatar":
       return { ...team, avatar: event.avatar ?? undefined };
     case "model":
@@ -136,8 +134,6 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
             ? { ...rest, connectorCoordinators: coordinators }
             : rest;
         }
-        case "member_left":
-          return { ...next, tasks: unassignTeamTasks(team.tasks, content.member.id) };
         case "tasks_completed":
           return { ...next, completedSequence: message.sequence };
         default:
@@ -217,6 +213,13 @@ function upsertMessage(messages: TeamMessage[], message: TeamMessage): TeamMessa
   const index = next.findIndex(({ sequence }) => sequence >= message.sequence);
   if (index === -1) return [...next, message];
   return [...next.slice(0, index), message, ...next.slice(index)];
+}
+
+/** Adds a task, or changes one in place; its parent and position place it in the tree. */
+function upsertTask(tasks: readonly TeamTask[], task: TeamTask): TeamTask[] {
+  return tasks.some(({ id }) => id === task.id)
+    ? tasks.map((current) => (current.id === task.id ? task : current))
+    : [...tasks, task];
 }
 
 /** Adds a routine, or changes one in place so the list keeps its order. */

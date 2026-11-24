@@ -9,7 +9,9 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       purpose         TEXT,
       directory       TEXT,
       model           TEXT NOT NULL CHECK (json_valid(model)),
-      tasks           TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tasks)),
+      -- The counter behind t<N> task IDs; it never decreases, so removed numbers aren't reused.
+      last_task_number INTEGER NOT NULL DEFAULT 0
+        CHECK (typeof(last_task_number) = 'integer' AND last_task_number >= 0),
       preview         TEXT CHECK (preview IS NULL OR json_valid(preview)),
       canvas_artifact_id TEXT,
       -- The agent each connector's unaddressed messages wake instead of the lead, by connector ID.
@@ -27,6 +29,34 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_teams_updated_at
       ON teams(updated_at DESC, id);
+
+    -- One row per task. Its status alone decides whether it's open, so the grouping stays in the
+    -- model rather than a constraint.
+    CREATE TABLE IF NOT EXISTS team_tasks (
+      team_id          TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      id               TEXT NOT NULL,
+      parent_id        TEXT,
+      position         INTEGER NOT NULL CHECK (typeof(position) = 'integer'),
+      title            TEXT NOT NULL,
+      description      TEXT,
+      status           TEXT NOT NULL,
+      priority         TEXT NOT NULL CHECK (priority IN ('high', 'normal', 'low')),
+      assignee_id      TEXT,
+      -- The agent that opened it, or NULL for the user.
+      opened_by        TEXT,
+      artifact_id      TEXT,
+      diff             TEXT CHECK (diff IS NULL OR json_valid(diff)),
+      -- The root of the task's thread; empty until the task's next activity gives it one.
+      thread_sequence  INTEGER,
+      opened_at        TEXT NOT NULL,
+      updated_at       TEXT NOT NULL,
+      closed_at        TEXT,
+      PRIMARY KEY(team_id, id),
+      FOREIGN KEY(team_id, parent_id) REFERENCES team_tasks(team_id, id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_tasks_parent
+      ON team_tasks(team_id, parent_id, position);
 
     CREATE TABLE IF NOT EXISTS team_messages (
       id                   TEXT PRIMARY KEY,

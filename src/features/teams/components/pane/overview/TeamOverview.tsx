@@ -4,7 +4,7 @@ import { TeamAvatar } from "@teams/components/TeamAvatar";
 import { TeamDialog } from "@teams/components/TeamDialog";
 import { TeamMenuItems } from "@teams/components/TeamMenuItems";
 import { DeleteTeamDialog } from "@teams/components/DeleteTeamDialog";
-import type { Team, TeamArtifact, TeamRoutine } from "@teams/model";
+import type { Team, TeamArtifact, TeamRoutine, TeamTask } from "@teams/model";
 import { FileBrowserDialog } from "@files/components/browser/FileBrowserDialog";
 import { useWorkspaceSurface } from "@workspace/hooks/layout/surface";
 import { Button } from "@/shared/ui/button";
@@ -17,10 +17,12 @@ type OverviewDialog = "edit_team" | "delete_team" | "browse_directory";
 /** The Team's purpose and setting, with a summary of each of its other panels. */
 export function TeamOverview({
   team,
+  tasks,
   artifacts,
   routines,
 }: {
   team: Team;
+  tasks: TeamTask[];
   artifacts: TeamArtifact[];
   routines: TeamRoutine[];
 }) {
@@ -65,6 +67,7 @@ export function TeamOverview({
       </TeamPanelHeader>
       <TeamOverviewContent
         team={team}
+        tasks={tasks}
         artifacts={artifacts}
         routines={routines}
         onBrowseDirectory={browseDirectory}

@@ -140,12 +140,11 @@ export async function updateTeamFromLead(sessionId: string, input: UpdateTeamInp
   return change.team;
 }
 
-export async function editTeamTasksFromLead(
-  sessionId: string,
-  input: EditTeamTasksInput,
-): Promise<void> {
+/** Applies a task batch and returns the tasks it opened, numbered by the server. */
+export async function editTeamTasksFromLead(sessionId: string, input: EditTeamTasksInput) {
   const change = await new TeamDatabase(await getStateDatabase()).editTasks(sessionId, input);
   publishTeamChange(change);
+  return change.opened;
 }
 
 /** Clears the user's pending requests without waking anyone. Reports whether any were pending. */
@@ -379,8 +378,9 @@ async function readTeam(
   messages: StoredTeamMessage[],
   hasMore: boolean,
 ) {
-  const [roster, artifacts, routines] = await Promise.all([
+  const [roster, tasks, artifacts, routines] = await Promise.all([
     database.getRoster(team.id),
+    database.listTasks(team.id),
     database.listArtifacts(team.id),
     database.listRoutines(team.id),
   ]);
@@ -391,6 +391,7 @@ async function readTeam(
     lead,
     members,
     messages,
+    tasks,
     artifacts,
     routines,
     hasMore,
