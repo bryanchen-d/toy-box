@@ -1,6 +1,6 @@
 import { useImperativeHandle, useState, type RefObject } from "react";
 import { WorkingAgents } from "@teams/components/agents/WorkingAgents";
-import type { TeamMessage, TeamTask } from "@teams/model";
+import type { TeamMessage, TeamPendingRequest, TeamTask } from "@teams/model";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ScrollToBottomButton } from "@/shared/ui/scroll-to-bottom-button";
@@ -28,7 +28,7 @@ export function TeamTranscript({
   view,
   unreadAfter,
   handleRef,
-  requestSequence,
+  pendingRequests,
   onLoadPrevious,
 }: {
   messages: TeamMessage[];
@@ -38,12 +38,12 @@ export function TeamTranscript({
   /** Arrival read position; null means read, undefined awaits the connection's initial state. */
   unreadAfter: number | null | undefined;
   handleRef: RefObject<TeamTranscriptHandle | null>;
-  requestSequence: number | null;
+  pendingRequests: readonly TeamPendingRequest[];
   onLoadPrevious: (throughSequence?: number) => Promise<void>;
 }) {
   const { lead, members, coordinators } = useTeamPane();
   const rows = transcriptRows(messages, { lead, members, coordinators, tasks, unreadAfter, view });
-  const needsOlderHistory = viewNeedsOlderHistory(messages, view, requestSequence);
+  const needsOlderHistory = viewNeedsOlderHistory(messages, view, pendingRequests);
   const {
     scrollRef,
     containerRef,
@@ -57,7 +57,7 @@ export function TeamTranscript({
   } = useTranscriptViewport({
     rows,
     unreadAfter,
-    requestSequence,
+    requestSequence: pendingRequests.at(-1)?.sequence ?? null,
     oldestSequence: messages[0]?.sequence,
     needsOlderHistory,
     loadPrevious: onLoadPrevious,

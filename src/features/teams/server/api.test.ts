@@ -98,10 +98,10 @@ test("snapshots combine public Team facts with live presence without exposing pr
     ({ content }) => typeof content === "object" && content.type === "artifact_shared",
   );
   expect(share).toMatchObject({ content: { artifact } });
-  expect<TeamMessage | null | undefined>(snapshot?.request).toEqual(
+  expect<TeamMessage | undefined>(snapshot?.requests[0]).toEqual(
     snapshot?.messages.find(({ id }) => id === "images"),
   );
-  expect(snapshot?.request).toMatchObject({
+  expect(snapshot?.requests[0]).toMatchObject({
     attachments: [
       { name: "a #1.png", url: "/api/serve/machine/tmp/a%20%231.png" },
       { mimeType: "image/png", base64: "AAEC" },
@@ -149,12 +149,12 @@ test("a reply committed after the durable read cannot advance the snapshot beyon
   const snapshot = (await getTeamSnapshot(team.id))!;
   expect(snapshot.team.latestSequence).toBe(before.latestSequence);
   expect(snapshot.messages.at(-1)?.sequence).toBe(snapshot.team.latestSequence);
-  expect(snapshot.team.requestSequence).toBe(1);
-  expect(snapshot.request?.id).toBe(request.message.id);
+  expect(snapshot.team.pendingRequests).toEqual([{ sequence: 1, agentId: team.id }]);
+  expect(snapshot.requests.map(({ id }) => id)).toEqual([request.message.id]);
   expect(snapshot.messages.some(({ id }) => id === "interleaved-reply")).toBe(false);
   expect(await teams.getTeam(team.id)).toMatchObject({
     latestSequence: before.latestSequence + 1,
-    requestSequence: null,
+    pendingRequests: [],
   });
 });
 

@@ -1,5 +1,5 @@
 import {
-  acknowledgesTeamRequests,
+  acknowledgesTeamRequest,
   teamAudienceLabel,
   isTeamSystemMessage,
   messageAuthorId,
@@ -8,6 +8,7 @@ import {
   type TeamAgent,
   type TeamConversationMessage,
   type TeamMessage,
+  type TeamPendingRequest,
   type TeamSystemMessage,
   type TeamTask,
 } from "@teams/model";
@@ -77,8 +78,8 @@ export type AgentRunEntry = {
 };
 
 /**
- * A question the lead flagged stays pending until the user replies, or until the lead resolves it,
- * having gotten its answer another way.
+ * A question stays pending until the user replies where it was asked, or until the lead resolves
+ * it, having gotten its answer another way.
  */
 export type TeamRequestState = "pending" | "replied" | "answered";
 
@@ -88,8 +89,8 @@ type RowContext = {
   coordinators?: Readonly<Record<string, string>>;
   /** Each task by the sequence its thread starts at, which routes the thread's messages. */
   tasksByThread: ReadonlyMap<number, TeamTask>;
-  /** The messages that acknowledged every request before them, oldest first. */
-  acknowledgements: readonly TeamMessage[];
+  /** Every loaded message, where a question's acknowledgement is found. */
+  loaded: readonly TeamMessage[];
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
 };
@@ -130,7 +131,7 @@ export function transcriptRows(
     members,
     coordinators,
     tasksByThread: tasksByThread(tasks),
-    acknowledgements: acknowledgements(messages),
+    loaded: messages,
     threads: loadedThreads(messages),
   };
   return rowsOf(messages, context, { unreadAfter, view });
@@ -138,7 +139,7 @@ export function transcriptRows(
 
 /**
  * One thread as a conversation of its own: its top-level message, then its replies grouped as the
- * transcript groups messages. Requests acknowledge from anywhere in the Team.
+ * transcript groups messages.
  */
 export function threadRows(
   messages: readonly TeamMessage[],
@@ -160,7 +161,7 @@ export function threadRows(
     members,
     coordinators,
     tasksByThread: tasksByThread(tasks),
-    acknowledgements: acknowledgements(messages),
+    loaded: messages,
   };
   const thread = messages.filter(
     (message) => message.sequence === sequence || message.threadSequence === sequence,
@@ -214,16 +215,17 @@ export function pendingRequestRow(
 }
 
 /**
- * Whether history before the loaded messages may hold messages the view shows. Every pending
- * request follows the latest acknowledgement, so the requests view needs nothing before one.
+ * Whether history before the loaded messages may hold messages the view shows. The requests view
+ * needs older history only until every pending question is loaded.
  */
 export function viewNeedsOlderHistory(
   messages: readonly TeamMessage[],
   view: TranscriptView,
-  requestSequence: number | null,
+  pendingRequests: readonly Pick<TeamPendingRequest, "sequence">[],
 ): boolean {
   if (view !== "requests") return true;
-  return requestSequence !== null && !messages.some(acknowledgesTeamRequests);
+  const oldest = messages[0]?.sequence ?? Number.POSITIVE_INFINITY;
+  return pendingRequests.some(({ sequence }) => sequence < oldest);
 }
 
 /** "Today", "Yesterday", or the full day, adding the year only when it isn't the current one. */
@@ -364,28 +366,33 @@ function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThre
   return threads;
 }
 
-/** The messages that acknowledged every request before them, oldest first. */
-function acknowledgements(messages: readonly TeamMessage[]): TeamMessage[] {
-  return messages.filter(acknowledgesTeamRequests);
-}
-
-/** The first acknowledgement after a question settles it: the user replied, or the lead resolved it. */
-function requestState(
-  { sequence }: TeamConversationMessage,
-  { acknowledgements }: RowContext,
-): TeamRequestState {
-  const acknowledgement = acknowledgements.find((message) => message.sequence > sequence);
+/**
+ * The first acknowledgement of a question settles it: the user replied where it was asked, or the
+ * lead resolved it.
+ */
+function requestState(question: TeamConversationMessage, { loaded }: RowContext): TeamRequestState {
+  const acknowledgement = loaded.find((message) => acknowledgesTeamRequest(message, question));
   if (!acknowledgement) return "pending";
   return isTeamSystemMessage(acknowledgement) ? "answered" : "replied";
 }
 
-function isPending(message: TeamConversationMessage, context: RowContext) {
-  return requestState(message, context) === "pending";
+/** A question still waits on the user until acknowledged, or asked again later in its thread. */
+function isPending(question: TeamConversationMessage, context: RowContext) {
+  return (
+    requestState(question, context) === "pending" &&
+    !context.loaded.some(
+      (message) =>
+        !isTeamSystemMessage(message) &&
+        message.request &&
+        message.sequence > question.sequence &&
+        message.threadSequence === question.threadSequence,
+    )
+  );
 }
 
 /**
- * Your messages are the user's own and those for them, and requests are the lead's questions that
- * still need a reply; system changes stay in the full view.
+ * Your messages are the user's own and those for them, and requests are the questions that still
+ * need a reply, one per thread; system changes stay in the full view.
  */
 function isInView(message: TeamMessage, view: TranscriptView, context: RowContext): boolean {
   if (view === "all") return true;

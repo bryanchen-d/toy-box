@@ -166,7 +166,7 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
     "team.upserted",
   ]);
   expect(broadcasts.mock.lastCall?.[0]).toMatchObject({
-    team: { requestSequence: expect.any(Number), completedSequence: expect.any(Number) },
+    team: { pendingRequests: [expect.any(Object)], completedSequence: expect.any(Number) },
   });
   expect(deliver).not.toHaveBeenCalled();
   expect((await teams.getAgent(team.id))?.status?.state).toBe("working");
@@ -177,7 +177,7 @@ test("attention uses normal messages and upserts, and a user reply also wakes th
     content: "@builder use blue.",
   });
   expect(deliver.mock.calls.map(([id]) => id).sort()).toEqual([team.id, member.id].sort());
-  expect((await teams.getTeam(team.id))?.requestSequence).toBeNull();
+  expect((await teams.getTeam(team.id))?.pendingRequests).toEqual([]);
   expect((await teams.getAgent(team.id))?.status).toBeUndefined();
 });
 
@@ -642,6 +642,37 @@ async function reportingTeam() {
   };
   return { teams, team, builder, delivered, assign, thread };
 }
+
+test("an assignee asks the user in its task's thread, and the reply there answers it and wakes only the assignee", async () => {
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
+  await assign({ title: "Parser" });
+  const threadSequence = (await teams.listTasks(team.id))[0]!.threadSequence!;
+  const ask = (input: object) =>
+    invokeTool(
+      "send_team_message",
+      { content: "Which grammar?", request: true, ...input },
+      builder.id,
+      teamMemberTools,
+    );
+
+  await expect(ask({})).rejects.toThrow(
+    "Ask the user only in the thread of an open task assigned to you.",
+  );
+  const { sequence } = await ask({ threadSequence });
+  expect((await teams.getTeam(team.id))!.pendingRequests).toEqual([
+    { sequence, threadSequence, agentId: builder.id },
+  ]);
+  expect(delivered()).toEqual({});
+
+  await postTeamMessage({ id: "answer", teamId: team.id, content: "PEG.", threadSequence });
+  expect(delivered()).toEqual({
+    [builder.id]: {
+      systemMessage: { type: "team_message", senderName: "the user" },
+      immediate: true,
+    },
+  });
+  expect((await teams.getTeam(team.id))!.pendingRequests).toEqual([]);
+});
 
 test("a finish reports on every task its turn was woken for, each note posting into its thread", async () => {
   const { teams, team, builder, delivered, assign, thread } = await reportingTeam();

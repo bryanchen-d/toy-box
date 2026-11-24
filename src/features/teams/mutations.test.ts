@@ -17,7 +17,7 @@ function teamData(artifacts: TeamArtifact[] = []): TeamQueryData {
       attentionSequence: 0,
       seenThrough: 0,
       completedSequence: null,
-      requestSequence: null,
+      pendingRequests: [],
       updatedAt: "2026-10-22T23:00:00.000Z",
     },
     lead: teamLead("team"),
@@ -28,7 +28,7 @@ function teamData(artifacts: TeamArtifact[] = []): TeamQueryData {
     routines: [],
     advice: [],
     presence: {},
-    request: null,
+    requests: [],
     revision: 0,
     arrival: { id: 1, unreadAfter: null },
   };

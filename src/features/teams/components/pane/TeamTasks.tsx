@@ -1,24 +1,32 @@
 import { useMutation } from "@tanstack/react-query";
-import { ListChecks, ListTodo, LoaderCircle } from "lucide-react";
+import { ListChecks, ListTodo, LoaderCircle, MessageCircleQuestionMark } from "lucide-react";
 import {
   isTeamTaskOpen,
   teamTasksDiff,
+  teamTasksNeedingInput,
   teamTaskTree,
   type TeamArtifact,
+  type TeamPendingRequest,
   type TeamTask,
 } from "@teams/model";
 import { findTeamTaskMessage } from "@teams/server/functions";
 import { Badge } from "@/shared/ui/badge";
-import { Checklist, isChecklistItemFinished, type ChecklistFilter } from "@/shared/ui/checklist";
+import { Checklist, isChecklistItemFinished, type ChecklistItem } from "@/shared/ui/checklist";
 import { useTeamPane } from "./TeamPaneContext";
 import { TeamPanelHeader } from "./TeamPanelHeader";
 import { teamTaskItems, TaskDiff } from "./teamTaskItems";
 import { ViewMenu, type ViewOption } from "./ViewMenu";
 
-/** Which tasks the panel shows: open ones, only those in progress, or all of them. */
-export type TaskView = "open" | "in_progress" | "all";
+/**
+ * Which tasks the panel shows: open ones, only those in progress, those whose thread holds a
+ * question for you, or all of them.
+ */
+export type TaskView = "open" | "in_progress" | "input" | "all";
 
-const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })[] = [
+const VIEWS: (ViewOption<TaskView> & {
+  show?: (item: ChecklistItem, needsInput: ReadonlySet<string>) => boolean;
+  empty?: string;
+})[] = [
   {
     value: "open",
     label: "Open tasks",
@@ -33,6 +41,13 @@ const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })
     show: ({ status }) => status === "in_progress",
     empty: "Nothing in progress.",
   },
+  {
+    value: "input",
+    label: "Needs your input",
+    Icon: MessageCircleQuestionMark,
+    show: ({ id }, needsInput) => needsInput.has(id),
+    empty: "No task is waiting on you.",
+  },
   { value: "all", label: "All tasks", Icon: ListChecks },
 ];
 
@@ -44,11 +59,14 @@ const VIEWS: (ViewOption<TaskView> & { show?: ChecklistFilter; empty?: string })
 export function TeamTasks({
   tasks,
   artifacts,
+  pendingRequests,
   view,
   onViewChange,
 }: {
   tasks: TeamTask[];
   artifacts: TeamArtifact[];
+  /** The questions waiting on the user, whose task threads need your input. */
+  pendingRequests: readonly TeamPendingRequest[];
   view: TaskView;
   onViewChange: (view: TaskView) => void;
 }) {
@@ -64,6 +82,7 @@ export function TeamTasks({
   const tree = teamTaskTree(tasks);
   const closedCount = tree.filter((task) => !isTeamTaskOpen(task)).length;
   const diff = teamTasksDiff(tasks);
+  const needsInput = new Set(teamTasksNeedingInput(tasks, pendingRequests).map(({ id }) => id));
   const { show, empty } = VIEWS.find(({ value }) => value === view)!;
 
   return (
@@ -98,7 +117,7 @@ export function TeamTasks({
               onArtifactOpen: (artifact) => openArtifact(artifact.file),
               onTaskSelect: openTask,
             })}
-            show={show}
+            show={show && ((item) => show(item, needsInput))}
             empty={empty && <p className="text-sm text-muted-foreground italic">{empty}</p>}
             className="text-sm"
           />

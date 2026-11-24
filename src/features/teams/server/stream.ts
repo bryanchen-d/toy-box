@@ -140,10 +140,9 @@ export async function getTeamSnapshot(teamId: string): Promise<TeamState | null>
   if (!database) return null;
   const snapshot = await new TeamDatabase(database).getSnapshot(teamId, 100);
   if (!snapshot) return null;
-  const { request } = snapshot;
   return {
     ...snapshot,
-    request: request ? resolveMessageResources(request) : null,
+    requests: snapshot.requests.map((request) => resolveMessageResources(request)),
     presence: currentPresence(snapshot),
     messages: snapshot.messages.map(resolveMessageResources),
     artifacts: snapshot.artifacts.map(resolveArtifactResources),

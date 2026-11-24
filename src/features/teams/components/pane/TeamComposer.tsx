@@ -9,10 +9,11 @@ import { agentCompletionSource } from "@teams/components/agents/agentCompletionS
 import {
   addressableTeams,
   agentHandleFromName,
+  answersTeamRequest,
   connectorAuthor,
+  teamAgentIdentity,
   teamAudienceLabel,
   teamAuthor,
-  teamHasPendingRequest,
   teamsAddressedBy,
   teamTasksDiff,
   teamTaskTree,
@@ -81,8 +82,11 @@ export function TeamComposer({
   const team = state?.team;
   const diff = teamTasksDiff(state?.tasks ?? []);
   const inThread = threadSequence !== undefined;
-  const request = state?.request;
-  const needsReply = team ? teamHasPendingRequest(team) : false;
+  const request = state?.requests.at(-1);
+  // The questions a post here would answer, which is where the user replies to them.
+  const answering = team?.pendingRequests.filter((pending) =>
+    answersTeamRequest(threadSequence, pending),
+  );
   const { lead, members, agents, openArtifact, openPanel } = useTeamPane();
   // The arrangement puts pins before new shares; archived artifacts stay off the tray.
   const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived, pinned }) =>
@@ -109,7 +113,7 @@ export function TeamComposer({
     task: inThread
       ? state?.tasks.find((task) => task.threadSequence === threadSequence)
       : undefined,
-    acknowledgedRequest: needsReply,
+    acknowledgedRequest: answering?.some(({ agentId }) => agentId === lead.id),
   });
   const recipients = [
     ...connectorsAddressedBy(draft.value, connectors).map(connectorAuthor),
@@ -185,7 +189,11 @@ export function TeamComposer({
             <TeamAudience audience={audience} recipients={recipients} agentCount={agents.length} />
           )}
           {request && onShowRequest && (
-            <InputNeeded request={request.content} onShow={onShowRequest} />
+            <InputNeeded
+              request={request.content}
+              count={state?.requests.length ?? 0}
+              onShow={onShowRequest}
+            />
           )}
         </>
       }
@@ -196,8 +204,8 @@ export function TeamComposer({
       placeholder={
         inThread
           ? "Reply in thread, or @mention an agent"
-          : needsReply
-            ? `Reply to ${lead.name}, or @mention an agent`
+          : answering?.length
+            ? `Reply to ${teamAgentIdentity(agents, answering.at(-1)!.agentId).name}, or @mention an agent`
             : `Message ${team ? `#${team.name}` : "the team"}, or @mention an agent`
       }
     />
@@ -264,8 +272,19 @@ function TeamAudience({
   );
 }
 
-/** The lead's pending question: hovering previews it, and clicking scrolls to it. */
-function InputNeeded({ request, onShow }: { request: string; onShow: () => void }) {
+/**
+ * The newest question waiting on the user, and how many are: hovering previews it, and clicking
+ * goes to it.
+ */
+function InputNeeded({
+  request,
+  count,
+  onShow,
+}: {
+  request: string;
+  count: number;
+  onShow: () => void;
+}) {
   return (
     <PreviewCard>
       <PreviewCardTrigger
@@ -275,6 +294,7 @@ function InputNeeded({ request, onShow }: { request: string; onShow: () => void 
       >
         <RunningIndicator waiting className="size-3.5" />
         Input needed
+        {count > 1 && <span className="text-muted-foreground tabular-nums">{count}</span>}
       </PreviewCardTrigger>
       <PreviewCardContent
         side="top"

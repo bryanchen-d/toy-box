@@ -67,24 +67,87 @@ export type Team = {
   seenThrough: number;
   /** Transcript-derived: reading acknowledges completed tasks; user replies acknowledge requests. */
   completedSequence: number | null;
-  requestSequence: number | null;
+  /** The questions still waiting on the user, oldest first and at most one per thread. */
+  pendingRequests: TeamPendingRequest[];
   updatedAt: string;
 };
+
+/**
+ * A question for the user that no reply has acknowledged yet: the message asking it, the thread
+ * it was asked in unless it was asked top-level, and the agent waiting on the answer.
+ */
+export const teamPendingRequestSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    threadSequence: z.number().int().positive().optional(),
+    agentId: z.string().min(1),
+  })
+  .strict();
+export type TeamPendingRequest = z.output<typeof teamPendingRequestSchema>;
 
 /** Attention refers to transcript milestones; reading never answers a request. */
 export function teamHasUnreadCompletion(team: Team): boolean {
   return (team.completedSequence ?? 0) > team.seenThrough;
 }
 
-export function teamHasPendingRequest(team: Team): boolean {
-  return team.requestSequence !== null;
+export function teamHasPendingRequest(team: Pick<Team, "pendingRequests">): boolean {
+  return team.pendingRequests.length > 0;
 }
 
-/** A user message, or the lead resolving them, settles every request before it. */
-export function acknowledgesTeamRequests(message: TeamMessage<unknown>): boolean {
-  return isTeamSystemMessage(message)
-    ? message.content.type === "requests_resolved"
-    : message.sender.type === "user";
+/**
+ * Whether the user posting in a thread, or top-level without one, answers a question: one asked in
+ * a thread is answered there, and one asked top-level is answered top-level or in its own thread.
+ */
+export function answersTeamRequest(
+  threadSequence: number | undefined,
+  request: Pick<TeamPendingRequest, "sequence" | "threadSequence">,
+): boolean {
+  return request.threadSequence === undefined
+    ? threadSequence === undefined || threadSequence === request.sequence
+    : threadSequence === request.threadSequence;
+}
+
+/**
+ * Whether a later message acknowledges a request: the user answering it where it was asked, or the
+ * lead resolving every request before it.
+ */
+export function acknowledgesTeamRequest(
+  message: TeamMessage<unknown>,
+  request: Pick<TeamPendingRequest, "sequence" | "threadSequence">,
+): boolean {
+  if (message.sequence <= request.sequence) return false;
+  if (isTeamSystemMessage(message)) return message.content.type === "requests_resolved";
+  return message.sender.type === "user" && answersTeamRequest(message.threadSequence, request);
+}
+
+/**
+ * The pending requests after a message: those it acknowledges leave, and a question it asks takes
+ * the place of any still pending in its thread.
+ */
+export function reduceTeamPendingRequests(
+  pending: TeamPendingRequest[],
+  message: TeamMessage<unknown>,
+): TeamPendingRequest[] {
+  const remaining = pending.filter((request) => !acknowledgesTeamRequest(message, request));
+  if (isTeamSystemMessage(message) || !message.request || message.sender.type !== "agent") {
+    return remaining.length === pending.length ? pending : remaining;
+  }
+  const { sequence, threadSequence, sender } = message;
+  return [
+    ...remaining.filter((request) => request.threadSequence !== threadSequence),
+    { sequence, ...(threadSequence ? { threadSequence } : {}), agentId: sender.agentId },
+  ];
+}
+
+/** The tasks whose threads hold a question waiting on the user: what needs your input. */
+export function teamTasksNeedingInput(
+  tasks: readonly TeamTask[],
+  pendingRequests: readonly TeamPendingRequest[],
+): TeamTask[] {
+  const threads = new Set(pendingRequests.map(({ threadSequence }) => threadSequence));
+  return tasks.filter(
+    ({ threadSequence }) => threadSequence !== undefined && threads.has(threadSequence),
+  );
 }
 
 export function teamStatus(team: Team): "waiting" | "finished" | "unread" | null {
@@ -569,7 +632,10 @@ export type TeamConversationMessage<A = TeamAttachment> = TeamMessageBase & {
   origin?: ConnectorOrigin;
   /** The agent whose message a connector's reply answers; unaddressed, the reply wakes it. */
   askedBy?: string;
-  /** The lead asks for the user's response; a later user message acknowledges it. */
+  /**
+   * A question for the user, which the lead asks anywhere and an assignee in its own task's
+   * thread; see `acknowledgesTeamRequest`.
+   */
   request?: true;
   /** A reply's thread: the sequence of the top-level message that starts it. */
   threadSequence?: number;
@@ -611,8 +677,11 @@ export type TeamState = {
   lead: TeamLead;
   members: TeamMember[];
   messages: TeamMessage[];
-  /** The newest unanswered public request, including one outside the message window. */
-  request: TeamConversationMessage | null;
+  /**
+   * The pending questions for the user, oldest first and one per thread, including those outside
+   * the message window; see `Team.pendingRequests`.
+   */
+  requests: TeamConversationMessage[];
   /** Every task, open and closed; `teamTaskTree` arranges them. */
   tasks: TeamTask[];
   /** In the user's arrangement: pins first, then new shares. */
@@ -790,7 +859,7 @@ export function resolveTeamAudience({
   coordinators?: Readonly<Record<string, string>>;
   /** The task whose thread holds the message. */
   task?: Pick<TeamTask, "assigneeId">;
-  /** Persistence established that this user reply acknowledged a pending request. */
+  /** Persistence established that this user reply acknowledged a question the lead asked. */
   acknowledgedRequest?: boolean;
 }): TeamAgent[] {
   // Another team reaches only this team's lead, which decides what its members do.

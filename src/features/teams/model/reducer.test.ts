@@ -29,7 +29,7 @@ function snapshot(): TeamState {
       latestSequence: 101,
       attentionSequence: 101,
       seenThrough: 0,
-      requestSequence: null,
+      pendingRequests: [],
       completedSequence: null,
       updatedAt: "2026-10-03T20:00:00.000Z",
     },
@@ -41,7 +41,7 @@ function snapshot(): TeamState {
     artifacts: [],
     routines: [],
     advice: [],
-    request: null,
+    requests: [],
     presence: { team: { state: "idle" } },
   };
 }
@@ -74,7 +74,7 @@ test("pause and resume replay to the same team state without changing attention"
   const previous = snapshot();
   const paused = reduceTeamState(previous, system(102, { type: "team_paused", paused: true }));
   expect(paused.team.paused).toBe(true);
-  expect(paused.team.requestSequence).toBe(previous.team.requestSequence);
+  expect(paused.team.pendingRequests).toBe(previous.team.pendingRequests);
   expect(paused.team.completedSequence).toBe(previous.team.completedSequence);
   expect(paused.revision).toBe(102);
   const resumed = reduceTeamState(paused, system(103, { type: "team_paused", paused: false }));
@@ -84,7 +84,7 @@ test("pause and resume replay to the same team state without changing attention"
 
 test("quiet task and model changes advance the cursor without creating transcript activity", () => {
   const previous = snapshot();
-  previous.team.requestSequence = 100;
+  previous.team.pendingRequests = [{ sequence: 100, agentId: "team" }];
   previous.team.completedSequence = 101;
   const build = teamTask("t1", {
     title: "Build",
@@ -127,7 +127,7 @@ test("quiet task and model changes advance the cursor without creating transcrip
 
 test("team icons replay quietly without changing the lead identity, attention, or messages", () => {
   const previous = snapshot();
-  previous.team.requestSequence = 100;
+  previous.team.pendingRequests = [{ sequence: 100, agentId: "team" }];
   previous.team.completedSequence = 101;
   const avatar = { mark: "M5 12h14M12 5v14", color: "#7c3aed" };
   const event = { type: "avatar" as const, revision: 102, avatar };
@@ -206,15 +206,15 @@ test("a pending request survives paging and reading, receives reactions, and cle
     request: true as const,
   };
   const previous = snapshot();
-  previous.request = { ...question, id: "earlier-request", sequence: 1 };
-  previous.team.requestSequence = 1;
+  previous.requests = [{ ...question, id: "earlier-request", sequence: 1 }];
+  previous.team.pendingRequests = [{ sequence: 1, agentId: "team" }];
   const requested = reduceTeamState(previous, {
     type: "message",
     revision: 102,
     message: question,
   });
-  expect(requested.request).toBe(question);
-  expect(requested.team.requestSequence).toBe(102);
+  expect(requested.requests).toEqual([question]);
+  expect(requested.team.pendingRequests).toEqual([{ sequence: 102, agentId: "team" }]);
   const completed = reduceTeamState(requested, system(104, { type: "tasks_completed" }));
   expect(completed.team.completedSequence).toBe(104);
   const partiallyRead = reduceTeamState(completed, {
@@ -230,10 +230,10 @@ test("a pending request survives paging and reading, receives reactions, and cle
     agentId: "reviewer",
     reaction: "agree",
   });
-  expect<TeamMessage | null | undefined>(loadedReaction.request).toEqual(
+  expect<TeamMessage | undefined>(loadedReaction.requests[0]).toEqual(
     loadedReaction.messages.find(({ sequence }) => sequence === question.sequence),
   );
-  expect(loadedReaction.request?.reactions).toEqual([
+  expect(loadedReaction.requests[0]?.reactions).toEqual([
     otherReaction,
     { agentId: "reviewer", reaction: "agree" },
   ]);
@@ -251,9 +251,9 @@ test("a pending request survives paging and reading, receives reactions, and cle
   expect(read.team).toMatchObject({
     seenThrough: 200,
     completedSequence: 104,
-    requestSequence: 102,
+    pendingRequests: [{ sequence: 102, agentId: "team" }],
   });
-  expect(read.request).toBe(loadedReaction.request);
+  expect(read.requests).toBe(loadedReaction.requests);
   expect(teamHasUnreadCompletion(read.team)).toBe(false);
   const reacted = reduceTeamState(read, {
     type: "reaction",
@@ -262,7 +262,7 @@ test("a pending request survives paging and reading, receives reactions, and cle
     agentId: "reviewer",
     reaction: "love",
   });
-  expect(reacted.request?.reactions).toEqual([
+  expect(reacted.requests[0]?.reactions).toEqual([
     otherReaction,
     { agentId: "reviewer", reaction: "love" },
   ]);
@@ -274,7 +274,7 @@ test("a pending request survives paging and reading, receives reactions, and cle
     agentId: "reviewer",
     reaction: null,
   });
-  expect(clearedReaction.request?.reactions).toEqual([otherReaction]);
+  expect(clearedReaction.requests[0]?.reactions).toEqual([otherReaction]);
   const noReactions = reduceTeamState(clearedReaction, {
     type: "reaction",
     revision: 204,
@@ -282,14 +282,14 @@ test("a pending request survives paging and reading, receives reactions, and cle
     agentId: "designer",
     reaction: null,
   });
-  expect(noReactions.request?.reactions).toBeUndefined();
+  expect(noReactions.requests[0]?.reactions).toBeUndefined();
   const replied = reduceTeamState(noReactions, {
     type: "message",
     revision: 205,
     message: message(201),
   });
-  expect(replied.request).toBeNull();
-  expect(replied.team.requestSequence).toBeNull();
+  expect(replied.requests).toEqual([]);
+  expect(replied.team.pendingRequests).toEqual([]);
 });
 
 test("the lead resolving clears a pending request without a user reply", () => {
@@ -304,8 +304,48 @@ test("the lead resolving clears a pending request without a user reply", () => {
     message: question,
   });
   const resolved = reduceTeamState(requested, system(103, { type: "requests_resolved" }));
-  expect(resolved.request).toBeNull();
-  expect(resolved.team.requestSequence).toBeNull();
+  expect(resolved.requests).toEqual([]);
+  expect(resolved.team.pendingRequests).toEqual([]);
+});
+
+test("questions wait per thread: a reply answers only its thread's, and asking again replaces it", () => {
+  const ask = (sequence: number, agentId: string, threadSequence?: number) => ({
+    ...message(sequence),
+    sender: { type: "agent" as const, agentId },
+    request: true as const,
+    ...(threadSequence ? { threadSequence } : {}),
+  });
+  const posted = [
+    ask(102, "team"),
+    ask(103, "builder", 50),
+    ask(104, "team", 60),
+    ask(105, "builder", 50),
+  ].reduce(
+    (state, question) =>
+      reduceTeamState(state, { type: "message", revision: question.sequence, message: question }),
+    snapshot(),
+  );
+  expect(posted.team.pendingRequests).toEqual([
+    { sequence: 102, agentId: "team" },
+    { sequence: 104, threadSequence: 60, agentId: "team" },
+    { sequence: 105, threadSequence: 50, agentId: "builder" },
+  ]);
+  expect(posted.requests.map(({ sequence }) => sequence)).toEqual([102, 104, 105]);
+  const repliedInThread = reduceTeamState(posted, {
+    type: "message",
+    revision: 106,
+    message: { ...message(106), threadSequence: 50 },
+  });
+  expect(repliedInThread.requests.map(({ sequence }) => sequence)).toEqual([102, 104]);
+  const repliedTopLevel = reduceTeamState(repliedInThread, {
+    type: "message",
+    revision: 107,
+    message: message(107),
+  });
+  expect(repliedTopLevel.team.pendingRequests).toEqual([
+    { sequence: 104, threadSequence: 60, agentId: "team" },
+  ]);
+  expect(repliedTopLevel.requests.map(({ sequence }) => sequence)).toEqual([104]);
 });
 
 test("presence replaces the reconnect baseline or merges sparse live changes without advancing durable state", () => {
@@ -337,9 +377,10 @@ test("member departure removes its presence", () => {
 
 test("local posts preserve server cursors and reconcile by identity across interleaved commits", () => {
   const previous = snapshot();
-  previous.request = { ...message(1), sender: { type: "agent", agentId: "team" } };
-  previous.messages[0] = previous.request;
-  previous.team.requestSequence = 1;
+  const question = { ...message(1), sender: { type: "agent" as const, agentId: "team" } };
+  previous.requests = [{ ...question, request: true }];
+  previous.messages[0] = previous.requests[0]!;
+  previous.team.pendingRequests = [{ sequence: 1, agentId: "team" }];
   const local = {
     type: "message" as const,
     message: {
@@ -360,7 +401,7 @@ test("local posts preserve server cursors and reconcile by identity across inter
   ]);
   expect(pending.revision).toBe(previous.revision);
   expect(pending.team).toBe(previous.team);
-  expect(pending.request).toBe(previous.request);
+  expect(pending.requests).toBe(previous.requests);
   expect(previous.messages).toHaveLength(2);
   expect(reduceTeamState(pending, local)).toBe(pending);
 
@@ -387,10 +428,10 @@ test("local posts preserve server cursors and reconcile by identity across inter
   expect(next.revision).toBe(104);
   expect(next.team).toMatchObject({
     latestSequence: 104,
-    requestSequence: null,
+    pendingRequests: [],
     updatedAt: echo.message.timestamp,
   });
-  expect(next.request).toBeNull();
+  expect(next.requests).toEqual([]);
   expect(reduceTeamState(next, local)).toBe(next);
   expect(reduceTeamState(next, echo)).toBe(next);
 });

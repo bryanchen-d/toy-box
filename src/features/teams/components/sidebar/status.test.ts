@@ -10,7 +10,7 @@ const team: Team = {
   latestSequence: 2,
   attentionSequence: 2,
   seenThrough: 1,
-  requestSequence: null,
+  pendingRequests: [],
   completedSequence: null,
   updatedAt: new Date(0).toISOString(),
 };
@@ -27,7 +27,7 @@ test.each([
   ({ request, done, open, expected }) => {
     const current = {
       ...team,
-      requestSequence: request ? 2 : null,
+      pendingRequests: request ? [{ sequence: 2, threadSequence: 1, agentId: "builder" }] : [],
       completedSequence: done ? 2 : null,
     };
     expect(teamSidebarStatus(current, teamStatus(current), open)?.kind).toBe(expected);

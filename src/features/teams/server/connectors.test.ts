@@ -218,7 +218,7 @@ test("an outage wakes each affected sender once, retains queued work, and can re
     immediate: true,
   });
   expect(await connectors.countPending(connector.id)).toBe(3);
-  expect((await teams.getTeam(team.id))?.requestSequence).toBeNull();
+  expect((await teams.getTeam(team.id))?.pendingRequests).toEqual([]);
   expect((await readTeam(team.id)).messages).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -475,11 +475,11 @@ test("events for no current team are dropped, and connectors never forward to co
 test("a connector message never answers the lead's pending question", async () => {
   const { teams, team, connector } = await open();
   await sendTeamMessageFromAgent(team.id, { content: "Which channel?", request: true });
-  const asked = (await teams.getTeam(team.id))!.requestSequence;
-  expect(asked).not.toBeNull();
+  const asked = (await teams.getTeam(team.id))!.pendingRequests;
+  expect(asked).toHaveLength(1);
 
   await applyConnectorEvent(connector, event("Slack says hi", { to: { teamId: team.id } }));
-  expect((await teams.getTeam(team.id))!.requestSequence).toBe(asked);
+  expect((await teams.getTeam(team.id))!.pendingRequests).toEqual(asked);
 });
 
 test("agents can't flood one conversation, but the user always gets through", async () => {

@@ -389,12 +389,12 @@ describe("threads", () => {
     expect(row).not.toHaveProperty("root");
   });
 
-  test("a question in a thread pends until a later user message anywhere", () => {
+  test("a question in a thread pends until the user replies in that thread", () => {
     const asked = { ...reply(3, 1, "lead"), request: true as const };
-    const pending = rowsOf([userPost(1), agentPost(2, "engine"), asked]);
+    const pending = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
     expect(threadOfRow(pending[0])?.request).toBe("pending");
     expect(threadOfRow(pending[2])?.request).toBe("pending");
-    const acknowledged = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
+    const acknowledged = rowsOf([userPost(1), agentPost(2, "engine"), asked, reply(4, 1)]);
     expect(threadOfRow(acknowledged[2])?.request).toBe("replied");
   });
 
@@ -534,36 +534,44 @@ describe("needs your reply view", () => {
       agentPost(4, "lead", undefined, "The lift is ready."),
       agentPost(5, "engine"),
       event(6, { type: "member_joined", member }),
-      question(7),
+      question(7, 5),
     ]);
-    expect(rowIds(rows)).toEqual([["3", "7"]]);
+    expect(rowIds(rows)).toEqual([["3"], ["7"]]);
   });
 
-  test("questions asked in a thread show as that thread's row", () => {
+  test("each thread shows its latest question, as that thread's row", () => {
     const rows = requests([userPost(1), agentPost(2, "engine"), question(3, 1), question(4, 1)]);
-    expect(rowIds(rows)).toEqual([["3", "4"]]);
+    expect(rowIds(rows)).toEqual([["4"]]);
     expect(rows).toMatchObject([
       { type: "thread", root: { id: "1" }, thread: { sequence: 1, request: "pending" } },
     ]);
   });
 
-  test("a reply anywhere acknowledges every question, leaving none", () => {
-    const reply = { ...(userPost(3) as TeamConversationMessage), threadSequence: 1 };
-    expect(requests([question(1), question(2, 1), reply])).toEqual([]);
+  test("a reply answers the questions where it was posted, leaving the others", () => {
+    const inThread = (sequence: number) => ({
+      ...(userPost(sequence) as TeamConversationMessage),
+      threadSequence: 1,
+    });
+    expect(rowIds(requests([question(1), question(2, 1), question(3, 9), inThread(4)]))).toEqual([
+      ["3"],
+    ]);
+    expect(rowIds(requests([question(1), question(2, 9), userPost(3)]))).toEqual([["2"]]);
   });
 
   test("the lead resolving acknowledges every earlier question, but not a later one", () => {
     const resolved = event(3, { type: "requests_resolved" });
-    expect(rowIds(requests([question(1), question(2), resolved, question(4)]))).toEqual([["4"]]);
-    expect(viewNeedsOlderHistory([resolved, question(4)], "requests", 4)).toBe(false);
+    expect(rowIds(requests([question(1), question(2, 1), resolved, question(4)]))).toEqual([["4"]]);
   });
 
-  test("needs older history only while a question may precede what's loaded", () => {
+  test("needs older history only until every pending question is loaded", () => {
     const loaded = [agentPost(5, "engine"), question(6)];
-    expect(viewNeedsOlderHistory(loaded, "requests", 6)).toBe(true);
-    expect(viewNeedsOlderHistory([userPost(4), ...loaded], "requests", 6)).toBe(false);
-    expect(viewNeedsOlderHistory([agentPost(5, "engine")], "requests", null)).toBe(false);
-    expect(viewNeedsOlderHistory([agentPost(5, "engine")], "yours", null)).toBe(true);
+    const pending = (...sequences: number[]) =>
+      sequences.map((sequence) => ({ sequence, agentId: "lead" }));
+    expect(viewNeedsOlderHistory(loaded, "requests", pending(3, 6))).toBe(true);
+    expect(viewNeedsOlderHistory(loaded, "requests", pending(6))).toBe(false);
+    expect(viewNeedsOlderHistory([], "requests", pending(6))).toBe(true);
+    expect(viewNeedsOlderHistory(loaded, "requests", [])).toBe(false);
+    expect(viewNeedsOlderHistory(loaded, "yours", [])).toBe(true);
   });
 });
 

@@ -73,13 +73,16 @@ test("team icons use the same constrained vector format as member avatars", () =
   }
 });
 
-test("only the lead's messages can request input or interrupt", () => {
+test("only the lead's messages can interrupt, and both can flag a question for the user", () => {
   const sendLead = teamLeadTools.find(({ name }) => name === "send_team_message");
   const sendMember = teamMemberTools.find(({ name }) => name === "send_team_message");
   const flagged = { content: "Which color?", request: true, interrupt: true };
 
   expect<unknown>(sendLead?.parameters?.parse(flagged)).toEqual(flagged);
-  expect<unknown>(sendMember?.parameters?.parse(flagged)).toEqual({ content: "Which color?" });
+  expect<unknown>(sendMember?.parameters?.parse(flagged)).toEqual({
+    content: "Which color?",
+    request: true,
+  });
 });
 
 test("only the lead can ask to be woken, and within two hours", () => {

@@ -386,7 +386,7 @@ function TeamContent({
                         view={view}
                         unreadAfter={unreadAfter}
                         handleRef={transcriptRef}
-                        requestSequence={state.team.requestSequence}
+                        pendingRequests={state.team.pendingRequests}
                         onLoadPrevious={loadPrevious}
                       />
                     ) : (
@@ -410,7 +410,7 @@ function TeamContent({
                     }}
                     onShowRequest={() => {
                       // A question asked in a thread is answered there.
-                      const requestThread = state?.request?.threadSequence;
+                      const requestThread = state?.requests.at(-1)?.threadSequence;
                       if (requestThread === undefined) transcriptRef.current?.showRequest();
                       else openThread(requestThread);
                     }}
@@ -479,6 +479,7 @@ function TeamContent({
                     <TeamTasks
                       tasks={state.tasks}
                       artifacts={state.artifacts}
+                      pendingRequests={state.team.pendingRequests}
                       view={taskView}
                       onViewChange={setTaskView}
                     />

@@ -1,4 +1,4 @@
-import { acknowledgesTeamRequests, compareTeamAgents, isTeamSystemMessage } from ".";
+import { compareTeamAgents, isTeamSystemMessage, reduceTeamPendingRequests } from ".";
 import type {
   Team,
   TeamAgent,
@@ -52,7 +52,7 @@ export function reduceTeamState(previous: TeamState, event: TeamStateEvent): Tea
   };
   if (event.type === "reaction") {
     state.messages = state.messages.map((message) => reduceTeamReaction(message, event));
-    if (state.request) state.request = reduceTeamReaction(state.request, event);
+    state.requests = state.requests.map((request) => reduceTeamReaction(request, event));
   } else if (event.type === "artifacts") {
     state.artifacts = event.artifacts;
   } else if (event.type === "task") {
@@ -82,11 +82,13 @@ export function reduceTeamState(previous: TeamState, event: TeamStateEvent): Tea
         break;
     }
   }
-  if (state.team.requestSequence !== previous.team.requestSequence) {
-    state.request =
+  if (state.team.pendingRequests !== previous.team.pendingRequests) {
+    const pending = new Set(state.team.pendingRequests.map(({ sequence }) => sequence));
+    const asked =
       event.type === "message" && !isTeamSystemMessage(event.message) && event.message.request
-        ? event.message
-        : null;
+        ? [event.message]
+        : [];
+    state.requests = [...state.requests, ...asked].filter(({ sequence }) => pending.has(sequence));
   }
   return state;
 }
@@ -108,12 +110,10 @@ export function reduceTeam(team: Team, event: TeamEvent<unknown>): Team {
         ...(event.attention
           ? { attentionSequence: Math.max(team.attentionSequence, message.sequence) }
           : {}),
+        pendingRequests: reduceTeamPendingRequests(team.pendingRequests, message),
         updatedAt: message.timestamp,
       };
-      if (acknowledgesTeamRequests(message)) return { ...next, requestSequence: null };
-      if (!isTeamSystemMessage(message)) {
-        return message.request ? { ...next, requestSequence: message.sequence } : next;
-      }
+      if (!isTeamSystemMessage(message)) return next;
       const content = message.content;
       switch (content.type) {
         case "team_paused":

@@ -22,7 +22,7 @@ test("the team table includes lead and members, nested work and waiting details,
     attentionSequence: 0,
     seenThrough: 0,
     completedSequence: null,
-    requestSequence: null,
+    pendingRequests: [],
     updatedAt: "2026-10-29T20:00:00Z",
   };
   const tasks = [
@@ -147,7 +147,7 @@ function renderUsage(usage?: SessionUsage) {
     attentionSequence: 0,
     seenThrough: 0,
     completedSequence: null,
-    requestSequence: null,
+    pendingRequests: [],
     updatedAt: "2026-11-02T20:00:00Z",
   };
   const lead = teamLead(team.id);

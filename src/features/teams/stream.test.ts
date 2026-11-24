@@ -23,7 +23,7 @@ const snapshot: TeamState = {
     attentionSequence: 101,
     seenThrough: 0,
     completedSequence: null,
-    requestSequence: null,
+    pendingRequests: [],
     updatedAt: "2026-10-03T20:00:00.000Z",
   },
   revision: 101,
@@ -34,7 +34,7 @@ const snapshot: TeamState = {
   artifacts: [],
   routines: [],
   advice: [],
-  request: null,
+  requests: [],
   presence: {},
 };
 

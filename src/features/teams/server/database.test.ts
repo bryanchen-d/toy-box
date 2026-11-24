@@ -1,6 +1,6 @@
 import { teamAgent, createStoredTeam } from "@teams/server/testFixtures";
 import { describe, expect, onTestFinished, setSystemTime, test } from "bun:test";
-import type { EditTeamTasksInput, TeamEvent } from "@teams/model";
+import type { EditTeamTasksInput, TeamEvent, TeamMessageAuthor } from "@teams/model";
 import { machineFile, sessionFile, workspaceFileId } from "@files/model";
 import { createTestDatabase } from "@/server/database";
 import { TeamDatabase } from "./database";
@@ -258,7 +258,9 @@ describe("team attention", () => {
     const question = await ask("Choose a name.");
     expect(question).toMatchObject({ sequence: 1, content: "Choose a name.", request: true });
     expect(await teams.listMessagesAfter(team.id)).toEqual([question]);
-    expect((await teams.getTeam(team.id))?.requestSequence).toBe(1);
+    expect((await teams.getTeam(team.id))?.pendingRequests).toEqual([
+      { sequence: 1, agentId: team.id },
+    ]);
   });
 
   test("catalog attention includes messages outside the loaded window", async () => {
@@ -268,15 +270,15 @@ describe("team attention", () => {
     for (let index = 0; index < 105; index++) await post(`Update ${index}`);
     const snapshot = await teams.getSnapshot(team.id, 100);
     expect(snapshot?.messages).toHaveLength(100);
-    expect(snapshot?.request).toMatchObject({ content: "What should we do next?" });
+    expect(snapshot?.requests).toMatchObject([{ content: "What should we do next?" }]);
     expect((await teams.listTeams()).teams[0]).toMatchObject({
       completedSequence: done.sequence,
-      requestSequence: question.sequence,
+      pendingRequests: [{ sequence: question.sequence, agentId: team.id }],
     });
     await ask("Which follow-up should we prioritize?");
-    expect((await teams.getSnapshot(team.id, 1))?.request).toMatchObject({
-      content: "Which follow-up should we prioritize?",
-    });
+    expect((await teams.getSnapshot(team.id, 1))?.requests).toMatchObject([
+      { content: "Which follow-up should we prioritize?" },
+    ]);
   });
 
   test("reads and replies persist attention cursors with their receipts", async () => {
@@ -285,16 +287,19 @@ describe("team attention", () => {
     const question = await ask("What should we do next?");
     const through = question.sequence;
     expect(await teams.markUserSeen(team.id, through)).toMatchObject({
-      team: { completedSequence: done.sequence, requestSequence: question.sequence },
+      team: {
+        completedSequence: done.sequence,
+        pendingRequests: [{ sequence: question.sequence, agentId: team.id }],
+      },
       events: [{ type: "read", seenThrough: through }],
     });
     const reply = await post("Build the next batch.", { type: "user" });
     expect(reply).toMatchObject({
       acknowledgedRequest: true,
-      team: { requestSequence: null },
+      team: { pendingRequests: [] },
     });
     expect(reply.team).toEqual((await teams.getTeam(team.id))!);
-    expect((await teams.getSnapshot(team.id, 1))?.request).toBeNull();
+    expect((await teams.getSnapshot(team.id, 1))?.requests).toEqual([]);
     expect(
       (await teams.listMessagesAfter(team.id)).filter(
         ({ sender, content }) =>
@@ -310,34 +315,85 @@ describe("team attention", () => {
     await expect(teams.resolveRequests(crypto.randomUUID())).rejects.toThrow("team lead");
     const resolved = await teams.resolveRequests(team.id);
     expect(resolved).toMatchObject({
-      team: { requestSequence: null },
+      team: { pendingRequests: [] },
       events: [{ type: "message", message: { content: { type: "requests_resolved" } } }],
     });
     expect(resolved.team).toEqual((await teams.getTeam(team.id))!);
-    expect((await teams.getSnapshot(team.id, 1))?.request).toBeNull();
+    expect((await teams.getSnapshot(team.id, 1))?.requests).toEqual([]);
   });
 
-  test("only the lead can request input", async () => {
+  test("the lead asks the user anywhere, and an assignee only in its own open task's thread", async () => {
     const { teams, team } = await setup();
     const { member } = await teams.createMember(teamAgent(team.id, "member", "Member"));
     const other = await createStoredTeam(teams, { name: "Other", ...TEAM_DEFAULTS });
-    const senders = [
-      { type: "user" },
-      { type: "agent", agentId: member.id },
-      { type: "agent", agentId: other.id },
-    ] as const;
-    for (const sender of senders) {
-      await expect(
-        teams.appendMessage({
-          id: crypto.randomUUID(),
-          teamId: team.id,
-          sender,
-          content: "Which color?",
-          request: true,
-        }),
-      ).rejects.toThrow("Only the team lead can request input.");
+    const { opened } = await teams.editTasks(team.id, {
+      operations: [
+        { type: "add", title: "Parser", assigneeId: member.id },
+        { type: "add", title: "Docs" },
+      ],
+    });
+    const [parser, docs] = opened.map(({ threadSequence }) => threadSequence!);
+    const ask = (sender: TeamMessageAuthor, threadSequence?: number) =>
+      teams.appendMessage({
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        sender,
+        content: "Which color?",
+        request: true,
+        ...(threadSequence ? { threadSequence } : {}),
+      });
+    const before = (await teams.getTeam(team.id))!.latestSequence;
+    for (const [sender, thread] of [
+      [{ type: "user" }, parser],
+      [{ type: "agent", agentId: member.id }, undefined],
+      [{ type: "agent", agentId: member.id }, docs],
+      [{ type: "agent", agentId: other.id }, parser],
+    ] as const) {
+      await expect(ask(sender, thread)).rejects.toThrow(/ask the user/i);
     }
-    expect((await teams.getTeam(team.id))?.latestSequence).toBe(1);
+    expect((await teams.getTeam(team.id))!.latestSequence).toBe(before);
+
+    const asked = await ask({ type: "agent", agentId: member.id }, parser);
+    await ask({ type: "agent", agentId: team.id }, docs);
+    expect(asked.team.pendingRequests).toEqual([
+      { sequence: asked.message.sequence, threadSequence: parser, agentId: member.id },
+    ]);
+    expect((await teams.getTeam(team.id))!.pendingRequests).toHaveLength(2);
+    await teams.editTasks(team.id, {
+      operations: [{ type: "update", taskId: "t1", patch: { status: "completed" } }],
+    });
+    await expect(ask({ type: "agent", agentId: member.id }, parser)).rejects.toThrow(
+      /open task assigned to you/,
+    );
+  });
+
+  test("a reply answers only the question asked where it was posted, and wakes the lead only for its own", async () => {
+    const { teams, team } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "member", "Member"));
+    const { opened } = await teams.editTasks(team.id, {
+      operations: [{ type: "add", title: "Parser", assigneeId: member.id }],
+    });
+    const parser = opened[0]!.threadSequence!;
+    const post = (sender: TeamMessageAuthor, options: { thread?: number; request?: true } = {}) =>
+      teams.appendMessage({
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        sender,
+        content: "Hello",
+        ...(options.thread ? { threadSequence: options.thread } : {}),
+        ...(options.request ? { request: true } : {}),
+      });
+    const lead = await post({ type: "agent", agentId: team.id }, { request: true });
+    await post({ type: "agent", agentId: member.id }, { thread: parser, request: true });
+
+    const inThread = await post({ type: "user" }, { thread: parser });
+    expect(inThread.acknowledgedRequest).toBe(false);
+    expect(inThread.team.pendingRequests).toEqual([
+      { sequence: lead.message.sequence, agentId: team.id },
+    ]);
+    const topLevel = await post({ type: "user" });
+    expect(topLevel.acknowledgedRequest).toBe(true);
+    expect(topLevel.team.pendingRequests).toEqual([]);
   });
 
   test("a rejected reply preserves attention and allocates no sequence number", async () => {

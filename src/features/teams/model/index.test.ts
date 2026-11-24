@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { machineFile } from "@files/model";
-import type { ArrangeTeamArtifactsInput, TeamAgent, TeamArtifact, TeamMember } from "./index";
+import type {
+  ArrangeTeamArtifactsInput,
+  TeamAgent,
+  TeamArtifact,
+  TeamMember,
+  TeamMessage,
+} from "./index";
 import {
+  acknowledgesTeamRequest,
   addressableTeams,
   agentHandleFromName,
+  answersTeamRequest,
   applyTeamArtifactArrangement,
   arrangeTeamArtifactsInputSchema,
   teamAudienceLabel,
@@ -11,6 +19,7 @@ import {
   teamsAddressedBy,
   teamRoutineInputSchema,
   teamSystemMessageContentSchema,
+  teamTasksNeedingInput,
   teamUnreadAfter,
   editTeamInputSchema,
   markTeamReadInputSchema,
@@ -21,6 +30,7 @@ import {
   splitAgentMentionText,
   updateTeamInputSchema,
 } from "./index";
+import { teamTask } from "./testFixtures";
 
 const members: TeamMember[] = [
   { teamId: "team", id: "critic", name: "Critic" },
@@ -222,6 +232,50 @@ describe("team unread position", () => {
   test("a team whose newer messages don't involve the user has no unread position", () => {
     expect(teamUnreadAfter({ seenThrough: 7, attentionSequence: 7 })).toBeNull();
     expect(teamUnreadAfter({ seenThrough: 7, attentionSequence: 5 })).toBeNull();
+  });
+});
+
+describe("questions for the user", () => {
+  const topLevel = { sequence: 3 };
+  const inThread = { sequence: 5, threadSequence: 2 };
+
+  test("a question is answered where it was asked: its thread, or top-level and its own thread", () => {
+    expect(answersTeamRequest(undefined, topLevel)).toBe(true);
+    expect(answersTeamRequest(3, topLevel)).toBe(true);
+    expect(answersTeamRequest(2, topLevel)).toBe(false);
+    expect(answersTeamRequest(2, inThread)).toBe(true);
+    expect(answersTeamRequest(undefined, inThread)).toBe(false);
+    expect(answersTeamRequest(3, inThread)).toBe(false);
+  });
+
+  test("only a later user reply there, or the lead resolving, acknowledges one", () => {
+    const at = (sequence: number, rest: object) =>
+      ({ id: `${sequence}`, sequence, timestamp: "", content: "Yes", ...rest }) as TeamMessage;
+    expect(acknowledgesTeamRequest(at(6, { sender: user, threadSequence: 2 }), inThread)).toBe(
+      true,
+    );
+    expect(acknowledgesTeamRequest(at(4, { sender: user, threadSequence: 2 }), inThread)).toBe(
+      false,
+    );
+    expect(acknowledgesTeamRequest(at(6, { sender: critic, threadSequence: 2 }), inThread)).toBe(
+      false,
+    );
+    const resolved = at(6, { sender: { type: "system" }, content: { type: "requests_resolved" } });
+    expect(acknowledgesTeamRequest(resolved, inThread)).toBe(true);
+    expect(acknowledgesTeamRequest(resolved, topLevel)).toBe(true);
+  });
+
+  test("a task needs your input while its thread holds a pending question", () => {
+    const tasks = [
+      teamTask("t1", { threadSequence: 2 }),
+      teamTask("t2", { position: 1, threadSequence: 8 }),
+      teamTask("t3", { position: 2 }),
+    ];
+    const pending = [
+      { sequence: 3, agentId: "lead" },
+      { sequence: 5, threadSequence: 2, agentId: "builder" },
+    ];
+    expect(teamTasksNeedingInput(tasks, pending).map(({ id }) => id)).toEqual(["t1"]);
   });
 });
 

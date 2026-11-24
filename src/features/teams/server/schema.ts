@@ -26,7 +26,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
         CHECK (typeof(revision) = 'integer' AND revision >= 0),
       seen_through    INTEGER NOT NULL DEFAULT 0
         CHECK (typeof(seen_through) = 'integer' AND seen_through >= 0),
-      request_sequence INTEGER,
+      -- The questions still waiting on the user, one per thread: [{ sequence, threadSequence?, agentId }].
+      pending_requests TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(pending_requests)),
       completed_sequence INTEGER,
       updated_at      TEXT NOT NULL
     );
@@ -98,7 +99,8 @@ export async function initializeTeamSchema(db: Bun.SQL): Promise<void> {
       -- reply in task threads too.
       thread_sequence      INTEGER CHECK (thread_sequence IS NULL OR thread_sequence < sequence),
       timestamp            TEXT NOT NULL,
-      CHECK (request = 0 OR (sender_type = 'agent' AND sender_agent_id = team_id)),
+      -- The lead asks the user anywhere, and an assignee in its own task's thread.
+      CHECK (request = 0 OR sender_type = 'agent'),
       CHECK (
         (sender_type = 'agent' AND sender_agent_id IS NOT NULL) OR
         (sender_type = 'team' AND (sender_agent_id IS NULL OR sender_agent_id = sender_team_id)) OR

@@ -258,12 +258,21 @@ const sendTeamMessageParameters = z.object({
   threadSequence: teamThreadSequenceSchema.optional(),
 });
 
+const sendMemberMessageParameters = sendTeamMessageParameters.extend({
+  request: z
+    .boolean()
+    .optional()
+    .describe(
+      "Flags this message as a question for the user, such as a decision, context, or action only the user can give. Only in the thread of an open task assigned to you; it waits until the user replies in that thread.",
+    ),
+});
+
 const sendLeadMessageParameters = sendTeamMessageParameters.extend({
   request: z
     .boolean()
     .optional()
     .describe(
-      "Flags this message as needing the user's decision, context, or action until the user next posts.",
+      "Flags this message as needing the user's decision, context, or action. It waits until the user replies where it was asked: in its thread, or top-level for a top-level question.",
     ),
   interrupt: z
     .boolean()
@@ -293,7 +302,10 @@ const sendTeamMessageTool = defineTool("send_team_message", {
   },
 });
 
-/** The same tool plus an input request and an interrupt, which only the lead can make. */
+/** The same tool plus a question for the user, which an assignee asks in its own task's thread. */
+const sendMemberMessageTool = { ...sendTeamMessageTool, parameters: sendMemberMessageParameters };
+
+/** The same tool plus an input request anywhere and an interrupt, which only the lead can make. */
 const sendLeadMessageTool = { ...sendTeamMessageTool, parameters: sendLeadMessageParameters };
 
 const resolveTeamRequestsTool = defineTool("resolve_team_requests", {
@@ -750,7 +762,7 @@ export const teamLeadTools = [
 ];
 export const teamMemberTools = [
   ...commonTeamAgentTools,
-  sendTeamMessageTool,
+  sendMemberMessageTool,
   editOwnTasksTool,
   updateMemberTool,
   finishTeamAgentTurnTool,

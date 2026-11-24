@@ -378,7 +378,8 @@ function Office({ teamId }: { teamId: string }) {
 ```
 
 `state` is the canonical `TeamState`: team metadata and tasks, lead, members,
-messages, pending `request`, artifacts, routines, and authoritative `presence`.
+messages, pending `requests` (the questions waiting on the user, oldest first and one per
+thread), artifacts, routines, and authoritative `presence`.
 Use presence to place agents in working, waiting, or idle areas; waiting includes
 optional `wakeAt`. Avatars contain a hex `color` and SVG path `mark` in a 24×24
 viewBox. Artifact `file`s work with `useFile` and `actions.openFile`. `state.artifacts` follows

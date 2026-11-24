@@ -12,6 +12,9 @@ import {
   teamTaskStatusSchema,
   teamTurnReportsDue,
   assertTeamTurnReports,
+  acknowledgesTeamRequest,
+  isTeamTaskOpen,
+  teamPendingRequestSchema,
   TEAM_TASK_CONTINUE_LIMIT,
   mentionsTeamTask,
   teamSystemMessageContentSchema,
@@ -196,10 +199,11 @@ export class TeamDatabase {
       const team = teamFromRow(row);
       return {
         team,
-        request:
-          team.requestSequence === null
-            ? null
-            : await readRequest(db, teamId, team.requestSequence),
+        requests: await readRequests(
+          db,
+          teamId,
+          team.pendingRequests.map(({ sequence }) => sequence),
+        ),
         revision: row.revision,
         ...teamRoster(await new WorkerDatabase(db).list({ type: "team", teamId })),
         messages: await listMessagesBefore(db, teamId, undefined, messageLimit),
@@ -485,7 +489,7 @@ export class TeamDatabase {
       return recordTeamChange(
         db,
         team,
-        team.requestSequence === null
+        team.pendingRequests.length === 0
           ? []
           : [await appendSystemMessage(db, team.id, { type: "requests_resolved" })],
       );
@@ -727,7 +731,8 @@ export class TeamDatabase {
 
   /**
    * Appends a user, Agent, connector, or team message, in a thread when it replies. The lead can
-   * flag its own message as a request for the user.
+   * flag its own message as a question for the user anywhere, and an assignee in its own open
+   * task's thread.
    */
   async appendMessage({
     teamId,
@@ -739,17 +744,26 @@ export class TeamDatabase {
     teamId: string;
     request?: boolean;
   }) {
-    // A lead's Agent ID is its Team's ID.
-    if (request && !(message.sender.type === "agent" && message.sender.agentId === teamId)) {
-      throw new Error("Only the team lead can request input.");
-    }
     return inStateTransaction(this.db, async (db) => {
       const team = await requireTeam(db, teamId);
       const thread =
         threadSequence === undefined
           ? undefined
           : await resolveThreadSequence(db, teamId, threadSequence);
-      const acknowledgedRequest = message.sender.type === "user" && team.requestSequence !== null;
+      const task = thread === undefined ? undefined : await taskByThread(db, teamId, thread);
+      // A lead's Agent ID is its Team's ID.
+      const asker = message.sender.type === "agent" ? message.sender.agentId : undefined;
+      if (
+        request &&
+        asker !== teamId &&
+        !(asker && task?.assigneeId === asker && isTeamTaskOpen(task))
+      ) {
+        throw new Error(
+          asker
+            ? "Ask the user only in the thread of an open task assigned to you. Mention the lead to ask anything else."
+            : "Only the lead, or a task's assignee in its thread, can ask the user.",
+        );
+      }
       const change = await appendMessage(db, teamId, (position) => ({
         ...message,
         ...position,
@@ -760,9 +774,13 @@ export class TeamDatabase {
       return {
         ...(await recordTeamChange(db, team, [change])),
         message: change.message,
-        acknowledgedRequest,
+        // Answering the lead's question wakes it; an assignee's thread already reaches it.
+        acknowledgedRequest: team.pendingRequests.some(
+          (pending) =>
+            pending.agentId === teamId && acknowledgesTeamRequest(change.message, pending),
+        ),
         // The task whose thread holds the message, which decides whom it notifies.
-        task: thread === undefined ? undefined : await taskByThread(db, teamId, thread),
+        task,
       };
     });
   }
@@ -1279,12 +1297,12 @@ async function recordTeamChange<Event extends TeamEvent>(
 ) {
   const team = events.reduce(reduceTeam, previous);
   if (
-    team.requestSequence !== previous.requestSequence ||
+    team.pendingRequests !== previous.pendingRequests ||
     team.completedSequence !== previous.completedSequence
   ) {
     await db`
       UPDATE teams
-      SET request_sequence = ${team.requestSequence},
+      SET pending_requests = ${JSON.stringify(team.pendingRequests)},
         completed_sequence = ${team.completedSequence}
       WHERE id = ${team.id}
     `;
@@ -1599,16 +1617,20 @@ async function getAgent(db: Bun.SQL, agentId: string) {
 }
 
 /** Request content is retained even when its message has left the snapshot window. */
-async function readRequest(
+async function readRequests(
   db: Bun.SQL,
   teamId: string,
-  sequence: number,
-): Promise<TeamConversationMessage | null> {
+  sequences: readonly number[],
+): Promise<TeamConversationMessage[]> {
+  if (sequences.length === 0) return [];
   const rows = await db<TeamMessageRow[]>`
-    SELECT * FROM team_messages WHERE team_id = ${teamId} AND sequence = ${sequence}
+    SELECT * FROM team_messages
+    WHERE team_id = ${teamId} AND sequence IN ${db(sequences)}
+    ORDER BY sequence
   `;
-  const message = (await hydrateMessages(db, teamId, rows))[0];
-  return message && !isTeamSystemMessage(message) ? message : null;
+  return (await hydrateMessages(db, teamId, rows)).filter(
+    (message): message is TeamConversationMessage => !isTeamSystemMessage(message),
+  );
 }
 
 async function listMessagesBefore(
@@ -1743,7 +1765,7 @@ type TeamRow = {
   attention_sequence: number;
   revision: number;
   seen_through: number;
-  request_sequence: number | null;
+  pending_requests: string;
   completed_sequence: number | null;
   updated_at: string;
 };
@@ -1805,7 +1827,7 @@ function teamFromRow(row: TeamRow): Team {
     attentionSequence: row.attention_sequence,
     seenThrough: row.seen_through,
     completedSequence: row.completed_sequence,
-    requestSequence: row.request_sequence,
+    pendingRequests: teamPendingRequestSchema.array().parse(JSON.parse(row.pending_requests)),
     updatedAt: row.updated_at,
   };
 }

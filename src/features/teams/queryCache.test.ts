@@ -16,7 +16,7 @@ const team: Team = {
   attentionSequence: 0,
   seenThrough: 0,
   completedSequence: null,
-  requestSequence: null,
+  pendingRequests: [],
   updatedAt: "2026-09-05T12:00:00.000Z",
 };
 
@@ -31,7 +31,7 @@ const older = { ...message, id: "older", sequence: 100 };
 const snapshot: TeamQueryData = {
   arrival: { id: 1, unreadAfter: 0 },
   team: { ...team, latestSequence: message.sequence },
-  request: null,
+  requests: [],
   presence: {},
   revision: 101,
   lead: teamLead(team.id),
