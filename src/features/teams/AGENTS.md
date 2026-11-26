@@ -471,7 +471,10 @@ agent asked about a task in the main chat reads it with `read_team({ taskId })` 
 adding to the thread only what is missing from it. An assignee that needs another agent's help,
 new work, or a reassignment mentions that agent, or the lead, in the task's thread, and proposes
 closing without completing (cancelled, deferred, cut, or duplicate) by handing the task off for
-review with the status in its note. Public messages, reactions,
+review with the status in its note. No one mentions a task's assignee in its own thread, which
+already reaches it, and a note there wakes it, so the lead closes a handed-off task without one
+unless the assignee must act. The user's answer to an assignee's question goes to that assignee,
+so the lead never waits on the user for it. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Team. Agents reach connectors by opening a message with their handle,
 and name them without @ when only talking about them. They keep each connector
