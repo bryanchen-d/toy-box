@@ -55,8 +55,12 @@ export type TeamTask = {
   threadSequence?: number;
   openedAt: string;
   updatedAt: string;
-  /** Who made its latest change: the lead, its assignee, or a member whose leaving released it. */
-  updatedBy: TeamMessageActor;
+  /**
+   * The agent that made its latest change: the lead, its assignee, or a member whose leaving released
+   * it. Absent until an agent changes it, as for tasks migrated from the checklist, whose last change
+   * nobody recorded.
+   */
+  updatedBy?: string;
   closedAt?: string;
 };
 
@@ -460,7 +464,7 @@ export function applyTeamTaskEdits(
       openedBy: { type: "agent", agentId: editor.agentId },
       openedAt: now,
       updatedAt: now,
-      updatedBy: { type: "agent", agentId: editor.agentId },
+      updatedBy: editor.agentId,
     };
     opened.push(next);
     return children.reduce<TeamTask[]>((tree, child) => open(tree, id, child), [...current, next]);
@@ -522,9 +526,7 @@ export function applyTeamTaskEdits(
   return {
     tasks: result.map((task) => {
       const previous = before.get(task.id);
-      return previous
-        ? stamp(previous, task, now, { type: "agent", agentId: editor.agentId })
-        : task;
+      return previous ? stamp(previous, task, now, editor.agentId) : task;
     }),
     opened,
     notes,
@@ -582,7 +584,7 @@ function assertAuthority(
 }
 
 /** Records when a task changed and who changed it, and when it closed; reopening clears that. */
-function stamp(previous: TeamTask, next: TeamTask, now: string, by: TeamMessageActor): TeamTask {
+function stamp(previous: TeamTask, next: TeamTask, now: string, by: string): TeamTask {
   if (sameTask(previous, next)) return previous;
   const { closedAt: _closedAt, ...task } = next;
   const closedAt = isTeamTaskOpen(next)

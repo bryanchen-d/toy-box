@@ -388,8 +388,9 @@ the user's arrangement, newest share first unless moved; one the user archived c
 `archived: true` and stays shared, so present it apart or leave it out.
 `state.tasks` is a flat list of task rows; arrange them by `parentId` and ascending `position`.
 Each has an `id` such as `t12`, `title`, optional Markdown `description`, `status`, `priority`
-(`"high"`, `"normal"`, or `"low"`), optional `assigneeId` (one team agent), `openedBy` and
-`updatedBy` (`{ type: "agent", agentId }` or `{ type: "user" }`), optional `artifactId` and
+(`"high"`, `"normal"`, or `"low"`), optional `assigneeId` (one team agent), `openedBy` (`{ type: "agent", agentId }` or
+`{ type: "user" }`), optional `updatedBy` (the agent ID that last changed it, absent for a task
+migrated from the old checklist until an agent changes it), optional `artifactId` and
 `diff`, optional `threadSequence` (the root of the task's thread; pass it to `postMessage` to
 reply there), and ISO `openedAt`, `updatedAt`, and, once closed, `closedAt`. A status is open
 (`"pending"`, `"in_progress"`, `"blocked"`, or `"in_review"`, handed off for review) or closed

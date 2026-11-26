@@ -113,13 +113,16 @@ export function TaskCard({
             </dd>
           </>
         )}
-        <dt className="text-muted-foreground">Changed</dt>
-        <dd>
-          <RelativeTime date={task.updatedAt} /> by{" "}
-          {task.updatedBy.type === "agent"
-            ? teamAgentIdentity(owners, task.updatedBy.agentId).name
-            : "you"}
-        </dd>
+        {/* A task no agent has changed since it was migrated has no recorded change to show. */}
+        {task.updatedBy && (
+          <>
+            <dt className="text-muted-foreground">Changed</dt>
+            <dd>
+              <RelativeTime date={task.updatedAt} /> by{" "}
+              {teamAgentIdentity(owners, task.updatedBy).name}
+            </dd>
+          </>
+        )}
       </dl>
     </div>
   );

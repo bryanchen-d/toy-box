@@ -686,9 +686,9 @@ function teamContextForTool({
 }
 
 /** A task as agents read it: every field, with who opened and last changed it as an agentId or "user". */
-function taskForTool({ id, position: _position, openedBy, updatedBy, ...task }: TeamTask) {
+function taskForTool({ id, position: _position, openedBy, ...task }: TeamTask) {
   const actor = (by: TeamTask["openedBy"]) => (by.type === "agent" ? by.agentId : "user");
-  return { taskId: id, ...task, openedBy: actor(openedBy), updatedBy: actor(updatedBy) };
+  return { taskId: id, ...task, openedBy: actor(openedBy) };
 }
 
 function agentForTool(agent: TeamAgent, teamId: string, model?: ModelConfiguration) {

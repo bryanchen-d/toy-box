@@ -110,7 +110,7 @@ Team           name, purpose, directory, lead model, preview, user read position
   text IDs), optional parent and sibling position, title, Markdown description, status, priority
   (high, normal, low), at most one assignee, its opener (an agent or the user), optional
   `artifactId` and `diff`, the `threadSequence` rooting its thread once it has one, and when it
-  opened, last changed (with `updatedBy`, who changed it), and closed. `TEAM_TASK_STATUSES` is the
+  opened, last changed (with `updatedBy`, the agent that changed it, absent for a migrated task until an agent does), and closed. `TEAM_TASK_STATUSES` is the
   one grouping that decides open (pending, in_progress, blocked, in_review) or closed (completed,
   cancelled, deferred, cut, duplicate), so filters, counts, and wakes never disagree with a status.
   `artifactId` is a shared artifact's `id`; file metadata stays with the artifact. `diff:
@@ -895,7 +895,7 @@ presents one deleted identity everywhere.
   as context, opened, and their subtask counts still count every subtask. Each row shows its ID
   muted before the title, and hovering it shows `TaskCard`: the ID, status ("Closed as deferred"
   once closed), priority when not normal, title, description, assignee or Unassigned, artifact,
-  exact diff, subtask progress, when and by whom it last changed, and Working now while its
+  exact diff, subtask progress, when and by whom it last changed once an agent has, and Working now while its
   assignee's running turn is on it, which also rings the row's avatar. Choosing any task opens its
   task view: its thread, headed by its record and titled like "t5 · Tools: land the slice", with a
   composer that replies there. A task without a thread yet shows its record over an empty

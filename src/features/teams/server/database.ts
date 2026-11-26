@@ -528,7 +528,7 @@ export class TeamDatabase {
   }
 
   /**
-   * The lead's task summary: each task that changed since its last read, other than by the lead,
+   * The lead's task summary: each task an agent other than the lead changed since its last read,
    * or whose thread has news from anyone else, with who changed it, its latest such note, and
    * whether its thread holds a question for the user. Reading starts the next summary, which
    * repeats a change from the very millisecond of this read rather than risk missing one.
@@ -539,8 +539,6 @@ export class TeamDatabase {
       const team = await requireTeam(db, lead.teamId);
       const metadata = teamAgentMetadataSchema.parse(lead.metadata);
       const since = metadata.taskSummary?.readAt ?? new Date(0).toISOString();
-      const byLead = (actor: TeamMessageActor) =>
-        actor.type === "agent" && actor.agentId === team.id;
       const notes = new Map(
         (
           await db<
@@ -559,21 +557,17 @@ export class TeamDatabase {
       );
       const asked = new Set(team.pendingRequests.map(({ threadSequence }) => threadSequence));
       const summary = (await listTasks(db, team.id)).flatMap((task) => {
-        const changed = task.updatedAt >= since && !byLead(task.updatedBy);
+        const changedBy =
+          task.updatedBy !== team.id && task.updatedAt >= since ? task.updatedBy : undefined;
         const note = task.threadSequence ? notes.get(task.threadSequence) : undefined;
-        if (!changed && !note) return [];
+        if (!changedBy && !note) return [];
         return [
           {
             taskId: task.id,
             title: task.title,
             status: task.status,
             ...(task.assigneeId ? { assigneeId: task.assigneeId } : {}),
-            ...(changed
-              ? {
-                  changedBy:
-                    task.updatedBy.type === "agent" ? task.updatedBy.agentId : ("user" as const),
-                }
-              : {}),
+            ...(changedBy ? { changedBy } : {}),
             ...(note
               ? {
                   note: {
@@ -2428,7 +2422,7 @@ function taskColumns(task: TeamTask) {
     thread_sequence: task.threadSequence ?? null,
     opened_at: task.openedAt,
     updated_at: task.updatedAt,
-    updated_by: task.updatedBy.type === "agent" ? task.updatedBy.agentId : null,
+    updated_by: task.updatedBy ?? null,
     closed_at: task.closedAt ?? null,
   };
 }
@@ -2449,8 +2443,7 @@ function taskFromRow(row: TeamTaskRow): TeamTask {
     ...(row.thread_sequence === null ? {} : { threadSequence: row.thread_sequence }),
     openedAt: row.opened_at,
     updatedAt: row.updated_at,
-    updatedBy:
-      row.updated_by === null ? { type: "user" } : { type: "agent", agentId: row.updated_by },
+    ...(row.updated_by === null ? {} : { updatedBy: row.updated_by }),
     ...(row.closed_at === null ? {} : { closedAt: row.closed_at }),
   };
 }

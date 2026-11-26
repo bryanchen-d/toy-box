@@ -555,6 +555,24 @@ describe("team task edits", () => {
     return { database, teams, team, task: task!, edit, artifactId: workspaceFileId(file) };
   }
 
+  test("a task no agent has changed records no last change, which the lead's summary leaves out", async () => {
+    const { database, teams, team, task, edit } = await setup();
+    const { member } = await teams.createMember(teamAgent(team.id, "builder-session", "Builder"));
+    await edit([{ type: "assign", taskId: task.id, assigneeId: member.id }]);
+    // A migrated task records no one as its last changer.
+    await database`UPDATE team_tasks SET updated_by = NULL WHERE team_id = ${team.id}`;
+    expect((await teams.listTasks(team.id))[0]).not.toHaveProperty("updatedBy");
+    expect(await teams.readTaskSummary(team.id)).toEqual([]);
+
+    await teams.editTasks(member.id, {
+      operations: [{ type: "update", taskId: task.id, patch: { status: "in_progress" } }],
+    });
+    expect((await teams.listTasks(team.id))[0]?.updatedBy).toBe(member.id);
+    expect(await teams.readTaskSummary(team.id)).toMatchObject([
+      { taskId: task.id, changedBy: member.id },
+    ]);
+  });
+
   test("each changed task publishes one event, and snapshots read the rows back", async () => {
     const { teams, team, task, edit } = await setup();
     const revision = (await teams.getRoster(team.id))!.revision;

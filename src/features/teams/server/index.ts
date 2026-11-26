@@ -648,8 +648,7 @@ export async function finishTeamAgentTurn(
         return (
           task?.status === "completed" &&
           task.assigneeId === sessionId &&
-          task.updatedBy.type === "agent" &&
-          task.updatedBy.agentId === sessionId
+          task.updatedBy === sessionId
         );
       }),
     ]),

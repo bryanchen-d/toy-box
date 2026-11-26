@@ -171,6 +171,14 @@ test("a task's card shows its record and says how it closed", () => {
   );
   expect(unassigned).toContain("Unassigned");
   expect(unassigned).toContain("Pending");
+  expect(unassigned).toContain("Changed");
+  // A migrated task no agent has changed claims no change.
+  const { updatedBy: _updatedBy, ...migrated } = teamTask("t5");
+  expect(
+    renderToStaticMarkup(
+      <TaskCard task={{ ...migrated, children: [] }} owners={owners} artifacts={[]} />,
+    ),
+  ).not.toContain("Changed");
 });
 
 test("an assignee running a turn woken for its task shows as working on it now", () => {
