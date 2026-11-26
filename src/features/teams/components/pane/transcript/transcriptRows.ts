@@ -19,7 +19,7 @@ const RUN_WINDOW_MS = 10 * 60 * 1000;
 /**
  * Which messages the transcript shows: all of them; only the user's own messages and the agent
  * messages for them, which leaves out coordination between agents and system changes; or only the
- * lead's questions that still need the user's reply.
+ * questions that still need the user's reply.
  */
 export type TranscriptView = "all" | "yours" | "requests";
 
@@ -78,8 +78,8 @@ export type AgentRunEntry = {
 };
 
 /**
- * A question stays pending until the user replies where it was asked, or until the lead resolves
- * it, having gotten its answer another way.
+ * Whether a question still needs the user's reply comes from the team's stored pending questions,
+ * which stay current under every rule they were asked under; a settled one says how it was settled.
  */
 export type TeamRequestState = "pending" | "replied" | "answered";
 
@@ -89,7 +89,9 @@ type RowContext = {
   coordinators?: Readonly<Record<string, string>>;
   /** Each task by the sequence its thread starts at, which routes the thread's messages. */
   tasksByThread: ReadonlyMap<number, TeamTask>;
-  /** Every loaded message, where a question's acknowledgement is found. */
+  /** The sequences of the questions still waiting on the user. */
+  pending: ReadonlySet<number>;
+  /** Every loaded message, where a settled question's acknowledgement is found. */
   loaded: readonly TeamMessage[];
   /** Loaded threads by their top-level message's sequence; absent within one thread's rows. */
   threads?: ReadonlyMap<number, LoadedThread>;
@@ -112,6 +114,7 @@ export function transcriptRows(
     members,
     coordinators,
     tasks = [],
+    pendingRequests,
     unreadAfter,
     view = "all",
   }: {
@@ -121,6 +124,8 @@ export function transcriptRows(
     coordinators?: Readonly<Record<string, string>>;
     /** The team's tasks, whose threads route their messages to the assignee. */
     tasks?: readonly TeamTask[];
+    /** The questions still waiting on the user, as the team stores them. */
+    pendingRequests: readonly Pick<TeamPendingRequest, "sequence">[];
     /** Where unread messages began on arrival; null or undefined marks none. */
     unreadAfter?: number | null;
     view?: TranscriptView;
@@ -131,6 +136,7 @@ export function transcriptRows(
     members,
     coordinators,
     tasksByThread: tasksByThread(tasks),
+    pending: pendingSequences(pendingRequests),
     loaded: messages,
     threads: loadedThreads(messages),
   };
@@ -149,11 +155,13 @@ export function threadRows(
     members,
     coordinators,
     tasks = [],
+    pendingRequests,
   }: {
     lead: TeamAgent;
     members: readonly TeamAgent[];
     coordinators?: Readonly<Record<string, string>>;
     tasks?: readonly TeamTask[];
+    pendingRequests: readonly Pick<TeamPendingRequest, "sequence">[];
   },
 ): TranscriptRow[] {
   const context: RowContext = {
@@ -161,6 +169,7 @@ export function threadRows(
     members,
     coordinators,
     tasksByThread: tasksByThread(tasks),
+    pending: pendingSequences(pendingRequests),
     loaded: messages,
   };
   const thread = messages.filter(
@@ -343,11 +352,8 @@ function transcriptThread(
     .filter((reply): reply is TeamConversationMessage => !isTeamSystemMessage(reply))
     .filter(({ request }) => request)
     .at(-1);
-  return {
-    sequence,
-    replies,
-    ...(question ? { request: requestState(question, context) } : {}),
-  };
+  const request = question && requestState(question, context);
+  return { sequence, replies, ...(request ? { request } : {}) };
 }
 
 /** Each loaded thread's replies, and its top-level message or task note when that is loaded too. */
@@ -367,27 +373,26 @@ function loadedThreads(messages: readonly TeamMessage[]): Map<number, LoadedThre
 }
 
 /**
- * The first acknowledgement of a question settles it: the user replied where it was asked, or the
- * lead resolved it.
+ * A question pends while the team stores it as pending. A settled one was settled by the first
+ * acknowledgement after it: the user replying where it was asked, or the lead resolving it. A
+ * question settled under the earlier rule, where any later user message answered it, has only such
+ * a reply; one replaced in its thread before anyone answered has no state.
  */
-function requestState(question: TeamConversationMessage, { loaded }: RowContext): TeamRequestState {
-  const acknowledgement = loaded.find((message) => acknowledgesTeamRequest(message, question));
-  if (!acknowledgement) return "pending";
-  return isTeamSystemMessage(acknowledgement) ? "answered" : "replied";
-}
-
-/** A question still waits on the user until acknowledged, or asked again later in its thread. */
-function isPending(question: TeamConversationMessage, context: RowContext) {
-  return (
-    requestState(question, context) === "pending" &&
-    !context.loaded.some(
+function requestState(
+  question: TeamConversationMessage,
+  { pending, loaded }: RowContext,
+): TeamRequestState | undefined {
+  if (pending.has(question.sequence)) return "pending";
+  const settled =
+    loaded.find((message) => acknowledgesTeamRequest(message, question)) ??
+    loaded.find(
       (message) =>
-        !isTeamSystemMessage(message) &&
-        message.request &&
         message.sequence > question.sequence &&
-        message.threadSequence === question.threadSequence,
-    )
-  );
+        !isTeamSystemMessage(message) &&
+        message.sender.type === "user",
+    );
+  if (!settled) return undefined;
+  return isTeamSystemMessage(settled) ? "answered" : "replied";
 }
 
 /**
@@ -397,7 +402,7 @@ function isPending(question: TeamConversationMessage, context: RowContext) {
 function isInView(message: TeamMessage, view: TranscriptView, context: RowContext): boolean {
   if (view === "all") return true;
   if (isTeamSystemMessage(message)) return false;
-  if (view === "requests") return message.request === true && isPending(message, context);
+  if (view === "requests") return message.request === true && context.pending.has(message.sequence);
   return message.sender.type === "user" || isForUser(message, addresseeOf(message, context));
 }
 
@@ -419,7 +424,7 @@ function agentRunEntry(
     showHeader:
       !previous ||
       addressee !== previous.addressee ||
-      request !== undefined ||
+      message.request === true ||
       originKey(message) !== originKey(previous.message),
     collapsible: !isForUser(message, addressee),
     ...(replies ? { thread: transcriptThread(message.sequence, replies, context) } : {}),
@@ -479,6 +484,12 @@ function tasksByThread(tasks: readonly TeamTask[]): Map<number, TeamTask> {
   return new Map(
     tasks.flatMap((task) => (task.threadSequence ? [[task.threadSequence, task] as const] : [])),
   );
+}
+
+function pendingSequences(
+  pendingRequests: readonly Pick<TeamPendingRequest, "sequence">[],
+): Set<number> {
+  return new Set(pendingRequests.map(({ sequence }) => sequence));
 }
 
 function startOfDay(date: Date): number {

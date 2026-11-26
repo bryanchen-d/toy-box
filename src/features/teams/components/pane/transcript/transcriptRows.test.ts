@@ -49,8 +49,10 @@ const members = [
   { id: "engine", name: "Engine" },
   { id: "files", name: "Files" },
 ];
-const rowsOf = (messages: TeamMessage[], unreadAfter?: number) =>
-  transcriptRows(messages, { lead, members, unreadAfter });
+// The sequences of the questions the team stores as pending.
+const pendingOf = (sequences: number[]) => sequences.map((sequence) => ({ sequence }));
+const rowsOf = (messages: TeamMessage[], unreadAfter?: number, pending: number[] = []) =>
+  transcriptRows(messages, { lead, members, unreadAfter, pendingRequests: pendingOf(pending) });
 
 const rowIds = (rows: TranscriptRow[]) =>
   rows.map((row) => {
@@ -67,8 +69,8 @@ const rowIds = (rows: TranscriptRow[]) =>
   });
 
 /** The entries of a transcript that is one agent's run. */
-function runOf(messages: TeamMessage[]): AgentRunEntry[] {
-  const [row] = rowsOf(messages);
+function runOf(messages: TeamMessage[], pending: number[] = []): AgentRunEntry[] {
+  const [row] = rowsOf(messages, undefined, pending);
   if (row?.type !== "agent") throw new Error("Expected an agent run.");
   return row.entries;
 }
@@ -218,18 +220,24 @@ describe("agent run entries", () => {
     expect(run.map(({ collapsible }) => collapsible)).toEqual([true, false, false]);
   });
 
-  test("a request stays pending until a later user message acknowledges it", () => {
+  test("a question pends exactly while the team stores it as pending", () => {
     const asked = { ...agentPost(1, "lead"), request: true as const };
-    expect(runOf([asked])[0]!.request).toBe("pending");
+    expect(runOf([asked], [1])[0]!.request).toBe("pending");
     expect(runOf([asked, userPost(3)])[0]!.request).toBe("replied");
+    // A later message never settles a question the team still stores as pending.
+    expect(runOf([asked, userPost(3)], [1])[0]!.request).toBe("pending");
   });
 
   test("a later request pends while an earlier reply keeps acknowledging its own", () => {
-    const rows = rowsOf([
-      { ...agentPost(1, "lead"), request: true },
-      userPost(3),
-      { ...agentPost(4, "lead"), request: true },
-    ]);
+    const rows = rowsOf(
+      [
+        { ...agentPost(1, "lead"), request: true },
+        userPost(3),
+        { ...agentPost(4, "lead"), request: true },
+      ],
+      undefined,
+      [4],
+    );
     const requests = rows.flatMap((row) =>
       row.type === "agent" ? row.entries.map(({ request }) => request) : [],
     );
@@ -257,7 +265,7 @@ describe("agent run entries", () => {
 
 describe("your messages view", () => {
   const yours = (messages: TeamMessage[], unreadAfter?: number) =>
-    transcriptRows(messages, { lead, members, unreadAfter, view: "yours" });
+    transcriptRows(messages, { lead, members, unreadAfter, pendingRequests: [], view: "yours" });
 
   test("shows the user's messages and agent messages for them", () => {
     const messages = [
@@ -389,13 +397,37 @@ describe("threads", () => {
     expect(row).not.toHaveProperty("root");
   });
 
-  test("a question in a thread pends until the user replies in that thread", () => {
+  test("a question in a thread pends while stored, and a reply in that thread settles it", () => {
     const asked = { ...reply(3, 1, "lead"), request: true as const };
-    const pending = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
+    const pending = rowsOf(
+      [userPost(1), agentPost(2, "engine"), asked, userPost(4)],
+      undefined,
+      [3],
+    );
     expect(threadOfRow(pending[0])?.request).toBe("pending");
     expect(threadOfRow(pending[2])?.request).toBe("pending");
     const acknowledged = rowsOf([userPost(1), agentPost(2, "engine"), asked, reply(4, 1)]);
     expect(threadOfRow(acknowledged[2])?.request).toBe("replied");
+  });
+
+  test("a thread question the earlier rule settled with a top-level reply reads Replied", () => {
+    const asked = { ...reply(3, 1, "engine"), request: true as const };
+    const rows = rowsOf([userPost(1), agentPost(2, "engine"), asked, userPost(4)]);
+    expect(threadOfRow(rows[0])?.request).toBe("replied");
+    expect(threadOfRow(rows[2])?.request).toBe("replied");
+  });
+
+  test("a question replaced in its thread before anyone answered has no state", () => {
+    const asked = (sequence: number) => ({ ...reply(sequence, 1, "lead"), request: true as const });
+    const rows = threadRows([userPost(1), asked(2), asked(3)], 1, {
+      lead,
+      members,
+      pendingRequests: pendingOf([3]),
+    });
+    const requests = rows.flatMap((row) =>
+      row.type === "agent" ? row.entries.map(({ request }) => request) : [],
+    );
+    expect(requests).toEqual([undefined, "pending"]);
   });
 
   test("your messages view keeps replies for the user and leaves coordination out", () => {
@@ -406,7 +438,7 @@ describe("threads", () => {
         reply(3, 1, "lead", "@engine Take this."),
         reply(4, 1, "lead", "It's done."),
       ],
-      { lead, members, view: "yours" },
+      { lead, members, pendingRequests: [], view: "yours" },
     );
     expect(rowIds(rows)).toEqual([["1"]]);
     expect(replyIds(rows[0])).toEqual(["3", "4"]);
@@ -421,7 +453,7 @@ describe("threads", () => {
       reply(5, 1),
       reply(6, 2, "lead"),
     ];
-    const rows = threadRows(messages, 1, { lead, members });
+    const rows = threadRows(messages, 1, { lead, members, pendingRequests: [] });
     expect(rowIds(rows)).toEqual([["1"], ["3", "4"], ["5"]]);
     expect(rows.every((row) => threadOfRow(row) === undefined)).toBe(true);
   });
@@ -463,7 +495,7 @@ describe("threads", () => {
           opened(6, "t6"),
           reply(4, 1, "engine"),
         ],
-        { lead, members, tasks },
+        { lead, members, tasks, pendingRequests: [] },
       );
       expect(rowIds(rows)).toEqual([["1"], ["2"], ["5", "6"], ["4"]]);
       expect(rows[1]).toMatchObject({ type: "system", thread: { sequence: 2 } });
@@ -479,12 +511,14 @@ describe("threads", () => {
         lead,
         members,
         tasks,
+        pendingRequests: [],
       });
       expect(rows[1]).toMatchObject({ type: "agent", entries: [{ addressee: "Engine" }] });
       const unassigned = threadRows([opened(2, "t2"), reply(3, 2, "engine", "I can take it.")], 2, {
         lead,
         members,
         tasks,
+        pendingRequests: [],
       });
       expect(unassigned[1]).toMatchObject({ type: "agent", entries: [{ addressee: "Lead" }] });
     });
@@ -500,7 +534,7 @@ describe("threads", () => {
         threadSequence: 1,
       };
       const messages = [opened(1, "t1"), reply(2, 1, "engine"), userPost(3), ended];
-      const rows = transcriptRows(messages, { lead, members, tasks });
+      const rows = transcriptRows(messages, { lead, members, tasks, pendingRequests: [] });
       expect(rowIds(rows)).toEqual([["1"], ["3"], ["4"]]);
       expect(rows[0]!.type === "system" && rows[0].thread?.replies.map(({ id }) => id)).toEqual([
         "2",
@@ -510,7 +544,7 @@ describe("threads", () => {
       expect(threadParticipants([reply(2, 1, "engine"), ended])).toEqual([
         { type: "agent", agentId: "engine" },
       ]);
-      const own = threadRows(messages, 1, { lead, members, tasks });
+      const own = threadRows(messages, 1, { lead, members, tasks, pendingRequests: [] });
       expect(rowIds(own)).toEqual([["1"], ["2"], ["4"]]);
       expect(own[2]).toMatchObject({ type: "system", messages: [{ id: "4" }] });
     });
@@ -518,51 +552,49 @@ describe("threads", () => {
 });
 
 describe("needs your reply view", () => {
-  const requests = (messages: TeamMessage[]) =>
-    transcriptRows(messages, { lead, members, view: "requests" });
+  const requests = (messages: TeamMessage[], pending: number[]) =>
+    transcriptRows(messages, {
+      lead,
+      members,
+      pendingRequests: pendingOf(pending),
+      view: "requests",
+    });
   const question = (sequence: number, threadSequence?: number): TeamConversationMessage => ({
     ...agentPost(sequence, "lead", undefined, `Question ${sequence}?`),
     request: true,
     ...(threadSequence === undefined ? {} : { threadSequence }),
   });
 
-  test("shows every question since the user's latest message and nothing else", () => {
-    const rows = requests([
-      question(1),
-      userPost(2),
-      question(3),
-      agentPost(4, "lead", undefined, "The lift is ready."),
-      agentPost(5, "engine"),
-      event(6, { type: "member_joined", member }),
-      question(7, 5),
-    ]);
+  test("shows the questions the team stores as pending and nothing else", () => {
+    const rows = requests(
+      [
+        question(1),
+        userPost(2),
+        question(3),
+        agentPost(4, "lead", undefined, "The lift is ready."),
+        agentPost(5, "engine"),
+        event(6, { type: "member_joined", member }),
+        question(7, 5),
+      ],
+      [3, 7],
+    );
     expect(rowIds(rows)).toEqual([["3"], ["7"]]);
   });
 
-  test("each thread shows its latest question, as that thread's row", () => {
-    const rows = requests([userPost(1), agentPost(2, "engine"), question(3, 1), question(4, 1)]);
+  test("a pending question in a thread shows as that thread's row", () => {
+    const rows = requests(
+      [userPost(1), agentPost(2, "engine"), question(3, 1), question(4, 1)],
+      [4],
+    );
     expect(rowIds(rows)).toEqual([["4"]]);
     expect(rows).toMatchObject([
       { type: "thread", root: { id: "1" }, thread: { sequence: 1, request: "pending" } },
     ]);
   });
 
-  test("a reply answers the questions where it was posted, leaving the others", () => {
-    const inThread = (sequence: number) => ({
-      ...(userPost(sequence) as TeamConversationMessage),
-      threadSequence: 1,
-    });
-    expect(rowIds(requests([question(1), question(2, 1), question(3, 9), inThread(4)]))).toEqual([
-      ["3"],
-    ]);
-    expect(rowIds(requests([question(1), question(2, 9), userPost(3)]))).toEqual([["2"]]);
+  test("a thread question the earlier rule settled with a top-level reply stays out", () => {
+    expect(rowIds(requests([userPost(1), question(2, 1), userPost(3)], []))).toEqual([]);
   });
-
-  test("the lead resolving acknowledges every earlier question, but not a later one", () => {
-    const resolved = event(3, { type: "requests_resolved" });
-    expect(rowIds(requests([question(1), question(2, 1), resolved, question(4)]))).toEqual([["4"]]);
-  });
-
   test("needs older history only until every pending question is loaded", () => {
     const loaded = [agentPost(5, "engine"), question(6)];
     const pending = (...sequences: number[]) =>

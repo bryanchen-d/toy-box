@@ -42,7 +42,15 @@ export function TeamTranscript({
   onLoadPrevious: (throughSequence?: number) => Promise<void>;
 }) {
   const { lead, members, coordinators } = useTeamPane();
-  const rows = transcriptRows(messages, { lead, members, coordinators, tasks, unreadAfter, view });
+  const rows = transcriptRows(messages, {
+    lead,
+    members,
+    coordinators,
+    tasks,
+    pendingRequests,
+    unreadAfter,
+    view,
+  });
   const needsOlderHistory = viewNeedsOlderHistory(messages, view, pendingRequests);
   const {
     scrollRef,

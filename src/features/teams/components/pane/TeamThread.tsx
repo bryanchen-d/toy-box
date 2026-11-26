@@ -60,6 +60,7 @@ export function TeamThread({
     members,
     coordinators,
     tasks: state.tasks,
+    pendingRequests: state.team.pendingRequests,
   });
   // A task's thread is its view: the task's record heads its history.
   const task = teamTaskByThread(state.tasks, sequence);

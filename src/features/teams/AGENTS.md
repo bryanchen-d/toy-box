@@ -833,8 +833,10 @@ presents one deleted identity everywhere.
   when the latest arrived, and any question among them, all derived from loaded messages.
   Each message in a run carries its addressee, its body without the leading mentions that addressee
   names, its request state, whether it repeats the run's header, and whether it collapses. A
-  request is pending until the first acknowledgement after it, which tags it Replied when the user
-  wrote it, or Answered when the lead resolved it. One
+  request is pending exactly while `Team.pendingRequests` holds it, never re-derived from history,
+  so questions settled under an earlier rule stay settled. A settled one is tagged by the first
+  acknowledgement after it: Replied when the user wrote it, or Answered when the lead resolved it;
+  one settled under the earlier rule, where any later user message answered, reads Replied. One
   optional divider precedes a row, labeling a new day, marking where unread messages begin with a
   blue rule and "New", or both at once rather than stacking two rules. `SystemMessageGroup` defines
   each kind's static icon and presentation function together in one local object; each function
@@ -855,8 +857,8 @@ presents one deleted identity everywhere.
   TanStack Virtual's mutable instance stays inside that hook, which the compiler
   skips, and the transcript receives only values current for its render.
   The "New" position comes from the current read position on arrival and holds
-  while it's read, so arrivals during reading are never marked. A flagged question is marked until
-  the user answers it where it was asked or the lead resolves it. The transcript folds a task's
+  while it's read, so arrivals during reading are never marked. A flagged question is marked while
+  it's pending. The transcript folds a task's
   server notes into its thread like any reply, naming the agent. The activity row shows working
   agents; waiting
   shows in the members panel, since a request already marks what the user needs to answer.
