@@ -427,7 +427,12 @@ export class TeamDatabase {
       events.push(
         ...(await changeAgentActivity(db, worker, { status: waiting ?? null, turnTasks: null })),
       );
-      return { ...(await recordTeamChange(db, team, events)), ...edit };
+      return {
+        ...(await recordTeamChange(db, team, events)),
+        ...edit,
+        /** The tasks this turn was woken for. */
+        turnTasks: turnTasks ?? [],
+      };
     });
   }
 
@@ -2300,7 +2305,7 @@ async function assertContinuations(
     `;
     if (row && row.continues >= TEAM_TASK_CONTINUE_LIMIT) {
       throw new Error(
-        `${taskId} has continued ${row.continues} times in a row. Report it blocked with what it waits for, or in_review if your part is done, and mention the lead in its thread if it needs a decision.`,
+        `${taskId} has continued ${row.continues} times in a row. Report it blocked with what it waits for, completed if its outcome exists, or in_review if it should close another way, and mention the lead in its thread if it needs a decision.`,
       );
     }
   }

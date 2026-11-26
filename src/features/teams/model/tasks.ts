@@ -346,7 +346,7 @@ export const teamTaskReportSchema = z
   .object({
     taskId: teamTaskIdSchema,
     status: teamTaskStatusSchema.describe(
-      "The task's status after this turn: in_progress while work remains, blocked when it can't continue, or in_review to hand it off when your part is done.",
+      "The task's status after this turn: in_progress while work remains, blocked when it can't continue, completed when its outcome exists, or in_review to hand it off when it should close another way or needs the lead's call.",
     ),
     note: taskNoteSchema
       .optional()
@@ -564,14 +564,16 @@ function assertAuthority(
       }
       return;
     }
-    case "update":
+    case "update": {
       if (!own(operation.taskId)) throw new Error("Update only your own open tasks.");
-      if (operation.patch.status && teamTaskState(operation.patch.status) === "closed") {
+      const { status } = operation.patch;
+      if (status && status !== "completed" && teamTaskState(status) === "closed") {
         throw new Error(
-          "Only the lead closes a task. Hand it off with status in_review and say in your note how it should close.",
+          `Only the lead closes a task as ${status}. Hand it off with status in_review and propose ${status} in your note, and why.`,
         );
       }
       return;
+    }
     default:
       throw new Error(
         `Only the lead can ${operation.type} tasks. Mention the lead in the task's thread to propose it.`,

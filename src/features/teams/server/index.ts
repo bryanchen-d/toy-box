@@ -184,20 +184,27 @@ async function wakeForTaskChange(
     }
   }
   const senderName = [lead, ...members].find(({ id }) => id === editorId)?.name ?? "an agent";
-  // An assignee handing its task off for review reaches the lead with its questions, merged.
+  // An assignee closing its task as completed or handing it off reaches the lead with its questions,
+  // merged.
   const previous = new Map(before.map((task) => [task.id, task]));
-  const handedOff = after.filter(
-    (task) =>
-      task.status === "in_review" &&
+  const finished = after.filter((task) => {
+    const was = previous.get(task.id);
+    return (
+      (task.status === "completed" || task.status === "in_review") &&
       task.assigneeId === editorId &&
       editorId !== lead.id &&
-      previous.get(task.id)?.status !== "in_review",
-  );
+      was !== undefined &&
+      isTeamTaskOpen(was) &&
+      was.status !== task.status
+    );
+  });
   if (
-    handedOff.length > 0 &&
+    finished.length > 0 &&
     (await new TeamDatabase(await getStateDatabase()).claimTaskSummaryWake(teamId))
   ) {
-    for (const { id } of handedOff) notify(lead.id, id, "handed off for review");
+    for (const { id, status } of finished) {
+      notify(lead.id, id, status === "completed" ? "closed as completed" : "handed off for review");
+    }
   }
   await Promise.all(
     [...wakes].map(([agentId, tasks]) =>
@@ -605,9 +612,9 @@ export async function setTeamAgentStatus(
 
 /**
  * Ends a turn. Its reports update the tasks it was woken for, each note posting into the task's
- * thread, and wake whoever that change notifies. Handing a task off for review takes up the
- * agent's next pending task once this turn ends. A lead waiting on a member or external work can
- * ask to wake after a delay.
+ * thread, and wake whoever that change notifies. Closing a task as completed or handing it off for
+ * review takes up the agent's next pending task once this turn ends. A lead waiting on a member or
+ * external work can ask to wake after a delay.
  */
 export async function finishTeamAgentTurn(
   sessionId: string,
@@ -629,10 +636,25 @@ export async function finishTeamAgentTurn(
   if (!change) return;
   publishTeamChange(change);
   await wakeForTaskChange(change, sessionId, await database.listMembers(change.teamId));
-  const handedOff = reports
-    .filter(({ status }) => status === "in_review")
-    .map(({ taskId }) => taskId);
-  const next = handedOff.length > 0 ? nextTeamTask(change.after, sessionId) : undefined;
+  // The tasks this turn finished: reported as handed off or completed, or completed by an edit,
+  // which leaves nothing to report.
+  const finished = [
+    ...new Set([
+      ...reports
+        .filter(({ status }) => status === "in_review" || status === "completed")
+        .map(({ taskId }) => taskId),
+      ...change.turnTasks.filter((taskId) => {
+        const task = change.after.find(({ id }) => id === taskId);
+        return (
+          task?.status === "completed" &&
+          task.assigneeId === sessionId &&
+          task.updatedBy.type === "agent" &&
+          task.updatedBy.agentId === sessionId
+        );
+      }),
+    ]),
+  ];
+  const next = finished.length > 0 ? nextTeamTask(change.after, sessionId) : undefined;
   if (!next) return;
   await wakeTeamAgent(
     sessionId,
@@ -643,7 +665,7 @@ export async function finishTeamAgentTurn(
           taskId: next.id,
           title: next.title,
           changes: [
-            `your highest-priority pending task, now that you handed off ${handedOff.join(", ")}`,
+            `your highest-priority pending task, now that you finished ${finished.join(", ")}`,
           ],
         },
       ],

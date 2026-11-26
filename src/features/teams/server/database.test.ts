@@ -759,7 +759,7 @@ describe("team task edits", () => {
     ]);
   });
 
-  test("an assignee edits its own tasks, and only the lead's close completes the list", async () => {
+  test("an assignee edits its own tasks, and its close as completed can complete the list", async () => {
     const { teams, team, task, edit } = await setup();
     const { member } = await teams.createMember(teamAgent(team.id, "builder-session", "Builder"));
     await edit([{ type: "assign", taskId: task.id, assigneeId: member.id }]);
@@ -771,14 +771,14 @@ describe("team task edits", () => {
     ]);
     expect(opened).toMatchObject([{ id: "t2", assigneeId: member.id }]);
     await expect(
-      asMember([{ type: "update", taskId: "t2", patch: { status: "completed" } }]),
-    ).rejects.toThrow("Only the lead closes");
+      asMember([{ type: "update", taskId: "t2", patch: { status: "cut" } }]),
+    ).rejects.toThrow("Only the lead closes a task as cut");
     await expect(asMember([{ type: "remove", taskId: "t2" }])).rejects.toThrow(
       "Only the lead can remove",
     );
-    const { events } = await edit([
-      { type: "update", taskId: "t2", patch: { status: "cut" } },
-      { type: "update", taskId: task.id, patch: { status: "completed" }, note: "Shipped." },
+    await edit([{ type: "update", taskId: task.id, patch: { status: "completed" } }]);
+    const { events } = await asMember([
+      { type: "update", taskId: "t2", patch: { status: "completed" }, note: "Drafted." },
     ]);
     expect(events.at(-1)).toMatchObject({
       type: "message",

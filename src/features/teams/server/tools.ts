@@ -386,7 +386,7 @@ const updateTeamTool = defineTool("update_team", {
 
 const editTeamTasksTool = defineTool("edit_team_tasks", {
   description:
-    "Opens, updates, assigns, moves, closes, or removes any of this team's tasks in one atomic batch. The server numbers each opened task, such as t12, and returns the new IDs. A note posts into the task's thread in the same change. Close a task by setting a closed status: completed, cancelled, deferred, cut, or duplicate (cite the task that covers it in the note). Send a hand-off back with status in_progress and a note. Remove only a task opened by mistake.",
+    "Opens, updates, assigns, moves, closes, or removes any of this team's tasks in one atomic batch. The server numbers each opened task, such as t12, and returns the new IDs. A note posts into the task's thread in the same change. Close a task by setting a closed status: completed, cancelled, deferred, cut, or duplicate (cite the task that covers it in the note). Send a hand-off back, or reopen a task an assignee closed, with status in_progress and a note saying what remains. A note in an assignee's task wakes it, so leave a closed task alone otherwise. Remove only a task opened by mistake.",
   parameters: editTeamTasksInputSchema,
   handler: async (input, invocation) => {
     const { editTeamTasksFromAgent } = await import("@teams/server");
@@ -405,7 +405,7 @@ const editTeamTasksTool = defineTool("edit_team_tasks", {
 const editOwnTasksTool = {
   ...editTeamTasksTool,
   description:
-    "Adds subtasks under your own open tasks, assigned to you, and updates your own open tasks, in one atomic batch. The server numbers each new subtask and returns its ID. A note posts into the task's thread in the same change. Set status in_progress while you advance a task, blocked when it can't continue, and in_review to hand it off when your part is done, with a note saying how it should close: completed, or cancelled, deferred, cut, or duplicate and why. Only the lead assigns, moves, closes, or removes tasks: mention the lead in the task's thread to propose new work for another agent, a reassignment, or anything else.",
+    "Adds subtasks under your own open tasks, assigned to you, and updates your own open tasks, in one atomic batch. The server numbers each new subtask and returns its ID. A note posts into the task's thread in the same change. Set status in_progress while you advance a task, blocked when it can't continue, and completed when its outcome exists, with a note on what you delivered; closing wakes the lead to double-check it. If it should close any other way, set in_review to hand it off, with a note proposing cancelled, deferred, cut, or duplicate and why. Only the lead assigns, moves, or removes tasks, or closes them other than as completed: mention the lead in the task's thread to propose new work for another agent, a reassignment, or anything else.",
 };
 
 const finishTeamAgentTurnParameters = z
@@ -451,7 +451,7 @@ const finishLeadTurnParameters = finishTeamAgentTurnParameters
 const finishTeamAgentTurnTool = defineTool("finish_agent_turn", {
   alwaysAvailable: true,
   description:
-    "Ends this private agent turn and clears its active team status. Report in tasks on each of your tasks this turn was woken for, with its status and a note, leaving the note out when this turn already posted in that task's thread; the finish is rejected until every one that's still open has a report. A report can continue an in_progress task later. Handing a task off as in_review takes up your next pending task after this turn. waitingFor leaves a brief waiting status.",
+    "Ends this private agent turn and clears its active team status. Report in tasks on each of your tasks this turn was woken for, with its status and a note, leaving the note out when this turn already posted in that task's thread; the finish is rejected until every one that's still open has a report. A report can continue an in_progress task later. Closing a task as completed or handing it off as in_review takes up your next pending task after this turn. waitingFor leaves a brief waiting status.",
   parameters: finishTeamAgentTurnParameters,
   isTerminal: true,
   handler: async (

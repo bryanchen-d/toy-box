@@ -7,7 +7,7 @@ shared transcript, much like a team chat: each task's work happens in its own th
 mention one another to hand off work, react to acknowledge it, post statuses while they work, and
 share artifacts and a runnable preview as the result takes shape. The team lives on the server, so
 work continues after the browser closes, and the sidebar draws the user back only when it matters:
-an unread update, a question an agent flagged, or a task list the lead completed.
+an unread update, a question an agent flagged, or a task list that completed.
 
 A Team is not a filtered Session or several Sessions side by side. Its defining split is private
 thinking versus public collaboration. The lead and every member are durable Team-owned Workers
@@ -67,8 +67,9 @@ The transcript row's name opens the stalled session's pane, where the owner can 
    which wakes it with the task. Work on a task happens in its thread. One audience policy routes
    every message, and mentions wake exactly the agents they name. A woken agent runs one private
    turn: it reads the Team, acts publicly, and finishes, reporting on each task it was woken for or
-   leaving a waiting status. An assignee hands its task off for review, and the lead closes it with
-   a status or sends it back.
+   leaving a waiting status. An assignee closes its finished task as completed, and the lead
+   double-checks it, reopening only what it doesn't accept. Any other close goes through review:
+   the assignee hands the task off, and the lead closes it with a status or sends it back.
 4. **Involve the user.** The lead, or an assignee in its own task's thread, sends a question
    flagged as a request, and the lead posts results and completes the task list. The sidebar holds
    each until the user replies or reads it.
@@ -227,8 +228,9 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   each operation against the editing agent as the batch stands at that operation, stamps
   `updatedAt` and `updatedBy`, and records `closedAt` once. The lead edits any task. An assignee
   adds subtasks under its own open tasks, always assigned to itself, and updates its own open
-  tasks with any open status up to `in_review`; closing, assigning, moving, and removing are the
-  lead's, and a refusal tells the agent to mention the lead in the task's thread instead.
+  tasks with any open status, and closes them as completed; any other close, assigning, moving,
+  and removing are the lead's, and a refusal tells the agent to hand the task off or mention the
+  lead in the task's thread instead.
   `update_team` no longer takes tasks. Each sibling list holds at most 50 tasks. Edits validate new
   or changed assignee and artifact references, so an unchanged stale reference cannot block
   unrelated progress; stale artifact links stay unavailable until corrected or cleared. When
@@ -240,8 +242,10 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - Wake each agent a saved change notifies once, with every task and what changed for it
   (`teamTaskNotifications`, a `team_task` wake): the new assignee, the previous one on
   reassignment, and the assignee when anyone else changes, sends back, or closes its work. Closing
-  a task in review, a move alone, and the assignee's own changes wake no one, except that handing
-  a task off for review wakes the lead (below). Notes wake whoever the thread's routing names.
+  a task in review, a move alone, and the assignee's own changes wake no one, except that closing a
+  task as completed or handing it off for review wakes the lead (below). Notes wake whoever the
+  thread's routing names, so the lead leaves a closed task alone unless something needs its
+  assignee.
 - Report on tasks at a turn's end. A wake about a task adds the assignee's open task to its turn
   (`turnTasks`, published as a `turn` event so presence shows what each running agent works on),
   and the turn's first task records the team's latest sequence as the private `turnSince`.
@@ -252,16 +256,17 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   due, at most 3 reports in a row (`TEAM_TASK_CONTINUE_LIMIT`). A turn adds at most one note to a
   task's thread, so an agent that posted there earlier in the turn reports only the status.
   Reports apply as one task edit
-  with the agent's own authority. Handing a task off as `in_review` queues a wake for the
-  assignee's highest-priority pending task after the turn.
+  with the agent's own authority. Finishing a task, by closing it as completed or handing it off as
+  `in_review`, in a report or an edit, queues a wake for the assignee's highest-priority pending
+  task after the turn; `finishTurn` returns the turn's tasks so a completion by an edit counts.
 - Settle a turn that ends without its reports from how its execution ended. Startup subscribes to
   idle status and completions: a completed execution posts `task_turn_ended` in each task's
   thread and wakes the assignee once more (a second unreported turn in a row only posts the
   note); a failed or stopped one, including a turn the server's last stop interrupted, posts its
   note with the error and wakes the lead once, except for the lead's own turn. Any change of
   status or assignee clears a task's continuation and unreported count.
-- Keep the lead current without flooding it. An assignee handing its task off for review, or
-  asking the user in its task's thread, wakes the lead, but only the first since its last read
+- Keep the lead current without flooding it. An assignee closing its task as completed, handing it
+  off for review, or asking the user in its task's thread, wakes the lead, but only the first since its last read
   claims that wake (`taskSummary.woken`); it stands for every later one until the lead reads or
   its turn ends, startup included, so a lost wake can't silence later ones. The lead's
   `read_team` adds `taskSummary`: each task changed since its last read other than by the lead, or
@@ -276,8 +281,7 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   ones by ID, title, and status. `read_team({ taskId })` reads one task's record and whole thread
   without moving the read position.
 - Complete the list: the saved change that takes it from incomplete to complete, meaning every
-  task closed and at least one completed, appends `tasks_completed`. Since only the lead closes
-  tasks, that change is the lead's.
+  task closed and at least one completed, appends `tasks_completed`, whoever made it.
 
 ### Messages
 
@@ -343,8 +347,7 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   task, through `request: true` on `send_team_message`. A flagged request commits with its message
   into `pendingRequests`, replacing any question still pending in its thread, and travels through
   the normal detail stream without ending the turn. A member's question also claims the lead's
-  merged wake (see Tasks). Only the lead completes the task list, whose completing change appends
-  `tasks_completed`.
+  merged wake (see Tasks). Whichever close completes the task list appends `tasks_completed`.
   Reading a completion message acknowledges its sidebar indication. Reading a request does not:
   the user's later message where it was asked acknowledges it (`acknowledgesTeamRequest`). A
   question in a thread is answered in that thread, which wakes its assignee by the thread's
@@ -417,8 +420,8 @@ Sessions owns directory fallback and applying configuration between executions. 
 inspect the same model catalog as the client before creating peers. Member profile and Team
 directory changes apply between executions without mutating provider history. The lead receives its
 fixed identity and responsibilities from the Team rather than editable Worker metadata. Among
-Team agents, it alone creates members, updates the directory, public purpose, and preview, and
-closes, assigns, moves, and removes tasks.
+Team agents, it alone creates members, updates the directory, public purpose, and preview,
+assigns, moves, and removes tasks, and closes them other than as completed.
 
 A lead and member always receive `read_team`, `send_team_message`, `set_agent_status`,
 and `finish_agent_turn` without tool discovery. These declarations set Sessions' `alwaysAvailable`
@@ -468,7 +471,8 @@ topics, milestones, and results; `read_team` with a `threadSequence` reads one t
 The lead asks a question about a thread's topic in that thread and posts its closing result
 top-level. Work on a task happens in its thread: progress, questions, reviews, and replies. An
 agent asked about a task in the main chat reads it with `read_team({ taskId })` and answers there,
-adding to the thread only what is missing from it. An assignee that needs another agent's help,
+adding to the thread only what is missing from it. An assignee closes finished work as completed
+itself. One that needs another agent's help,
 new work, or a reassignment mentions that agent, or the lead, in the task's thread, and proposes
 closing without completing (cancelled, deferred, cut, or duplicate) by handing the task off for
 review with the status in its note. No one mentions a task's assignee in its own thread, which
@@ -504,9 +508,9 @@ model's 12,000-character limit.
 The built-in lead role establishes the purpose with the user when needed, scales planning to the
 work, opens tasks with reviewable outcomes and assigns each to the one agent directly responsible,
 putting the outcome and context in its description and an assignment note, creates each member
-only when their work is actionable, drives quality by reviewing each hand-off and closing it with a
-status or sending it back, and keeps the public progress surfaces current. A hand-off or a member's
-question wakes it once for everything it hasn't read, which its `taskSummary` lists; it reports to
+only when their work is actionable, drives quality by double-checking each close, reopening only
+what it doesn't accept, and deciding each hand-off, closing it with a status or sending it back,
+and keeps the public progress surfaces current. A close, a hand-off, or a member's question wakes it once for everything it hasn't read, which its `taskSummary` lists; it reports to
 the user in one update for finished work and gathers what assignees need from the user into one
 flagged question. Patterns across tasks, such as a fix others should apply, go into a routine,
 such as a daily review of closed tasks, rather than reactions to each change.

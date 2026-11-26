@@ -1153,7 +1153,7 @@ test("a report can continue its task later, at most three reports in a row", asy
   expect(delivered()).toEqual({});
 });
 
-test("handing a task off wakes its assignee for its highest-priority pending task after the turn", async () => {
+test("finishing a task wakes its assignee for its highest-priority pending task after the turn", async () => {
   const { teams, team, builder, delivered, assign } = await reportingTeam();
   await assign(
     { title: "Parser" },
@@ -1163,13 +1163,16 @@ test("handing a task off wakes its assignee for its highest-priority pending tas
 
   await finishTeamAgentTurn(builder.id, {
     reports: [
-      { taskId: "t1", status: "in_review", note: "Parsed. Close as completed." },
+      { taskId: "t1", status: "completed", note: "Parsed." },
       { taskId: "t2", status: "pending", note: "Not started." },
       { taskId: "t3", status: "pending", note: "Not started." },
     ],
   });
   const calls = delivered();
   expect(Object.keys(calls).sort()).toEqual([builder.id, team.id].sort());
+  expect(calls[team.id]).toMatchObject({
+    systemMessage: { tasks: [{ taskId: "t1", changes: ["closed as completed"] }] },
+  });
   expect(calls[builder.id]).toEqual({
     systemMessage: {
       type: "team_task",
@@ -1177,20 +1180,32 @@ test("handing a task off wakes its assignee for its highest-priority pending tas
         {
           taskId: "t3",
           title: "Fix",
-          changes: ["your highest-priority pending task, now that you handed off t1"],
+          changes: ["your highest-priority pending task, now that you finished t1"],
         },
       ],
     },
   });
   expect((await teams.getMember(builder.id))?.turnTasks).toEqual(["t3"]);
 
-  // A report that hands nothing off leaves the queue alone.
+  // Completing by an edit leaves nothing to report, and still moves the assignee on.
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [{ type: "update", taskId: "t3", patch: { status: "completed" }, note: "Fixed." }],
+  });
+  await finishTeamAgentTurn(builder.id);
+  expect(delivered()[builder.id]).toMatchObject({
+    systemMessage: {
+      tasks: [
+        { taskId: "t2", changes: ["your highest-priority pending task, now that you finished t3"] },
+      ],
+    },
+  });
+
+  // A report that finishes nothing leaves the queue alone.
   await finishTeamAgentTurn(builder.id, {
-    reports: [{ taskId: "t3", status: "in_progress", note: "Fixing." }],
+    reports: [{ taskId: "t2", status: "in_progress", note: "Writing." }],
   });
   expect(delivered()).toEqual({});
 });
-
 test("a turn's end is settled from how its execution ended, and after a restart", async () => {
   const models = spyOn(providerCatalog, "listModels").mockResolvedValue([]);
   onTestFinished(() => models.mockRestore());

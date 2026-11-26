@@ -226,7 +226,14 @@ describe("an assignee's authority", () => {
     ]);
   });
 
-  test("updates its own open tasks up to handing them off for review", () => {
+  test("updates its own open tasks, closing them only as completed", () => {
+    const { tasks: closed } = asBuilder([
+      { type: "update", taskId: "t1", patch: { status: "completed" } },
+    ]);
+    expect(byId(closed, "t1")).toMatchObject({
+      status: "completed",
+      updatedBy: { type: "agent", agentId: "builder" },
+    });
     const { tasks: updated } = asBuilder([
       {
         type: "update",
@@ -266,14 +273,14 @@ describe("an assignee's authority", () => {
       "own open",
     ],
     [
-      "close its task",
-      { type: "update", taskId: "t1", patch: { status: "completed" } },
-      "Only the lead closes",
-    ],
-    [
       "cancel its task",
       { type: "update", taskId: "t1", patch: { status: "cancelled" } },
-      "Only the lead closes",
+      "Only the lead closes a task as cancelled. Hand it off with status in_review",
+    ],
+    [
+      "defer its task",
+      { type: "update", taskId: "t1", patch: { status: "deferred" } },
+      "Only the lead closes a task as deferred",
     ],
     [
       "reassign",
