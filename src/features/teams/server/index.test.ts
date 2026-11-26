@@ -748,6 +748,24 @@ test("hand-offs and questions wake the lead once until it reads, and its summary
   expect(leadWakes()).toHaveLength(1);
 });
 
+test("the lead reads which open tasks nobody has changed or discussed for three days", async () => {
+  const { team, builder, assign, teams } = await reportingTeam();
+  const start = Date.parse("2026-11-24T15:00:00.000Z");
+  setSystemTime(new Date(start));
+  onTestFinished(() => setSystemTime());
+  await assign({ title: "Parser" }, { title: "Docs" });
+  const [, docs] = await teams.listTasks(team.id);
+
+  setSystemTime(new Date(start + 2 * 86_400_000));
+  await sendTeamMessageFromAgent(builder.id, {
+    content: "Drafting the guide.",
+    threadSequence: docs!.threadSequence!,
+  });
+  setSystemTime(new Date(start + 4 * 86_400_000));
+  expect((await readTeamForAgent(team.id)).staleTasks).toEqual([{ taskId: "t1", days: 4 }]);
+  expect(await readTeamForAgent(builder.id)).not.toHaveProperty("staleTasks");
+});
+
 test("an agent reads other agents' task threads only where they mention it", async () => {
   const { teams, team, builder, assign } = await reportingTeam();
   const { member: critic } = await teams.createMember(teamAgent(team.id, "critic", "Critic"));

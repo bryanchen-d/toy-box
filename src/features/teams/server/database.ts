@@ -825,13 +825,28 @@ export class TeamDatabase {
     return matches;
   }
 
-  /** The newest conversation message that cites a task by its ID, and where it is. */
-  async findTaskMessage(teamId: string, taskId: string): Promise<TeamMessageLocation | null> {
+  /** The newest conversation message that cites a task by its whole ID. */
+  async findTaskMessage(teamId: string, taskId: string): Promise<TeamConversationMessage | null> {
     await requireTeam(this.db, teamId);
     for await (const row of conversationNewestFirst(this.db, teamId, { containing: taskId })) {
-      if (mentionsTeamTask(row.content, taskId)) return messageLocation(row);
+      if (!mentionsTeamTask(row.content, taskId)) continue;
+      const rows = await this.db<TeamMessageRow[]>`
+        SELECT * FROM team_messages WHERE team_id = ${teamId} AND sequence = ${row.sequence}
+      `;
+      const [message] = await hydrateMessages(this.db, teamId, rows);
+      return message && !isTeamSystemMessage(message) ? message : null;
     }
     return null;
+  }
+
+  /** When each thread last had a message, by the sequence it starts at. */
+  async listThreadActivity(teamId: string): Promise<Map<number, string>> {
+    const rows = await this.db<{ thread_sequence: number; at: string }[]>`
+      SELECT thread_sequence, MAX(timestamp) AS at FROM team_messages
+      WHERE team_id = ${teamId} AND thread_sequence IS NOT NULL
+      GROUP BY thread_sequence
+    `;
+    return new Map(rows.map(({ thread_sequence, at }) => [thread_sequence, at]));
   }
 
   /** The thread a message starts or belongs to: its top-level message, then every reply. */

@@ -159,6 +159,43 @@ export function teamTasksComplete(tasks: readonly TeamTask[]): boolean {
   );
 }
 
+/** How many days an open task can go untouched before the lead revisits it. */
+export const TEAM_TASK_STALE_DAYS = 3;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Open tasks nobody has changed or discussed in their thread for `TEAM_TASK_STALE_DAYS` or more,
+ * with the whole days since, longest first. A task whose thread holds a question for the user waits
+ * on the user, not the team, so it's left out.
+ */
+export function staleTeamTasks(
+  tasks: readonly TeamTask[],
+  {
+    threadActivity,
+    pendingThreads,
+    now,
+  }: {
+    /** When each thread last had a message, by the sequence it starts at. */
+    threadActivity: ReadonlyMap<number, string>;
+    /** The threads holding a question for the user. */
+    pendingThreads: ReadonlySet<number>;
+    now: number;
+  },
+): { taskId: string; days: number }[] {
+  return orderTeamTasks(tasks)
+    .flatMap(({ id, status, threadSequence, updatedAt }) => {
+      if (!isTeamTaskOpen({ status })) return [];
+      if (threadSequence !== undefined && pendingThreads.has(threadSequence)) return [];
+      const discussedAt =
+        threadSequence === undefined ? undefined : threadActivity.get(threadSequence);
+      const touchedAt = Math.max(Date.parse(updatedAt), discussedAt ? Date.parse(discussedAt) : 0);
+      const days = Math.floor((now - touchedAt) / DAY_MS);
+      return days >= TEAM_TASK_STALE_DAYS ? [{ taskId: id, days }] : [];
+    })
+    .sort((left, right) => right.days - left.days);
+}
+
 /**
  * Who a task edit wakes, and what changed for them: a task's new assignee, and its assignee
  * whenever anyone else changes its work, as editing, sending back, closing, reassigning, or

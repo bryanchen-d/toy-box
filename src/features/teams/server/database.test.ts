@@ -142,9 +142,10 @@ describe("team message search", () => {
     const reply = await post("t1 is ready for review", { threadSequence: root.sequence });
     await post("t12 is next");
     await teams.updateTeam(team.id, { purpose: "Ship t1" });
-    expect(await teams.findTaskMessage(team.id, "t1")).toEqual({
+    expect(await teams.findTaskMessage(team.id, "t1")).toMatchObject({
       sequence: reply.sequence,
       threadSequence: root.sequence,
+      content: "t1 is ready for review",
     });
     expect(await teams.findTaskMessage(team.id, "t9")).toBeNull();
     await expect(teams.findTaskMessage("missing", "t1")).rejects.toThrow("Team not found");

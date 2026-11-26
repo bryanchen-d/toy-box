@@ -118,8 +118,8 @@ Team           name, purpose, directory, lead model, preview, user read position
   `teamTasksDiff` derives totals from direct and descendant diffs, never storing aggregates.
   Unreported work differs from a measured zero; totals summarize reported work, not necessarily
   the net repository diff. A task's thread is its link to the conversation; a task without one,
-  as migrated tasks are until their next activity, still leads to the newest message citing its
-  whole ID (`mentionsTeamTask`).
+  as migrated tasks are until their next activity, shows the newest message citing its whole ID
+  (`mentionsTeamTask`).
 - `TeamAgent` is the shared public identity of anyone on the team, the lead or a member: ID,
   name, role, avatar, and status. A Team's agents, lead first, form its roster, which the overview
   presents as Team members.
@@ -274,6 +274,12 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   whether its thread holds a question. Reading moves the cursor and clears the claim. An open task
   losing its assignee to a removal or move wakes the lead once per change and counts as that
   member's change; closed tasks just drop the assignee.
+- Keep tasks from drifting without more wakes. The lead's `read_team` also adds `staleTasks`
+  (`staleTeamTasks`): open tasks with no change and no message in their thread for
+  `TEAM_TASK_STALE_DAYS` (3) or more, with the whole days since, longest first. A task whose
+  thread holds a question for the user waits on the user, so it's left out. A reply or turn
+  report in its thread counts as activity even when it changes no field. The lead settles each in
+  its next batch: closing it, correcting it, assigning it, or asking its assignee in its thread.
 - Keep each agent's reading to its own work. `teamMessageReaches` keeps a task's thread, its
   opening note included, for the task's assignee (the lead while unassigned) and whoever it
   mentions, so `read_team` leaves other task threads out. `read_team` also returns `yourTasks`
@@ -900,9 +906,10 @@ presents one deleted identity everywhere.
   exact diff, subtask progress, when and by whom it last changed once an agent has, and Working now while its
   assignee's running turn is on it, which also rings the row's avatar. Choosing any task opens its
   task view: its thread, headed by its record and titled like "t5 · Tools: land the slice", with a
-  composer that replies there. A task without a thread yet shows its record over an empty
-  history, offers to show the newest user, agent, or connector message citing its ID, as a search
-  result does, and posts its first reply with `taskId`, which starts the thread; the view follows
+  composer that replies there. A task without a thread yet shows its record and, loaded as it
+  opens, the newest user, agent, or connector message citing its ID, rendered as a transcript row
+  with Open in its thread, or says none does; it posts its first reply with `taskId`, which starts
+  the thread; the view follows
   the task, so the reply appears in it. The
   task view shows each of the server's notes as a row, with a failure's error on hover. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The

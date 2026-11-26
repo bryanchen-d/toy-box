@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { MessageSquareReply } from "lucide-react";
 import {
   teamTaskById,
@@ -7,7 +7,7 @@ import {
   type TeamState,
   type PostTeamMessageInput,
 } from "@teams/model";
-import { findTeamTaskMessage } from "@teams/server/functions";
+import { teamQueries } from "@teams/queries";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { Button } from "@/shared/ui/button";
 import { PaneMessage } from "@/shared/ui/pane-message";
@@ -28,9 +28,9 @@ const FOLLOW_THRESHOLD_PX = 80;
 /**
  * One thread beside the transcript, or in its place in a narrow pane: its top-level message, every
  * reply, and a composer that replies in it. A task's view is its thread under its record; a task
- * without a thread yet shows an empty history, and the first reply starts it. It opens on the
- * pending question it holds, otherwise on its latest reply, and follows new replies while the
- * reader is at the end.
+ * without a thread yet shows the newest message that cites it, and the first reply starts its
+ * thread. It opens on the pending question it holds, otherwise on its latest reply, and follows new
+ * replies while the reader is at the end.
  */
 export function TeamThread({
   teamId,
@@ -94,12 +94,20 @@ export function TeamThread({
   const isLoaded =
     threadSequence === undefined || (state.messages[0]?.sequence ?? 1) <= threadSequence;
   // A task without a thread yet may still be cited by earlier messages.
-  const mention = useMutation({
-    mutationFn: (id: string) => findTeamTaskMessage({ data: { teamId, taskId: id } }),
-    onSuccess: (location) => {
-      if (location) pane.openMessage(location);
-    },
+  const mention = useQuery({
+    ...teamQueries.taskMention(teamId, task?.id ?? ""),
+    enabled: task !== undefined && threadSequence === undefined,
   });
+  const latestMention = mention.data ?? undefined;
+  const mentionRow =
+    latestMention &&
+    threadRows([latestMention], latestMention.sequence, {
+      lead,
+      members,
+      coordinators,
+      tasks: state.tasks,
+      pendingRequests: state.team.pendingRequests,
+    })[0];
 
   useEffect(() => {
     if (!isLoaded && threadSequence !== undefined) void onLoadThrough(threadSequence);
@@ -208,26 +216,41 @@ export function TeamThread({
                   </div>
                 ))}
                 {task && threadSequence === undefined && (
-                  <div className="space-y-2 text-sm text-muted-foreground">
+                  <div className="space-y-3 text-sm text-muted-foreground">
                     <p>No replies yet. A reply here starts this task's thread.</p>
-                    {mention.data === null ? (
-                      <p role="status">No message mentions {task.id} yet.</p>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="sm"
-                        className="h-auto p-0"
-                        disabled={mention.isPending}
-                        onClick={() => mention.mutate(task.id)}
-                      >
-                        Show the latest message that mentions {task.id}
-                      </Button>
-                    )}
-                    {mention.error && (
+                    {mention.isPending ? (
+                      <p role="status">Looking for the latest message about {task.id}…</p>
+                    ) : mention.error ? (
                       <p role="alert" className="text-destructive">
                         Unable to find a message about {task.id}: {mention.error.message}
                       </p>
+                    ) : latestMention && mentionRow ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="section-heading">Latest mention</span>
+                          <span className="h-px flex-1 bg-border" />
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0"
+                            onClick={() =>
+                              pane.openMessage({
+                                sequence: latestMention.sequence,
+                                threadSequence:
+                                  latestMention.threadSequence ?? latestMention.sequence,
+                              })
+                            }
+                          >
+                            Open in its thread
+                          </Button>
+                        </div>
+                        <div className="text-foreground">
+                          <TranscriptRowContent row={mentionRow} />
+                        </div>
+                      </div>
+                    ) : (
+                      <p role="status">No message mentions {task.id} yet.</p>
                     )}
                   </div>
                 )}

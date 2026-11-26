@@ -27,6 +27,7 @@ import {
   resolveTeamAudience,
   teamTaskNotifications,
   nextTeamTask,
+  staleTeamTasks,
   isTeamSystemMessage,
   isTeamTaskOpen,
   messageAuthorId,
@@ -442,7 +443,8 @@ export async function waitForTeamAgents(
 
 /**
  * An agent's unread messages, then advances its read position past them. A task's thread stays out
- * unless the task is the agent's or the message mentions it. The lead also reads its task summary.
+ * unless the task is the agent's or the message mentions it. The lead also reads its task summary
+ * and the open tasks gone stale, which it revisits.
  */
 export async function readTeamForAgent(sessionId: string) {
   const database = new TeamDatabase(await getStateDatabase());
@@ -462,8 +464,19 @@ export async function readTeamForAgent(sessionId: string) {
     ),
   };
   await database.markAgentSeen(agent.id, readThrough);
-  const taskSummary = agent.isLead ? await database.readTaskSummary(agent.id) : undefined;
-  return { ...reading, ...(taskSummary ? { taskSummary } : {}) };
+  const forLead = agent.isLead
+    ? {
+        taskSummary: await database.readTaskSummary(agent.id),
+        staleTasks: staleTeamTasks(result.tasks, {
+          threadActivity: await database.listThreadActivity(team.id),
+          pendingThreads: new Set(
+            team.pendingRequests.flatMap(({ threadSequence }) => threadSequence ?? []),
+          ),
+          now: Date.now(),
+        }),
+      }
+    : {};
+  return { ...reading, ...forLead };
 }
 
 export async function getTeamThreadSequence(teamId: string, sequence: number) {
@@ -477,7 +490,8 @@ export async function searchTeamMessages(teamId: string, query: string, threadSe
 }
 
 export async function findTeamTaskMessage(teamId: string, taskId: string) {
-  return new TeamDatabase(await getStateDatabase()).findTaskMessage(teamId, taskId);
+  const message = await new TeamDatabase(await getStateDatabase()).findTaskMessage(teamId, taskId);
+  return message && resolveMessageResources(message);
 }
 
 /** One thread in full, read without changing anyone's read position. */

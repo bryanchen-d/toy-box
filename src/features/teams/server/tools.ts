@@ -234,7 +234,7 @@ const waitForTeamAgentsTool = defineTool("wait_for_team_agents", {
 const readTeamForAgentTool = defineTool("read_team", {
   alwaysAvailable: true,
   description:
-    "Reads the team ID, purpose, yourTasks (your open tasks, highest priority first), the team's tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Messages in the threads of tasks that aren't yours appear only when they mention you. The lead also reads taskSummary: each task changed since its last read other than by the lead, or with news in its thread, with who changed it, its latest note, and whether it holds a question for the user. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead, or taskId to read one task's record and its whole thread; neither changes your read position. File attachments are absolute paths. Inline uploads are attached images.",
+    "Reads the team ID, purpose, yourTasks (your open tasks, highest priority first), the team's tasks (open ones in full, closed ones by ID, title, and status), URL or screen preview, selected canvasArtifactId, connectorCoordinators, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Messages in the threads of tasks that aren't yours appear only when they mention you. The lead also reads taskSummary: each task changed since its last read other than by the lead, or with news in its thread, with who changed it, its latest note, and whether it holds a question for the user; and staleTasks: open tasks with no change and no thread activity for 3 or more days, other than ones waiting on the user's answer, with the days since. Repeat while hasMore is true. A reply's threadSequence names its thread. Pass threadSequence to read one whole thread instead, or taskId to read one task's record and its whole thread; neither changes your read position. File attachments are absolute paths. Inline uploads are attached images.",
   parameters: z
     .object({ ...readThreadParameter, ...readTaskParameter })
     .refine(oneReadTarget, "Pass threadSequence or taskId, not both."),
@@ -532,6 +532,7 @@ async function toTeamReadToolResult(
   result: Awaited<ReturnType<typeof import(".").readTeamForSession>> & {
     task?: TeamTask;
     taskSummary?: unknown[];
+    staleTasks?: unknown[];
   },
   readerSessionId: string,
 ) {
@@ -636,6 +637,7 @@ async function toTeamReadToolResult(
               }
             : {}),
           ...(result.taskSummary ? { taskSummary: result.taskSummary } : {}),
+          ...(result.staleTasks?.length ? { staleTasks: result.staleTasks } : {}),
           tasks: result.tasks.map((task) =>
             isTeamTaskOpen(task)
               ? taskForTool(task)

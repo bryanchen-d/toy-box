@@ -6,6 +6,7 @@ import {
   mentionsTeamTask,
   nextTeamTask,
   orderTeamTasks,
+  staleTeamTasks,
   teamTaskReportSchema,
   teamTaskState,
   teamTasksByPriority,
@@ -501,6 +502,48 @@ test("a list is complete only when every task is closed and at least one complet
   expect(teamTasksComplete([closed("completed"), closed("deferred"), closed("duplicate")])).toBe(
     true,
   );
+});
+
+describe("stale tasks", () => {
+  const day = (n: number) => new Date(Date.parse(OPENED) + n * 86_400_000).toISOString();
+  const stale = (
+    tasks: TeamTask[],
+    { threadActivity = new Map<number, string>(), pendingThreads = new Set<number>() } = {},
+  ) => staleTeamTasks(tasks, { threadActivity, pendingThreads, now: Date.parse(day(10)) });
+
+  test("an open task untouched for three days or more is stale, longest first", () => {
+    expect(
+      stale([
+        task("t1", { updatedAt: day(8) }),
+        task("t2", { updatedAt: day(7), status: "blocked" }),
+        task("t3", { updatedAt: day(2), status: "in_progress", position: 1 }),
+        task("t4", { updatedAt: day(5), status: "in_review", position: 2 }),
+      ]),
+    ).toEqual([
+      { taskId: "t3", days: 8 },
+      { taskId: "t4", days: 5 },
+      { taskId: "t2", days: 3 },
+    ]);
+  });
+
+  test("closed tasks are never stale", () => {
+    expect(
+      stale([task("t1", { status: "deferred" }), task("t2", { status: "completed" })]),
+    ).toEqual([]);
+  });
+
+  test("recent discussion in its thread keeps an unchanged task current", () => {
+    const quiet = task("t1", { threadSequence: 4 });
+    expect(stale([quiet], { threadActivity: new Map([[4, day(9)]]) })).toEqual([]);
+    expect(stale([quiet], { threadActivity: new Map([[4, day(5)]]) })).toEqual([
+      { taskId: "t1", days: 5 },
+    ]);
+  });
+
+  test("a task waiting on the user's answer isn't stale", () => {
+    const asking = task("t1", { status: "blocked", threadSequence: 4 });
+    expect(stale([asking], { pendingThreads: new Set([4]) })).toEqual([]);
+  });
 });
 
 test("a message cites a task only by its whole, exactly cased ID", () => {

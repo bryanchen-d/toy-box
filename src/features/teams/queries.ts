@@ -11,6 +11,7 @@ import {
   type TeamMessage,
 } from "./model";
 import {
+  findTeamTaskMessage,
   getConnectorUse,
   getTeamPerformance,
   getTeamThreadSequence,
@@ -62,6 +63,14 @@ export const teamQueries = {
       queryFn: ({ signal }) => getTeamThreadSequence({ data: { teamId, sequence }, signal }),
       staleTime: 0,
       gcTime: 0,
+      retry: false,
+    }),
+  /** The newest message citing a task, which a task without a thread yet shows as its context. */
+  taskMention: (teamId: string, taskId: string) =>
+    queryOptions({
+      queryKey: [...teamQueries.details(), teamId, "task-mention", taskId] as const,
+      queryFn: ({ signal }) => findTeamTaskMessage({ data: { teamId, taskId }, signal }),
+      staleTime: 0,
       retry: false,
     }),
   usage: (teamId: string) =>
