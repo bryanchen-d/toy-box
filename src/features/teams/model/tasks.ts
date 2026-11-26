@@ -355,7 +355,7 @@ export const teamTaskReportSchema = z
     note: taskNoteSchema
       .optional()
       .describe(
-        "What this turn did and what comes next: what blocks it, or for in_review how it should close. Posts into the task's thread. Leave it out when this turn already posted there, since a turn adds at most one note to a task's thread. At most 3,000 characters.",
+        "What this turn did and what comes next: what blocks it, or for in_review how it should close. Posts into the task's thread. Leave it out when this turn already posted there, since a turn adds at most one note to a task's thread; a note that only says you asked or are waiting repeats it. At most 3,000 characters.",
       ),
     continueAfterMinutes: z
       .number()

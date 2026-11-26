@@ -360,9 +360,11 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   `resolve_team_requests({ taskIds })` posts `requests_resolved` into each task's thread, settling
   only that thread's question, and errs for a task with none waiting; without `taskIds` it appends
   one top-level `requests_resolved` that acknowledges every earlier request. Neither wakes anyone,
-  and with nothing pending nothing changes. The lead gathers assignees' questions into one flagged
-  question, then decides which tasks the user's answer covers, relays each answer into its task's
-  thread, and resolves those.
+  and with nothing pending nothing changes. When two or more tasks have questions, the lead
+  gathers them into one flagged question; a single assignee's question is already in front of the
+  user, so it isn't repeated. The lead then decides which tasks the user's answer covers, relays
+  each answer into its task's thread, and resolves those, or resolves its gathered question once
+  the user has answered every one in their threads.
 
 ### Scheduled wakes
 
@@ -478,7 +480,7 @@ closing without completing (cancelled, deferred, cut, or duplicate) by handing t
 review with the status in its note. No one mentions a task's assignee in its own thread, which
 already reaches it, and a note there wakes it, so the lead closes a handed-off task without one
 unless the assignee must act. The user's answer to an assignee's question goes to that assignee,
-so the lead never waits on the user for it. Public messages, reactions,
+so the lead never waits on the user for it, even after gathering it. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Team. Agents reach connectors by opening a message with their handle,
 and name them without @ when only talking about them. They keep each connector
@@ -511,8 +513,8 @@ putting the outcome and context in its description and an assignment note, creat
 only when their work is actionable, drives quality by double-checking each close, reopening only
 what it doesn't accept, and deciding each hand-off, closing it with a status or sending it back,
 and keeps the public progress surfaces current. A close, a hand-off, or a member's question wakes it once for everything it hasn't read, which its `taskSummary` lists; it reports to
-the user in one update for finished work and gathers what assignees need from the user into one
-flagged question. Patterns across tasks, such as a fix others should apply, go into a routine,
+the user in one update for finished work and, when two or more tasks have questions, gathers them
+into one flagged question. Patterns across tasks, such as a fix others should apply, go into a routine,
 such as a daily review of closed tasks, rather than reactions to each change.
 Each sibling list is capped at 50 tasks; use ID-based moves to regroup growing lists into milestones without discarding
 useful outcomes or copying child counts into a parent's direct diff.
