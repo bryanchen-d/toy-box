@@ -183,9 +183,9 @@ Team           name, purpose, directory, lead model, preview, user read position
 
 There is no separate Agent or membership database. Workers persists ownership, name, and opaque
 metadata. Teams validates that metadata as role, model, avatar, `seenThrough`, status, the running
-turn's `turnTasks`, and, for the lead, its `taskSummary` cursor, then projects it into the fixed
+turn's `turnTasks` and `turnSince`, and, for the lead, its `taskSummary` cursor, then projects it into the fixed
 lead or an editable `TeamMember`. `model/worker.ts` owns these pure projections for persistence and
-runtime configuration; private read positions and the summary cursor stay out of public members.
+runtime configuration; private read positions, the turn's start, and the summary cursor stay out of public members.
 
 ## Algebra
 
@@ -243,11 +243,15 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
   a task in review, a move alone, and the assignee's own changes wake no one, except that handing
   a task off for review wakes the lead (below). Notes wake whoever the thread's routing names.
 - Report on tasks at a turn's end. A wake about a task adds the assignee's open task to its turn
-  (`turnTasks`, published as a `turn` event so presence shows what each running agent works on).
+  (`turnTasks`, published as a `turn` event so presence shows what each running agent works on),
+  and the turn's first task records the team's latest sequence as the private `turnSince`.
   `finish_agent_turn({ tasks })` is rejected, naming the missing IDs, until every such task still
-  open and assigned to the agent has a report: a status, a note posted into its thread, and for
+  open and assigned to the agent has a report: a status, a note posted into its thread unless the
+  agent already posted there after `turnSince`, and for
   `in_progress` optionally `continueAfterMinutes` (5 to 120), which wakes the assignee again when
-  due, at most 3 reports in a row (`TEAM_TASK_CONTINUE_LIMIT`). Reports apply as one task edit
+  due, at most 3 reports in a row (`TEAM_TASK_CONTINUE_LIMIT`). A turn adds at most one note to a
+  task's thread, so an agent that posted there earlier in the turn reports only the status.
+  Reports apply as one task edit
   with the agent's own authority. Handing a task off as `in_review` queues a wake for the
   assignee's highest-priority pending task after the turn.
 - Settle a turn that ends without its reports from how its execution ended. Startup subscribes to

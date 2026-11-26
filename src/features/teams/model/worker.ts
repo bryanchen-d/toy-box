@@ -37,6 +37,11 @@ export function teamMemberFromWorker(
   metadata = teamAgentMetadataSchema.parse(worker.metadata),
 ): TeamMember {
   if (!worker.name) throw new Error("Team members require a name.");
-  const { seenThrough: _seenThrough, taskSummary: _taskSummary, ...profile } = metadata;
+  const {
+    seenThrough: _seenThrough,
+    turnSince: _turnSince,
+    taskSummary: _taskSummary,
+    ...profile
+  } = metadata;
   return { teamId: worker.teamId, id: worker.sessionId, name: worker.name, ...profile };
 }

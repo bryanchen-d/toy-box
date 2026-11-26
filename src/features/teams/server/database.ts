@@ -367,7 +367,10 @@ export class TeamDatabase {
         .map(({ id }) => id)
         .filter((id) => !turnTasks.includes(id));
       if (added.length === 0) return null;
-      const events = await changeAgentActivity(db, worker, { turnTasks: [...turnTasks, ...added] });
+      const events = await changeAgentActivity(db, worker, {
+        turnTasks: [...turnTasks, ...added],
+        ...(turnTasks.length === 0 ? { turnSince: team.latestSequence } : {}),
+      });
       return recordTeamChange(db, team, events);
     });
   }
@@ -390,9 +393,13 @@ export class TeamDatabase {
         return null;
       }
       const team = await requireTeam(db, worker.teamId);
-      const { turnTasks } = teamAgentMetadataSchema.parse(worker.metadata);
+      const { turnTasks, turnSince } = teamAgentMetadataSchema.parse(worker.metadata);
       const tasks = await listTasks(db, team.id);
-      assertTeamTurnReports(teamTurnReportsDue(tasks, agentId, turnTasks), reports);
+      assertTeamTurnReports(
+        teamTurnReportsDue(tasks, agentId, turnTasks),
+        reports,
+        await tasksPostedIn(db, team.id, agentId, tasks, turnSince),
+      );
       await assertContinuations(db, team.id, tasks, reports);
       const { events, ...edit } = await editTasks(
         db,
@@ -704,6 +711,7 @@ export class TeamDatabase {
         const {
           status: _status,
           turnTasks: _turnTasks,
+          turnSince: _turnSince,
           ...metadata
         } = teamAgentMetadataSchema.parse(worker.metadata);
         await workers.moveToTeam(worker.sessionId, target.id);
@@ -2209,6 +2217,31 @@ async function editTasks(
   };
 }
 
+/**
+ * The tasks whose threads an agent posted in during its current turn, which began after
+ * `turnSince`; none without a turn.
+ */
+async function tasksPostedIn(
+  db: Bun.SQL,
+  teamId: string,
+  agentId: string,
+  tasks: readonly TeamTask[],
+  turnSince: number | undefined,
+): Promise<Set<string>> {
+  if (turnSince === undefined) return new Set();
+  const rows = await db<Pick<TeamMessageRow, "thread_sequence">[]>`
+    SELECT DISTINCT thread_sequence FROM team_messages
+    WHERE team_id = ${teamId} AND sender_type = 'agent' AND sender_agent_id = ${agentId}
+      AND sequence > ${turnSince} AND thread_sequence IS NOT NULL
+  `;
+  const threads = new Set(rows.map(({ thread_sequence }) => thread_sequence));
+  return new Set(
+    tasks.flatMap(({ id, threadSequence }) =>
+      threadSequence !== undefined && threads.has(threadSequence) ? [id] : [],
+    ),
+  );
+}
+
 /** Starts a task's thread with its opening note when it has none yet; the caller saves the task. */
 async function openTaskThread(db: Bun.SQL, teamId: string, task: TeamTask) {
   if (task.threadSequence) {
@@ -2251,11 +2284,14 @@ async function assertContinuations(
 async function changeAgentActivity(
   db: Bun.SQL,
   worker: Extract<Worker, { type: "team" }>,
-  changes: { status?: TeamAgentStatus | null; turnTasks?: string[] | null },
+  changes: { status?: TeamAgentStatus | null; turnTasks?: string[] | null; turnSince?: number },
 ): Promise<TeamEvent[]> {
   const agentId = worker.sessionId;
   const metadata = teamAgentMetadataSchema.parse(worker.metadata);
-  const next = applyPatch(metadata, changes);
+  const patched = applyPatch(metadata, changes);
+  // A turn's starting point lasts exactly as long as its tasks.
+  const { turnSince: _turnSince, ...ended } = patched;
+  const next = patched.turnTasks ? patched : ended;
   const events: TeamEvent[] = [];
   if (!Bun.deepEquals(metadata.status, next.status)) {
     const revision = await advanceRevision(db, worker.teamId);

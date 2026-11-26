@@ -326,16 +326,21 @@ type TeamTaskEdit = EditTeamTasksInput["operations"][number];
  */
 export const TEAM_TASK_CONTINUE_LIMIT = 3;
 
-/** A turn's report on one task: its status afterward and a note, and when to continue it. */
+/**
+ * A turn's report on one task: its status afterward, a note unless the turn already posted in the
+ * task's thread, and when to continue it.
+ */
 export const teamTaskReportSchema = z
   .object({
     taskId: teamTaskIdSchema,
     status: teamTaskStatusSchema.describe(
       "The task's status after this turn: in_progress while work remains, blocked when it can't continue, or in_review to hand it off when your part is done.",
     ),
-    note: taskNoteSchema.describe(
-      "What this turn did and what comes next: what blocks it, or for in_review how it should close. Posts into the task's thread. At most 3,000 characters.",
-    ),
+    note: taskNoteSchema
+      .optional()
+      .describe(
+        "What this turn did and what comes next: what blocks it, or for in_review how it should close. Posts into the task's thread. Leave it out when this turn already posted there, since a turn adds at most one note to a task's thread. At most 3,000 characters.",
+      ),
     continueAfterMinutes: z
       .number()
       .int()
@@ -365,10 +370,14 @@ export function teamTurnReportsDue(
   );
 }
 
-/** A finish reports on every task its turn is due to, each once. */
+/**
+ * A finish reports on every task its turn is due to, each once, and a report leaves out its note
+ * only for a task whose thread this turn already posted in (`posted`).
+ */
 export function assertTeamTurnReports(
   due: readonly TeamTask[],
-  reports: readonly Pick<TeamTaskReport, "taskId">[],
+  reports: readonly Pick<TeamTaskReport, "taskId" | "note">[],
+  posted: ReadonlySet<string> = new Set(),
 ): void {
   const reported = new Set<string>();
   for (const { taskId } of reports) {
@@ -378,7 +387,15 @@ export function assertTeamTurnReports(
   const missing = due.filter(({ id }) => !reported.has(id)).map(({ id }) => id);
   if (missing.length) {
     throw new Error(
-      `This turn was woken for ${missing.join(", ")}. Report on each in tasks with its status and a note before you finish.`,
+      `This turn was woken for ${missing.join(", ")}. Report on each in tasks with its status, and a note unless this turn already posted in its thread, before you finish.`,
+    );
+  }
+  const unnoted = reports
+    .filter(({ taskId, note }) => !note && !posted.has(taskId))
+    .map(({ taskId }) => taskId);
+  if (unnoted.length) {
+    throw new Error(
+      `This turn hasn't posted in the thread of ${unnoted.join(", ")}, so add a note to each report saying what it did and what comes next.`,
     );
   }
 }

@@ -404,8 +404,25 @@ describe("turn reports", () => {
       assertTeamTurnReports(due, [{ taskId: "t1" }, { taskId: "t4" }, { taskId: "t1" }]),
     ).toThrow("Report on t1 once.");
     expect(() =>
-      assertTeamTurnReports(due, [{ taskId: "t4" }, { taskId: "t1" }, { taskId: "t5" }]),
+      assertTeamTurnReports(due, [
+        { taskId: "t4", note: "Next." },
+        { taskId: "t1", note: "Parsing." },
+        { taskId: "t5", note: "Still blocked." },
+      ]),
     ).not.toThrow();
+  });
+
+  test("a report leaves out its note only where the turn already posted in the task's thread", () => {
+    const due = teamTurnReportsDue(tasks, "builder", ["t1", "t4"]);
+    const reports = [{ taskId: "t1" }, { taskId: "t4", note: "Next." }];
+    expect(() => assertTeamTurnReports(due, reports)).toThrow(
+      "This turn hasn't posted in the thread of t1",
+    );
+    expect(() => assertTeamTurnReports(due, reports, new Set(["t1"]))).not.toThrow();
+    expect(teamTaskReportSchema.safeParse({ taskId: "t1", status: "in_review" }).success).toBe(
+      true,
+    );
+    expect(teamTaskReportSchema.safeParse({ taskId: "t1", note: "Done." }).success).toBe(false);
   });
 
   test("only an in_progress report continues later, within two hours", () => {

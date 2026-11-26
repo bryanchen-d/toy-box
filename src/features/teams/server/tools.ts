@@ -451,7 +451,7 @@ const finishLeadTurnParameters = finishTeamAgentTurnParameters
 const finishTeamAgentTurnTool = defineTool("finish_agent_turn", {
   alwaysAvailable: true,
   description:
-    "Ends this private agent turn and clears its active team status. Report in tasks on each of your tasks this turn was woken for; the finish is rejected until every one that's still open has a report. A report can continue an in_progress task later. Handing a task off as in_review takes up your next pending task after this turn. waitingFor leaves a brief waiting status.",
+    "Ends this private agent turn and clears its active team status. Report in tasks on each of your tasks this turn was woken for, with its status and a note, leaving the note out when this turn already posted in that task's thread; the finish is rejected until every one that's still open has a report. A report can continue an in_progress task later. Handing a task off as in_review takes up your next pending task after this turn. waitingFor leaves a brief waiting status.",
   parameters: finishTeamAgentTurnParameters,
   isTerminal: true,
   handler: async (

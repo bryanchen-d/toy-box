@@ -899,6 +899,46 @@ test("a finish reports on every task its turn was woken for, each note posting i
   await finishTeamAgentTurn(builder.id);
 });
 
+test("a report leaves out its note only where this turn already posted in the task's thread", async () => {
+  const { teams, team, builder, assign, thread } = await reportingTeam();
+  await assign({ title: "Parser" }, { title: "Docs" });
+  const docs = (await teams.listTasks(team.id))[1]!;
+  await editTeamTasksFromAgent(builder.id, {
+    operations: [
+      { type: "update", taskId: "t1", patch: { status: "in_review" }, note: "Parsed. Close it." },
+    ],
+  });
+  const reports = [
+    { taskId: "t1", status: "in_review" as const },
+    { taskId: "t2", status: "in_progress" as const },
+  ];
+  await expect(finishTeamAgentTurn(builder.id, { reports })).rejects.toThrow(
+    "This turn hasn't posted in the thread of t2",
+  );
+  await sendTeamMessageFromAgent(builder.id, {
+    content: "Docs start once the grammar settles.",
+    threadSequence: docs.threadSequence!,
+  });
+  await finishTeamAgentTurn(builder.id, { reports });
+  expect((await thread("t1")).slice(1)).toEqual(["Parsed. Close it."]);
+  expect((await thread("t2")).slice(1)).toEqual(["Docs start once the grammar settles."]);
+  expect((await teams.listTasks(team.id)).map(({ status }) => status)).toEqual([
+    "in_review",
+    "in_progress",
+  ]);
+
+  // A later turn starts over, so an earlier turn's post doesn't count.
+  await postTeamMessage({
+    id: "nudge",
+    teamId: team.id,
+    content: "Any news?",
+    threadSequence: docs.threadSequence!,
+  });
+  await expect(
+    finishTeamAgentTurn(builder.id, { reports: [{ taskId: "t2", status: "in_progress" }] }),
+  ).rejects.toThrow("This turn hasn't posted in the thread of t2");
+});
+
 test("a turn that ends without its report notes it in the task's thread and wakes the assignee once", async () => {
   const { teams, team, builder, delivered, assign, thread } = await reportingTeam();
   await assign({ title: "Parser" });

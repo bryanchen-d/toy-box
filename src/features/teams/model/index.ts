@@ -230,6 +230,11 @@ export const teamAgentMetadataSchema = z
      */
     turnTasks: z.array(durableIdSchema).min(1).optional(),
     /**
+     * The team's latest message when the turn's first task joined it, kept while it has tasks: the
+     * agent's later messages in a task's thread are what this turn posted there.
+     */
+    turnSince: z.number().int().nonnegative().optional(),
+    /**
      * The lead's task summary: when it last read it, and whether it was woken for hand-offs or
      * questions since then, which stands for every later one until it reads again.
      */
@@ -246,7 +251,7 @@ export const setTeamAgentStatusInputSchema = teamStatusTargetSchema.safeExtend({
 export type SetTeamAgentStatusInput = z.output<typeof setTeamAgentStatusInputSchema>;
 
 const teamMemberSchema = teamAgentMetadataSchema
-  .omit({ seenThrough: true, taskSummary: true })
+  .omit({ seenThrough: true, turnSince: true, taskSummary: true })
   .extend({
     teamId: durableIdSchema,
     id: durableIdSchema,
