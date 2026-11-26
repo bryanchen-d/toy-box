@@ -1,6 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { MessageSquareReply } from "lucide-react";
-import { teamTaskByThread, type TeamState, type PostTeamMessageInput } from "@teams/model";
+import {
+  teamTaskById,
+  teamTaskByThread,
+  type TeamState,
+  type PostTeamMessageInput,
+} from "@teams/model";
+import { findTeamTaskMessage } from "@teams/server/functions";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { Button } from "@/shared/ui/button";
 import { PaneMessage } from "@/shared/ui/pane-message";
@@ -20,12 +27,15 @@ const FOLLOW_THRESHOLD_PX = 80;
 
 /**
  * One thread beside the transcript, or in its place in a narrow pane: its top-level message, every
- * reply, and a composer that replies in it. It opens on the pending question it holds, otherwise on
- * its latest reply, and follows new replies while the reader is at the end.
+ * reply, and a composer that replies in it. A task's view is its thread under its record; a task
+ * without a thread yet shows an empty history, and the first reply starts it. It opens on the
+ * pending question it holds, otherwise on its latest reply, and follows new replies while the
+ * reader is at the end.
  */
 export function TeamThread({
   teamId,
   sequence,
+  taskId,
   selectedSequence,
   isVisible,
   state,
@@ -35,15 +45,19 @@ export function TeamThread({
   onClose,
 }: {
   teamId: string;
-  /** The thread's top-level message. */
-  sequence: number;
+  /** The thread's top-level message, for a thread opened as one. */
+  sequence?: number;
+  /** The task whose view this is, which follows the task as its thread starts. */
+  taskId?: string;
   selectedSequence?: number;
   isVisible: boolean;
   state: TeamState;
   composerRef: RefObject<TeamComposerHandle | null>;
   /** Loads older history through the thread's top-level message. */
   onLoadThrough: (sequence: number) => Promise<void>;
-  onReply: (message: Pick<PostTeamMessageInput, "content" | "attachments">) => Promise<unknown>;
+  onReply: (
+    message: Pick<PostTeamMessageInput, "content" | "attachments" | "threadSequence" | "taskId">,
+  ) => Promise<unknown>;
   onClose: () => void;
 }) {
   const pane = useTeamPane();
@@ -55,24 +69,41 @@ export function TeamThread({
   const scrollRef = useRef<HTMLElement>(null);
   const followsEndRef = useRef(true);
   const landedRef = useRef(false);
-  const rows = threadRows(state.messages, sequence, {
-    lead,
-    members,
-    coordinators,
-    tasks: state.tasks,
-    pendingRequests: state.team.pendingRequests,
-  });
   // A task's thread is its view: the task's record heads its history.
-  const task = teamTaskByThread(state.tasks, sequence);
+  const task =
+    taskId === undefined
+      ? sequence === undefined
+        ? undefined
+        : teamTaskByThread(state.tasks, sequence)
+      : teamTaskById(state.tasks, taskId);
+  const threadSequence = sequence ?? task?.threadSequence;
+  const rows =
+    threadSequence === undefined
+      ? []
+      : threadRows(state.messages, threadSequence, {
+          lead,
+          members,
+          coordinators,
+          tasks: state.tasks,
+          pendingRequests: state.team.pendingRequests,
+        });
   const replyCount = state.messages.filter(
-    ({ threadSequence }) => threadSequence === sequence,
+    (message) => threadSequence !== undefined && message.threadSequence === threadSequence,
   ).length;
   // Loaded history always reaches the newest message, so it holds the thread once it reaches here.
-  const isLoaded = (state.messages[0]?.sequence ?? 1) <= sequence;
+  const isLoaded =
+    threadSequence === undefined || (state.messages[0]?.sequence ?? 1) <= threadSequence;
+  // A task without a thread yet may still be cited by earlier messages.
+  const mention = useMutation({
+    mutationFn: (id: string) => findTeamTaskMessage({ data: { teamId, taskId: id } }),
+    onSuccess: (location) => {
+      if (location) pane.openMessage(location);
+    },
+  });
 
   useEffect(() => {
-    if (!isLoaded) void onLoadThrough(sequence);
-  }, [isLoaded, onLoadThrough, sequence]);
+    if (!isLoaded && threadSequence !== undefined) void onLoadThrough(threadSequence);
+  }, [isLoaded, onLoadThrough, threadSequence]);
 
   useLayoutEffect(() => {
     if (!isLoaded || !targetLoaded || !scrollRef.current) return;
@@ -122,17 +153,19 @@ export function TeamThread({
           }
           title={task ? `${task.id} · ${task.title}` : "Thread"}
         />
-        <TeamMessageSearch
-          teamId={teamId}
-          threadSequence={sequence}
-          isVisible={isVisible}
-          hotkeyTarget={paneRef}
-          onSelect={setSearchSelection}
-        />
+        {threadSequence !== undefined && (
+          <TeamMessageSearch
+            teamId={teamId}
+            threadSequence={threadSequence}
+            isVisible={isVisible}
+            hotkeyTarget={paneRef}
+            onSelect={setSearchSelection}
+          />
+        )}
         <div className="min-h-0 flex-1">
           {!isLoaded ? (
             <TranscriptSkeleton />
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && !task ? (
             <PaneMessage
               title="Thread unavailable"
               detail="Its message is no longer in this team."
@@ -174,6 +207,30 @@ export function TeamThread({
                     )}
                   </div>
                 ))}
+                {task && threadSequence === undefined && (
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>No replies yet. A reply here starts this task's thread.</p>
+                    {mention.data === null ? (
+                      <p role="status">No message mentions {task.id} yet.</p>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                        disabled={mention.isPending}
+                        onClick={() => mention.mutate(task.id)}
+                      >
+                        Show the latest message that mentions {task.id}
+                      </Button>
+                    )}
+                    {mention.error && (
+                      <p role="alert" className="text-destructive">
+                        Unable to find a message about {task.id}: {mention.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </ScrollableFade>
           )}
@@ -181,12 +238,17 @@ export function TeamThread({
         <div className="shrink-0 border-t bg-background px-4 pt-4 md:pb-4">
           <TeamComposer
             teamId={teamId}
-            threadSequence={sequence}
+            threadSequence={threadSequence}
+            task={task}
             state={state}
             handleRef={composerRef}
             onSubmit={(message) => {
               followsEndRef.current = true;
-              return onReply(message);
+              return onReply(
+                threadSequence === undefined
+                  ? { ...message, taskId: task!.id }
+                  : { ...message, threadSequence },
+              );
             }}
           />
         </div>

@@ -91,7 +91,7 @@ export function useTeam(
     );
 
   const postMessage = (
-    message: Pick<PostTeamMessageInput, "content" | "attachments" | "threadSequence">,
+    message: Pick<PostTeamMessageInput, "content" | "attachments" | "threadSequence" | "taskId">,
   ) => {
     const delivery = post({ ...message, teamId, id: generateUUID() });
     void delivery.catch((error: unknown) => console.error("Unable to post Team message:", error));

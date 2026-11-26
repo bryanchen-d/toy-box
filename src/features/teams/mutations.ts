@@ -116,6 +116,8 @@ export const teamMutations = {
         return message;
       },
       onMutate: (input, { client }) => {
+        // A reply that starts a task's thread has no thread to show in until the server opens it.
+        if (input.taskId !== undefined) return;
         client.setQueryData<TeamQueryData | null>(
           teamQueries.detail(input.teamId).queryKey,
           (state) =>

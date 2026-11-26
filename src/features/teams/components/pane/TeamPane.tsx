@@ -61,10 +61,14 @@ import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
 /** What this view shows beside the chat, or in its place when the pane is narrow. */
 type TeamAside =
   | { type: TeamPanel; selectedAgentId?: string }
-  | { type: "thread"; sequence: number; selectedSequence?: number };
+  | { type: "thread"; sequence: number; selectedSequence?: number }
+  | { type: "task"; taskId: string };
+
+/** The kind of panel an aside occupies; a task's view is its thread's. */
+type TeamAsideKind = Exclude<TeamAside["type"], "task">;
 
 /** Each aside kind's share of a wide pane until the user resizes it. */
-const ASIDE_SIZES: Record<TeamAside["type"], number> = {
+const ASIDE_SIZES: Record<TeamAsideKind, number> = {
   overview: 30,
   canvas: 50,
   members: 65,
@@ -157,8 +161,21 @@ function TeamContent({
   }
   const canvas = state?.artifacts.find(({ id }) => id === state.team.canvasArtifactId);
   const aside = opened ?? (panel && { type: panel });
-  const asideKind = state && aside && (aside.type !== "canvas" || canvas) ? aside.type : undefined;
-  const thread = aside?.type === "thread" && asideKind ? aside.sequence : undefined;
+  const asideTask =
+    aside?.type === "task" ? state?.tasks.find(({ id }) => id === aside.taskId) : undefined;
+  // A removed task's view closes, as a cleared canvas does.
+  const asideKind: TeamAsideKind | undefined =
+    state && aside && (aside.type !== "canvas" || canvas) && (aside.type !== "task" || asideTask)
+      ? aside.type === "task"
+        ? "thread"
+        : aside.type
+      : undefined;
+  const thread =
+    asideKind === "thread"
+      ? aside?.type === "thread"
+        ? aside.sequence
+        : asideTask?.threadSequence
+      : undefined;
   const asideSize = asideKind && (teamAsideSizes?.[asideKind] ?? ASIDE_SIZES[asideKind]);
   // A drag commits only the size it ends at, so following the pointer stays within the panels.
   const resizeRef = useRef<{ size?: number; dragging: boolean }>({ dragging: false });
@@ -239,6 +256,12 @@ function TeamContent({
   function openThread(sequence: number) {
     if (thread === sequence) threadComposerRef.current?.focus();
     else setOpened({ type: "thread", sequence });
+  }
+
+  /** Shows a task's view, its thread under its record, whether or not the thread has started. */
+  function openTask(taskId: string) {
+    if (aside?.type === "task" && aside.taskId === taskId) threadComposerRef.current?.focus();
+    else setOpened({ type: "task", taskId });
   }
 
   function openMessage({ sequence, threadSequence }: TeamMessageLocation) {
@@ -451,20 +474,23 @@ function TeamContent({
                   {aside.type === "canvas" && canvas && (
                     <TeamCanvas key={canvas.id} teamId={teamId} artifact={canvas} />
                   )}
-                  {aside.type === "thread" && (
+                  {(aside.type === "thread" || aside.type === "task") && (
                     <TeamThread
-                      key={`${aside.sequence}:${aside.selectedSequence ?? ""}`}
+                      key={
+                        aside.type === "task"
+                          ? `task:${aside.taskId}`
+                          : `${aside.sequence}:${aside.selectedSequence ?? ""}`
+                      }
                       teamId={teamId}
-                      sequence={aside.sequence}
-                      selectedSequence={aside.selectedSequence}
+                      {...(aside.type === "task"
+                        ? { taskId: aside.taskId }
+                        : { sequence: aside.sequence, selectedSequence: aside.selectedSequence })}
                       isVisible={isVisible}
                       state={state}
                       composerRef={threadComposerRef}
                       onLoadThrough={loadPrevious}
                       onClose={closeAside}
-                      onReply={(message) =>
-                        postMessage({ ...message, threadSequence: aside.sequence })
-                      }
+                      onReply={postMessage}
                     />
                   )}
                   {aside.type === "members" && (
@@ -482,6 +508,7 @@ function TeamContent({
                       pendingRequests={state.team.pendingRequests}
                       view={taskView}
                       onViewChange={setTaskView}
+                      onOpenTask={openTask}
                     />
                   )}
                   {aside.type === "artifacts" && (

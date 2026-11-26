@@ -90,9 +90,21 @@ export function teamTaskByThread(
   tasks: readonly TeamTask[],
   threadSequence: number,
 ): TeamTaskNode | undefined {
+  return findTeamTaskNode(tasks, (task) => task.threadSequence === threadSequence);
+}
+
+/** The task with this ID, with its subtasks. */
+export function teamTaskById(tasks: readonly TeamTask[], taskId: string): TeamTaskNode | undefined {
+  return findTeamTaskNode(tasks, (task) => task.id === taskId);
+}
+
+function findTeamTaskNode(
+  tasks: readonly TeamTask[],
+  matches: (task: TeamTask) => boolean,
+): TeamTaskNode | undefined {
   const find = (nodes: readonly TeamTaskNode[]): TeamTaskNode | undefined => {
     for (const node of nodes) {
-      const found = node.threadSequence === threadSequence ? node : find(node.children);
+      const found = matches(node) ? node : find(node.children);
       if (found) return found;
     }
   };

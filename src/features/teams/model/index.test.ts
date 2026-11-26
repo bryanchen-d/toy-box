@@ -398,6 +398,7 @@ test("user messages require content or attachments and exclude agent-controlled 
     { content: "" },
     { content: "A".repeat(12_001) },
     { sender: { type: "agent", agentId: "lead" } },
+    { threadSequence: 1, taskId: "t1" },
   ]) {
     expect(postTeamMessageInputSchema.safeParse({ ...message, ...change }).success).toBe(false);
   }

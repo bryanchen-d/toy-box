@@ -809,6 +809,48 @@ test("an open task losing its assignee wakes the lead once per change", async ()
   ]);
 });
 
+test("the first reply on a task without a thread starts it under its opening note and wakes its assignee", async () => {
+  const { teams, team, builder, delivered, assign } = await reportingTeam();
+  await assign({ title: "Parser" });
+  // A migrated task has no thread until something posts into it.
+  await currentDb!`UPDATE team_tasks SET thread_sequence = NULL WHERE team_id = ${team.id}`;
+  const [before] = await teams.listTasks(team.id);
+
+  const reply = await postTeamMessage({
+    id: "first",
+    teamId: team.id,
+    content: "Keep comments.",
+    taskId: "t1",
+  });
+  const [task] = await teams.listTasks(team.id);
+  expect(reply.threadSequence).toBe(task!.threadSequence);
+  expect(
+    (await teams.listThread(team.id, task!.threadSequence!)).map(({ content }) => content),
+  ).toEqual([
+    {
+      type: "task_opened",
+      taskId: "t1",
+      title: "Parser",
+      actor: { type: "agent", agentId: team.id },
+    },
+    "Keep comments.",
+  ]);
+  // Starting its thread isn't a change to the task.
+  expect(task!.updatedAt).toBe(before!.updatedAt);
+  expect(Object.keys(delivered())).toEqual([builder.id]);
+
+  const next = await postTeamMessage({
+    id: "second",
+    teamId: team.id,
+    content: "And docs.",
+    taskId: "t1",
+  });
+  expect(next.threadSequence).toBe(task!.threadSequence);
+  await expect(
+    postTeamMessage({ id: "third", teamId: team.id, content: "Hello?", taskId: "t9" }),
+  ).rejects.toThrow('Task "t9" was not found');
+});
+
 test("an assignee asks the user in its task's thread, and the reply there answers it and wakes only the assignee", async () => {
   const { teams, team, builder, delivered, assign } = await reportingTeam();
   await assign({ title: "Parser" });

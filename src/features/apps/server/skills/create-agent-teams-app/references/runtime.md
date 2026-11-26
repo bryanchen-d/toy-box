@@ -399,9 +399,10 @@ as finished. A task's `artifactId` is the `id` of its artifact in `state.artifac
 none are reported: pass `state.tasks` for the whole list, or a task and its descendants for one
 subtree. It reuses the Teams logic.
 `loadPrevious(sequence?)` loads one older page or pages through a target message.
-`postMessage({ content, attachments?, threadSequence? })` uses the shared optimistic mutation and
+`postMessage({ content, attachments?, threadSequence?, taskId? })` uses the shared optimistic mutation and
 returns a promise for the persisted `TeamMessage`. Pass a message's `sequence` as
-`threadSequence` to reply in its thread. A reply carries its thread's `threadSequence`, so a
+`threadSequence` to reply in its thread, or a task's `id` as `taskId` to reply in its thread,
+which starts it when the task has none yet. A reply carries its thread's `threadSequence`, so a
 transcript that shows only top-level messages filters out messages that have one.
 Resolution acknowledges delivery, not execution or completion by an agent. Rejection must be surfaced.
 The hook also exposes `postError` (`Error | null`) for delivery feedback.

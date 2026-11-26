@@ -13,7 +13,7 @@ import type { TeamAdvice } from "./advice";
 import type { TeamAgentPresence } from "./presence";
 import { hasChanges } from "./changes";
 import { avatarSchema, type Avatar } from "./avatar";
-import { type TeamTask } from "./tasks";
+import { teamTaskIdSchema, type TeamTask } from "./tasks";
 import {
   agentHandleFromName,
   agentNameSchema,
@@ -830,10 +830,15 @@ export const postTeamMessageInputSchema = z
     content: teamMessageTextSchema,
     attachments: attachmentsSchema.optional(),
     threadSequence: teamThreadSequenceSchema.optional(),
+    /** Replies in this task's thread, starting it when the task has none yet. */
+    taskId: teamTaskIdSchema.optional(),
   })
   .strict()
   .refine(({ content, attachments }) => content.length > 0 || (attachments?.length ?? 0) > 0, {
     message: "A message or attachment is required",
+  })
+  .refine(({ threadSequence, taskId }) => threadSequence === undefined || taskId === undefined, {
+    message: "Reply in a thread or in a task, not both",
   });
 
 export const markTeamReadInputSchema = z

@@ -284,7 +284,11 @@ lead exists for the Team's lifetime and is addressed as `@lead`.
 - Append user, Agent, and typed system messages with one transactionally allocated sequence.
 - Reply in a thread by naming any message in it. The append transaction resolves the thread's
   top-level message, rejecting system messages other than a task's opening note and its notes, and
-  messages outside the Team. Read one thread whole, without changing read state.
+  messages outside the Team. Read one thread whole, without changing read state. Reply in a
+  task's thread by naming the task (`taskId`): a task without one, as migrated tasks are, starts
+  it in the same transaction, its opening note as the root and the reply beneath it, and the
+  reply routes as any message in the task's thread does. Starting a thread isn't a change to the
+  task.
 - Route every message through one pure `resolveTeamAudience` policy. An unmentioned user, member,
   or connector message wakes the lead, except that a connector's reply wakes its `askedBy` agent,
   and any other connector message wakes that connector's coordinator, each while that agent is on
@@ -665,7 +669,7 @@ replace an overlapping stale list read. This browser metadata does not change th
 It retries pages older than its cached revision, merges without advancing the stream cursor, and
 continues through the target sequence when revealing pending requests, until every one is loaded.
 
-`POST /api/v1/teams/:teamId/messages` accepts `{ id, content, attachments?, threadSequence? }`, uses the normal
+`POST /api/v1/teams/:teamId/messages` accepts `{ id, content, attachments?, threadSequence?, taskId? }`, uses the normal
 user-message schema and delivery policy, and returns HTTP 201 with `{ version: 1, message }`.
 Duplicate IDs return 409 without repeating delivery. `POST …/read` accepts `{ sequence }`, uses
 the same monotonic read operation as the browser, and returns `{ version: 1, seenThrough }`.
@@ -885,10 +889,12 @@ presents one deleted identity everywhere.
   muted before the title, and hovering it shows `TaskCard`: the ID, status ("Closed as deferred"
   once closed), priority when not normal, title, description, assignee or Unassigned, artifact,
   exact diff, subtask progress, when and by whom it last changed, and Working now while its
-  assignee's running turn is on it, which also rings the row's avatar. Choosing a task opens its
+  assignee's running turn is on it, which also rings the row's avatar. Choosing any task opens its
   task view: its thread, headed by its record and titled like "t5 · Tools: land the slice", with a
-  composer that replies there; a task without a thread yet still opens the newest user, agent, or
-  connector message citing its ID, as a search result does, or says that none does yet. The
+  composer that replies there. A task without a thread yet shows its record over an empty
+  history, offers to show the newest user, agent, or connector message citing its ID, as a search
+  result does, and posts its first reply with `taskId`, which starts the thread; the view follows
+  the task, so the reply appears in it. The
   task view shows each of the server's notes as a row, with a failure's error on hover. The routines panel lists routines by title with
   their recipient and next run, each expanding to its prompt and offering Run routine and Delete routine. The
   members panel's header adds an agent through a New agent dialog and edits the Team; clicking an

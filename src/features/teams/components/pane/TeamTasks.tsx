@@ -1,4 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
 import { ListChecks, ListTodo, LoaderCircle, MessageCircleQuestionMark } from "lucide-react";
 import {
   isTeamTaskOpen,
@@ -9,7 +8,6 @@ import {
   type TeamPendingRequest,
   type TeamTask,
 } from "@teams/model";
-import { findTeamTaskMessage } from "@teams/server/functions";
 import { Badge } from "@/shared/ui/badge";
 import { Checklist, isChecklistItemFinished, type ChecklistItem } from "@/shared/ui/checklist";
 import { useTeamPane } from "./TeamPaneContext";
@@ -53,8 +51,7 @@ const VIEWS: (ViewOption<TaskView> & {
 
 /**
  * The team's task list, with each task's assignee, artifact, and reported diff, and its record on
- * hover. Choosing a task opens its view, its thread under its record; a task without a thread yet
- * opens the newest message that cites its ID.
+ * hover. Choosing a task opens its view, its thread under its record, even before it has one.
  */
 export function TeamTasks({
   tasks,
@@ -62,6 +59,7 @@ export function TeamTasks({
   pendingRequests,
   view,
   onViewChange,
+  onOpenTask,
 }: {
   tasks: TeamTask[];
   artifacts: TeamArtifact[];
@@ -69,16 +67,9 @@ export function TeamTasks({
   pendingRequests: readonly TeamPendingRequest[];
   view: TaskView;
   onViewChange: (view: TaskView) => void;
+  onOpenTask: (taskId: string) => void;
 }) {
-  const { teamId, agents, presence, openArtifact, openMessage, openThread } = useTeamPane();
-  const lookup = useMutation({
-    mutationFn: ({ id }: TeamTask) => findTeamTaskMessage({ data: { teamId, taskId: id } }),
-    onSuccess: (location) => {
-      if (location) openMessage(location);
-    },
-  });
-  const openTask = (task: TeamTask) =>
-    task.threadSequence ? openThread(task.threadSequence) : lookup.mutate(task);
+  const { agents, presence, openArtifact } = useTeamPane();
   const tree = teamTaskTree(tasks);
   const closedCount = tree.filter((task) => !isTeamTaskOpen(task)).length;
   const diff = teamTasksDiff(tasks);
@@ -97,16 +88,6 @@ export function TeamTasks({
         </div>
       </TeamPanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {lookup.data === null && (
-          <p role="status" className="mb-3 text-xs text-muted-foreground">
-            No message mentions {lookup.variables?.id} yet.
-          </p>
-        )}
-        {lookup.error && (
-          <p role="alert" className="mb-3 text-xs text-destructive">
-            Unable to find a message about {lookup.variables?.id}: {lookup.error.message}
-          </p>
-        )}
         {tree.length > 0 ? (
           <Checklist
             items={teamTaskItems({
@@ -115,7 +96,7 @@ export function TeamTasks({
               artifacts,
               presence,
               onArtifactOpen: (artifact) => openArtifact(artifact.file),
-              onTaskSelect: openTask,
+              onTaskSelect: ({ id }) => onOpenTask(id),
             })}
             show={show && ((item) => show(item, needsInput))}
             empty={empty && <p className="text-sm text-muted-foreground italic">{empty}</p>}

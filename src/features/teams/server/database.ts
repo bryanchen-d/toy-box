@@ -865,27 +865,26 @@ export class TeamDatabase {
   }
 
   /**
-   * Appends a user, Agent, connector, or team message, in a thread when it replies. The lead can
-   * flag its own message as a question for the user anywhere, and an assignee in its own open
-   * task's thread.
+   * Appends a user, Agent, connector, or team message, in a thread when it replies, or in a task's
+   * thread, which starts with the task's opening note in the same change when the task has none.
+   * The lead can flag its own message as a question for the user anywhere, and an assignee in its
+   * own open task's thread.
    */
   async appendMessage({
     teamId,
     attachments,
     request,
     threadSequence,
+    taskId,
     ...message
   }: Omit<TeamConversationMessage, "sequence" | "timestamp" | "reactions" | "request"> & {
     teamId: string;
     request?: boolean;
+    taskId?: string;
   }) {
     return inStateTransaction(this.db, async (db) => {
       const team = await requireTeam(db, teamId);
-      const thread =
-        threadSequence === undefined
-          ? undefined
-          : await resolveThreadSequence(db, teamId, threadSequence);
-      const task = thread === undefined ? undefined : await taskByThread(db, teamId, thread);
+      const { thread, task, events } = await messageThread(db, teamId, { threadSequence, taskId });
       // A lead's Agent ID is its Team's ID.
       const asker = message.sender.type === "agent" ? message.sender.agentId : undefined;
       if (
@@ -907,7 +906,7 @@ export class TeamDatabase {
         ...(attachments?.length ? { attachments } : {}),
       }));
       return {
-        ...(await recordTeamChange(db, team, [change])),
+        ...(await recordTeamChange(db, team, [...events, change])),
         message: change.message,
         // Answering the lead's question wakes it; an assignee's thread already reaches it.
         acknowledgedRequest: team.pendingRequests.some(
@@ -1666,6 +1665,33 @@ async function taskByThread(
     SELECT * FROM team_tasks WHERE team_id = ${teamId} AND thread_sequence = ${threadSequence}
   `;
   return row && taskFromRow(row);
+}
+
+/**
+ * The thread a message goes in, and the task whose thread it is: the thread it replies in, or a
+ * task's, which starts here with the task's opening note when the task has none yet. Starting a
+ * thread isn't a change to the task, so it keeps its last change.
+ */
+async function messageThread(
+  db: Bun.SQL,
+  teamId: string,
+  { threadSequence, taskId }: { threadSequence?: number; taskId?: string },
+): Promise<{ thread?: number; task?: TeamTask; events: TeamEvent[] }> {
+  if (taskId !== undefined) {
+    const before = await listTasks(db, teamId);
+    const task = before.find(({ id }) => id === taskId);
+    if (!task) throw new Error(`Task "${taskId}" was not found in this team.`);
+    const opened = await openTaskThread(db, teamId, task);
+    const after = before.map((current) => (current.id === taskId ? opened.task : current));
+    return {
+      thread: opened.task.threadSequence,
+      task: opened.task,
+      events: [...opened.events, ...(await saveTasks(db, teamId, before, after))],
+    };
+  }
+  if (threadSequence === undefined) return { events: [] };
+  const thread = await resolveThreadSequence(db, teamId, threadSequence);
+  return { thread, task: await taskByThread(db, teamId, thread), events: [] };
 }
 
 type ConversationRow = Pick<

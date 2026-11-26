@@ -183,14 +183,14 @@ describe("team attention", () => {
       teams.editTasks(team.id, { operations });
     /** Sends a lead message flagged as a user request, returning the question. */
     const ask = async (content: string) => {
-      const { events } = await teams.appendMessage({
+      const { message } = await teams.appendMessage({
         id: crypto.randomUUID(),
         teamId: team.id,
         sender: { type: "agent", agentId: team.id },
         content,
         request: true,
       });
-      return events[0]!.message;
+      return message;
     };
     return { teams, team, post, complete, ask, edit };
   }
@@ -222,7 +222,7 @@ describe("team attention", () => {
       content: string,
       options: { thread?: number; user?: true; request?: true } = {},
     ) => {
-      const { events, team: after } = await teams.appendMessage({
+      const { message, team: after } = await teams.appendMessage({
         id: crypto.randomUUID(),
         teamId: team.id,
         sender: options.user ? { type: "user" } : lead,
@@ -230,7 +230,7 @@ describe("team attention", () => {
         ...(options.thread ? { threadSequence: options.thread } : {}),
         ...(options.request ? { request: true } : {}),
       });
-      return { sequence: events[0]!.message.sequence, attention: after.attentionSequence };
+      return { sequence: message.sequence, attention: after.attentionSequence };
     };
     const topLevel = await send("Kickoff");
     expect(topLevel.attention).toBe(topLevel.sequence);

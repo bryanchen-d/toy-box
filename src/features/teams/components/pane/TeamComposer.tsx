@@ -20,6 +20,7 @@ import {
   resolveTeamAudience,
   type TeamAgent,
   type TeamState,
+  type TeamTask,
   type PostTeamMessageInput,
 } from "@teams/model";
 import { teamMutations } from "@teams/mutations";
@@ -52,9 +53,10 @@ export type TeamComposerHandle = {
   focus: () => void;
 };
 
-/** The saved draft of the Team's composer, or of one thread's. */
-export function teamDraftKey(teamId: string, threadSequence?: number): DraftKey {
-  return threadSequence === undefined ? `team:${teamId}` : `team:${teamId}:${threadSequence}`;
+/** The saved draft of the Team's composer, of one thread's, or of a task's before it has one. */
+export function teamDraftKey(teamId: string, threadSequence?: number, taskId?: string): DraftKey {
+  if (threadSequence !== undefined) return `team:${teamId}:${threadSequence}`;
+  return taskId === undefined ? `team:${teamId}` : `team:${teamId}:task:${taskId}`;
 }
 
 /** The draft with an agent's mention first, unless it already opens with it. */
@@ -66,6 +68,7 @@ export function addressedDraft(text: string, agent: Pick<TeamAgent, "name">): st
 export function TeamComposer({
   teamId,
   threadSequence,
+  task,
   state,
   handleRef,
   onSubmit,
@@ -74,6 +77,8 @@ export function TeamComposer({
   teamId: string;
   /** Replies in this thread, in place of posting to the Team. */
   threadSequence?: number;
+  /** The task whose thread this replies in, which a reply starts when it has none yet. */
+  task?: TeamTask;
   state?: TeamState;
   handleRef: RefObject<TeamComposerHandle | null>;
   onSubmit: (message: Pick<PostTeamMessageInput, "content" | "attachments">) => Promise<unknown>;
@@ -81,12 +86,14 @@ export function TeamComposer({
 }) {
   const team = state?.team;
   const diff = teamTasksDiff(state?.tasks ?? []);
-  const inThread = threadSequence !== undefined;
+  const inThread = threadSequence !== undefined || task !== undefined;
   const request = state?.requests.at(-1);
-  // The questions a post here would answer, which is where the user replies to them.
-  const answering = team?.pendingRequests.filter((pending) =>
-    answersTeamRequest(threadSequence, pending),
-  );
+  // The questions a post here would answer, which is where the user replies to them. A task
+  // without a thread holds none.
+  const answering =
+    threadSequence === undefined && task
+      ? []
+      : team?.pendingRequests.filter((pending) => answersTeamRequest(threadSequence, pending));
   const { lead, members, agents, openArtifact, openPanel } = useTeamPane();
   // The arrangement puts pins before new shares; archived artifacts stay off the tray.
   const artifacts = state?.artifacts.flatMap(({ file, title, sharedAt, archived, pinned }) =>
@@ -96,7 +103,7 @@ export function TeamComposer({
     teamMutations.arrangeArtifacts(teamId),
   );
   const draft = useComposerDraft({
-    ...useSavedDraft(teamDraftKey(teamId, threadSequence)),
+    ...useSavedDraft(teamDraftKey(teamId, threadSequence, task?.id)),
     onSend: onSubmit,
     disabled: !state,
   });
@@ -110,9 +117,11 @@ export function TeamComposer({
     sender: { type: "user" },
     lead,
     members,
-    task: inThread
-      ? state?.tasks.find((task) => task.threadSequence === threadSequence)
-      : undefined,
+    task:
+      task ??
+      (threadSequence === undefined
+        ? undefined
+        : state?.tasks.find((candidate) => candidate.threadSequence === threadSequence)),
     acknowledgedRequest: answering?.some(({ agentId }) => agentId === lead.id),
   });
   const recipients = [
